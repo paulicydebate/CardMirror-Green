@@ -44,10 +44,10 @@ jobs:
         run: node apps/desktop/scripts/verify-preview.cjs ${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
-          name: cardmirror-${{ matrix.platform }}-${{ matrix.arch }}-preview
+          name: cardmirror-green-${{ matrix.platform }}-${{ matrix.arch }}-preview
           path: |
             apps/desktop/release/*.exe
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90

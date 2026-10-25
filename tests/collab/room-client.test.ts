@@ -452,10 +452,12 @@ describe('RoomStream backoff policy (2026-09-01 review)', () => {
   const noop = { onHello: () => {}, onUpdate: () => {}, onPresence: () => {}, onEnded: () => {}, onFull: () => {} };
 
   it('retry delays never exceed maxBackoffMs (jitter is applied inside the cap)', async () => {
-    // The clamp ran BEFORE the ±30% jitter, so a 60s cap really meant 78s.
+    // Test policy with virtual time, independent of Windows scheduling latency.
+    vi.useFakeTimers();
+    const rand = vi.spyOn(Math, 'random').mockReturnValue(0.999);
     const stamps: number[] = [];
     const stream = new RoomStream({
-      baseUrl: () => 'http://127.0.0.1:1', // refused
+      baseUrl: () => 'http://127.0.0.1:1',
       token: () => 'x',
       roomId: 'r',
       minBackoffMs: 20,
@@ -466,13 +468,18 @@ describe('RoomStream backoff policy (2026-09-01 review)', () => {
       },
       callbacks: noop,
     });
-    stream.start();
-    await sleep(400);
-    stream.stop();
-    const gaps = stamps.slice(1).map((t, i) => t - stamps[i]!);
-    expect(gaps.length).toBeGreaterThan(4);
-    // Timer slop only (a few ms) — never the old cap×1.3 = 65.
-    for (const g of gaps) expect(g).toBeLessThanOrEqual(50 + 8);
+    try {
+      stream.start();
+      await vi.advanceTimersByTimeAsync(400);
+      const gaps = stamps.slice(1).map((t, i) => t - stamps[i]!);
+      expect(gaps.length).toBeGreaterThan(4);
+      // Pin high jitter so the old cap-times-1.3 regression still fails.
+      for (const gap of gaps) expect(gap).toBeLessThanOrEqual(50);
+    } finally {
+      stream.stop();
+      rand.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it('backoff resets only after a connection SURVIVES, so a hello-then-close relay is not hammered', async () => {

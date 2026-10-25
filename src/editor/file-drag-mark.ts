@@ -1,14 +1,14 @@
 /**
  * The CardMirror mark in the status bar's bottom-right corner: a drag
  * handle for the focused document's file. Drag it into Slack, Mail,
- * Teams, Finder or Explorer and the OS receives the saved file â€” the
+ * Teams, Finder or Explorer and the OS receives the saved file — the
  * cross-platform counterpart of the macOS title-bar proxy icon (which
  * Windows and Linux lack). A click reveals the file in the file manager.
  *
  * Desktop only: the web build has no file paths, so the mark stays
  * hidden there (and on a packaged shell too old to start a native drag).
- * Dimmed while the focused doc has no file on disk â€” untitled, a
- * recovered draft, the home screen â€” because what travels is the file
+ * Dimmed while the focused doc has no file on disk — untitled, a
+ * recovered draft, the home screen — because what travels is the file
  * as saved.
  *
  * The drag itself is Electron's `webContents.startDrag`, which must be
@@ -18,7 +18,7 @@
  */
 
 /** The folder mark from logo.png, wordmark cropped off, background
- *  transparent, 48px â€” the status-bar glyph and the drag icon. Recipe
+ *  transparent, 48px — the status-bar glyph and the drag icon. Recipe
  *  (Pillow): bounding box by color SATURATION so the black wordmark
  *  never counts, flood-fill the white corners to transparent, drop any
  *  leftover grey, square canvas, LANCZOS to 48px. */
@@ -39,7 +39,7 @@ export interface FileDragMarkState {
   title: string;
 }
 
-export const DRAG_TITLE = 'Drag to share this file Â· Click to show it in its folder';
+export const DRAG_TITLE = 'Drag to share this file · Click to show it in its folder';
 export const INERT_TITLE = 'Save the document to share its file from here';
 
 /** Pure: what the mark should show for a host + the focused doc's handle

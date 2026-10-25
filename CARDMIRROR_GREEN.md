@@ -5,7 +5,7 @@ Active branch: `feature/full-card-api`. PR #1 remains draft; do not merge or mod
 
 ## Two computers
 
-Install the Windows x64 preview on the desktop and the macOS ARM64 preview on an Apple Silicon Mac. Both artifacts come from the same desktop-previews workflow run and commit. Preview artifacts currently expire after seven days. Install the Green build alongside upstream CardMirror; Green uses a distinct installer ID, executable, settings folder and bridge identity. Preview updates are manual and never install upstream builds.
+Install the Windows x64 preview on the desktop and the macOS ARM64 preview on an Apple Silicon Mac. Both artifacts come from the same desktop-previews workflow run and commit. Preview artifacts currently expire after 90 days. Install the Green build alongside upstream CardMirror; Green uses a distinct installer ID, executable, settings folder and bridge identity. Preview updates are manual and never install upstream builds.
 
 If an earlier preview replaced upstream CardMirror, installing Green does not restore upstream automatically. Reinstall upstream separately if desired. Green starts with its own empty profile; existing files on disk can be opened normally. Do not copy a running app profile between machines.
 
@@ -31,3 +31,5 @@ To continue the same assistant chat and desktop workspace from another device, u
 The extraction tests now live in `tests/editor/structured-card-extract.test.ts`, where the configured Vitest runner discovers them. Coverage includes multiple citations/paragraphs, missing IDs, offsets, derived-copy exclusion, mark attributes, native save/reopen, and plugin API integration.
 
 Next: compare extraction against representative debate documents, define a versioned batch-ingest contract with source provenance and deduplication, then build the OpenCaselist ingestion adapter. No OpenCaselist downloader or bulk-ingest implementation is shipped yet.
+
+The collaboration backoff-cap regression uses fake timers and a pinned high jitter draw, so its 50 ms cap is checked without relying on runner scheduling latency.
