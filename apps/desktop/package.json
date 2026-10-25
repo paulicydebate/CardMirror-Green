@@ -1,7 +1,7 @@
 {
-  "name": "@cardmirror/desktop",
+  "name": "@paulicydebate/cardmirror-green",
   "version": "1.16.0",
-  "description": "CardMirror — Electron desktop wrapper",
+  "description": "CardMirror Green \u2014 personal research fork",
   "author": "Anthony Trufanov",
   "homepage": "https://github.com/ant981228/cardmirror",
   "private": true,
@@ -24,9 +24,9 @@
     "dist:lite": "node scripts/inject-lite-build.cjs 1 && VITE_LITE=1 npm run dist -- -c.appId=com.cardmirror.lite -c.productName=\"CardMirror Lite\" -c.mac.artifactName=\"CardMirror-Lite-${version}-${arch}.${ext}\" -c.win.artifactName=\"CardMirror-Lite-Setup-${version}.${ext}\" -c.linux.artifactName=\"cardmirror-lite-${version}.${ext}\" -c.executableName=\"CardMirror Lite\" -c.linux.executableName=cardmirror-lite; node scripts/inject-lite-build.cjs 0"
   },
   "build": {
-    "appId": "com.cardmirror.app",
-    "productName": "CardMirror",
-    "executableName": "cardmirror",
+    "appId": "com.paulicydebate.cardmirror.green",
+    "productName": "CardMirror Green",
+    "executableName": "cardmirror-green",
     "electronVersion": "42.2.0",
     "directories": {
       "output": "release",
@@ -34,7 +34,8 @@
     },
     "files": [
       "dist/**/*",
-      "package.json"
+      "package.json",
+      "build/green.png"
     ],
     "asarUnpack": [
       "dist/voice/**",
@@ -66,14 +67,6 @@
         "to": "docx.ico"
       }
     ],
-    "fileAssociations": [
-      {
-        "ext": "cmir",
-        "name": "CardMirror Document",
-        "description": "CardMirror native document",
-        "role": "Editor"
-      }
-    ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
@@ -97,7 +90,17 @@
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "x64ArchFiles": "**/node_modules/@koromix/**"
+      "x64ArchFiles": "**/node_modules/@koromix/**",
+      "icon": "build/green.icns",
+      "fileAssociations": [
+        {
+          "ext": "cmir",
+          "name": "CardMirror Green Document",
+          "description": "CardMirror Green native document",
+          "role": "Editor",
+          "icon": "green.icns"
+        }
+      ]
     },
     "win": {
       "target": [
@@ -107,7 +110,8 @@
             "x64"
           ]
         }
-      ]
+      ],
+      "icon": "build/green.ico"
     },
     "linux": {
       "category": "Office",
@@ -126,7 +130,8 @@
           ]
         }
       ],
-      "artifactName": "cardmirror-${version}.${ext}"
+      "artifactName": "cardmirror-green-${version}.${ext}",
+      "icon": "build/green.png"
     },
     "pacman": {
       "depends": [
@@ -147,10 +152,15 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "ant981228",
+      "owner": "paulicydebate",
       "repo": "cardmirror"
     },
-    "afterSign": "scripts/sign-mac.js"
+    "afterSign": "scripts/sign-mac.js",
+    "nsis": {
+      "include": "build/installer-green.nsh",
+      "shortcutName": "CardMirror Green",
+      "uninstallDisplayName": "CardMirror Green"
+    }
   },
   "dependencies": {
     "electron-updater": "^6.8.3",

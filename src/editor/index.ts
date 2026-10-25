@@ -8118,7 +8118,7 @@ function syncRepresentedFile(handle: unknown): void {
  *  of truth where the OS title isn't visible (frameless Electron
  *  windows, tiling WMs, hidden title-bar themes). Cheap; called on
  *  open / save / multi-doc focus change. Title format: single-doc
- *  `${filename} — CardMirror` ('CardMirror' if untitled); multi-pane
+ *  `${filename} — CardMirror Green` ('CardMirror' if untitled); multi-pane
  *  joins every non-empty slot's name — the per-pane chip already
  *  identifies the focused doc, so the title serves as a workspace
  *  summary. */
@@ -8131,12 +8131,12 @@ function updateWindowTitle(): void {
   if (multiDocActive && multiDocGetAllFilenames) {
     const names = multiDocGetAllFilenames().filter((n): n is string => !!n);
     document.title = names.length > 0
-      ? `${names.join(' · ')} — CardMirror`
-      : 'CardMirror';
+      ? `${names.join(' · ')} — CardMirror Green`
+      : 'CardMirror Green';
   } else {
     document.title = focused.filename
-      ? `${focused.filename} — CardMirror`
-      : 'CardMirror';
+      ? `${focused.filename} — CardMirror Green`
+      : 'CardMirror Green';
   }
   // In-app filename chip. The chip itself is CSS-hidden in
   // multi-pane mode (each per-pane chip shows the pane's own

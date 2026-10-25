@@ -118,12 +118,18 @@ import {
   flowPost,
 } from './bridge-handshake.js';
 import { hardenStdio } from './stdio-harden.js';
+import { APP_NAME, APP_ID, PROFILE_NAME, MANUAL_PREVIEW_UPDATES, PREVIEW_DOWNLOADS } from './app-identity.js';
 
 // FIRST executable statement: once stdio's far end can be a closed
 // pipe (Linux launches), any console call — ours or Electron's own
 // internal error logging — can raise an uncaught EPIPE and pop the
 // main-process crash dialog. Nothing may log before this line.
 hardenStdio();
+
+// Set before profile reads, session creation and the single-instance lock.
+app.setName(APP_NAME);
+app.setPath('userData', path.join(app.getPath('appData'), PROFILE_NAME));
+if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 const DEV_SERVER_URL = 'http://localhost:5173';
 
@@ -189,7 +195,7 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 // pull the dump from there manually and attach it to a bug report.
 // No telemetry, no remote endpoint, no third-party SDK.
 crashReporter.start({
-  productName: 'CardMirror',
+  productName: APP_NAME,
   companyName: 'CardMirror',
   submitURL: '',
   uploadToServer: false,
@@ -463,7 +469,8 @@ function createWindow(initialDoc?: InitialDocPayload): BrowserWindow {
     // degradation from there.
     minWidth: 0,
     minHeight: 0,
-    title: 'CardMirror',
+    title: APP_NAME,
+    icon: path.join(__dirname, '..', 'build', 'green.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -693,6 +700,7 @@ ipcMain.handle('host:toggle-devtools', (event) => {
  *  of running; the renderer path returns `'dev'` so the UI can
  *  do the same. */
 ipcMain.handle('host:check-for-updates', async () => {
+  if (MANUAL_PREVIEW_UPDATES) return { status: 'error', message: 'CardMirror Green previews update manually. Download the latest Green installer from ' + PREVIEW_DOWNLOADS };
   if (!app.isPackaged) return { status: 'dev' };
   return new Promise<{ status: 'latest' | 'updating' | 'error'; message?: string }>((resolve) => {
     const offNotAvailable = (): void => {
@@ -3221,7 +3229,7 @@ ipcMain.handle(
 
 /** Public GitHub Releases page — fallback link surfaced in update
  *  dialogs so users always have a manual-download path. */
-const RELEASES_URL = 'https://github.com/ant981228/cardmirror/releases';
+const RELEASES_URL = 'https://github.com/paulicydebate/cardmirror/releases';
 
 /** The user manual (MANUAL.md), rendered on GitHub. Linked from the Help
  *  menu so the full guide is one click away. */
@@ -3314,6 +3322,10 @@ interface UpdateCheckOpts {
  *  dialog only for the manual path (`opts.alertOnLatest`); the
  *  auto-launch path is a complete no-op in dev. */
 function runUpdateCheck(opts: UpdateCheckOpts): void {
+  if (MANUAL_PREVIEW_UPDATES) {
+    if (opts.alertOnLatest) void shell.openExternal(PREVIEW_DOWNLOADS);
+    return;
+  }
   if (LITE_BUILD) return; // Lite never contacts the update host
   if (!app.isPackaged) {
     if (opts.alertOnLatest) {
@@ -3524,7 +3536,7 @@ function openTimerWindow(popoutOpts?: TimerPopoutOpts): void {
     skipTaskbar: true,
     alwaysOnTop: true,
     show: false,
-    title: 'Timer — CardMirror',
+    title: 'Timer — CardMirror Green',
     webPreferences: {
       // Minimal dedicated preload: exposes ONLY a resize call (see
       // timer-popout-preload.ts). Everything else the pop-out does
@@ -3689,6 +3701,7 @@ ipcMain.handle('host:update-chip-action', () => {
 });
 
 function startAutoUpdate(): void {
+  if (MANUAL_PREVIEW_UPDATES) return;
   if (!app.isPackaged) return;
   // macOS: Squirrel.Mac can't INSTALL into unsigned/self-signed builds,
   // but electron-updater's download path (zip + sha512 verification

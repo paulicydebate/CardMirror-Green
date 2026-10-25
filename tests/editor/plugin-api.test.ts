@@ -95,3 +95,31 @@ describe('plugins-store', () => {
     expect(isPluginEnabled('x')).toBe(false);
   });
 });
+
+
+describe('structuredCards plugin API', () => {
+  it('reports no active document', () => {
+    expect(createPluginApi('demo', deps).structuredCards()).toEqual({ ok: false, error: 'no-active-doc' });
+  });
+
+  it('extracts the whole document independently of the cursor without stamping identity', () => {
+    const card = (id: string, label: string) => schema.nodes.card!.createChecked(null, [
+      schema.nodes.tag!.create({ id }, schema.text(label)),
+      schema.nodes.cite_paragraph!.create(null, schema.text('Author 2026')),
+      schema.nodes.card_body!.create(null, schema.text('Complete evidence', [schema.marks.bold!.create()])),
+    ]);
+    const doc = schema.nodes.doc!.createChecked(null, [card('one', 'First'), card('two', 'Second')]);
+    const view = fakeView(doc, 2);
+    const before = view.state.doc.toJSON();
+    const ensureDocId = vi.fn(() => 'should-not-be-created');
+    const api = createPluginApi('demo', { ...deps, getView: () => view, ensureDocId });
+    const result = api.structuredCards();
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.cards.map(c => c.id)).toEqual(['one', 'two']);
+    expect(result.cards[1]!.bodies[0]!.text).toBe('Complete evidence');
+    expect(result.cards[1]!.bodies[0]!.runs[0]!.marks[0]!.type).toBe('bold');
+    expect(ensureDocId).not.toHaveBeenCalled();
+    expect(view.state.doc.toJSON()).toEqual(before);
+  });
+});
