@@ -1,0 +1,38 @@
+name: Desktop builds (Windows and macOS)
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/**']
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix apps/desktop ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm --prefix apps/desktop run build:renderer
+      - run: npm --prefix apps/desktop run build:main
+      - run: npm --prefix apps/desktop run build:service
+      - name: Package desktop app without publishing
+        run: npm --prefix apps/desktop exec -- electron-builder --dir --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cardmirror-${{ matrix.platform }}-preview
+          path: apps/desktop/release/
+          retention-days: 7
