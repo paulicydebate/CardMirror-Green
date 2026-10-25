@@ -33,3 +33,13 @@ The extraction tests now live in `tests/editor/structured-card-extract.test.ts`,
 Next: compare extraction against representative debate documents, define a versioned batch-ingest contract with source provenance and deduplication, then build the OpenCaselist ingestion adapter. No OpenCaselist downloader or bulk-ingest implementation is shipped yet.
 
 The collaboration backoff-cap regression uses fake timers and a pinned high jitter draw, so its 50 ms cap is checked without relying on runner scheduling latency.
+
+## Representative document validation (2026-10-25)
+
+Two local user-supplied documents were checked. No user documents, extracted text, or source filenames are committed to this repository.
+
+- DOCX: 481 source paragraphs matched imported paragraph text exactly and in order; all 16,058 directly highlighted characters matched. Extraction returned 32 containers with citations and bodies, plus 35 tag-only containers. There were 374 body paragraphs.
+- Native CMIR: 36 evidence cards plus 71 analytics, with 36 citation paragraphs, 146 body paragraphs and 6 undertags. Raw stored IDs, text and inline marks matched the API for all 107 containers and 871 text runs after normalizing absent mark attrs to empty objects.
+- Extraction paragraph/run text and offset checks passed. Both original file hashes and in-memory documents were unchanged by extraction.
+- These samples do not exercise tables, images, footnotes, inline breaks or derived references; no visual page-layout comparison was performed.
+- Required next contract decision: distinguish evidence, analytics and tag-only entries; keep incomplete records with explicit warnings rather than silently discarding them. Then add a versioned batch schema, provenance and deduplication before implementing OpenCaselist ingest.
