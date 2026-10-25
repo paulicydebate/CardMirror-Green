@@ -108,7 +108,8 @@ describe('published batch JSON Schema', () => {
     const require = createRequire(resolve('apps/desktop/package.json'));
     const Ajv = require('ajv');
     const validate = new Ajv({ allErrors: true }).compile(batchSchema);
-    const batch = await createIngestBatch([{ source: source(), doc: doc(card()) }]);
+    const batch = await createIngestBatch([{ source: { ...source(), uri: ' HTTPS://Example.com/a b ' }, doc: doc(card()) }]);
+    expect(batch.sources[0]!.uri).toBe('https://example.com/a%20b');
     expect(validate(batch), JSON.stringify(validate.errors)).toBe(true);
     expect(validate({ ...batch, schemaVersion: 2 })).toBe(false);
     const invalid = structuredClone(batch) as unknown as { records: Array<Record<string, unknown>> };

@@ -97,13 +97,15 @@ export async function createIngestBatch(inputs: ReadonlyArray<{ source: IngestSo
     if (!source.id.trim() || ids.has(source.id)) throw new Error('Source IDs must be nonempty and unique within a batch');
     if (!/^[a-f0-9]{64}$/.test(source.sha256)) throw new Error('Source SHA-256 must be 64 lowercase hex characters');
     if (source.format !== 'docx' && source.format !== 'cmir') throw new Error('Unsupported source format');
+    let normalizedUri: string | undefined;
     if (source.uri !== undefined) {
       let uri: URL;
       try { uri = new URL(source.uri); } catch { throw new Error('Source URI must be an HTTP(S) URL'); }
       if (uri.protocol !== 'https:' && uri.protocol !== 'http:') throw new Error('Source URI must be an HTTP(S) URL');
+      normalizedUri = uri.href;
     }
     ids.add(source.id);
-    sources.push({ ...source, document: structuredClone(doc.toJSON()) as Record<string, unknown> });
+    sources.push({ ...source, ...(normalizedUri === undefined ? {} : { uri: normalizedUri }), document: structuredClone(doc.toJSON()) as Record<string, unknown> });
     const cards = structuredClone(extractStructuredCards(doc));
     for (const [ordinal, card] of cards.entries()) {
       const node = doc.nodeAt(card.from)!;
