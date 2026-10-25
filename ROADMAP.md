@@ -28,7 +28,9 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 
 ## Next
 
-1. **OpenCaselist ingestion adapter.** Establish the available API/download contract, enumerate selected disclosures, retrieve documents and map their provenance into batch v1. Include progress, retries, rate-limit handling and clear per-document failures. Do not assume a public endpoint or authentication mechanism before checking it.
+1. **OpenCaselist adapter: real-data check.** The adapter is built and mock-tested ([OPENCASELIST.md](OPENCASELIST.md)): verified API, sign-in, scoped discovery, downloads, provenance, retries and a separate run manifest. Remaining: a limited run with the user's own sign-in, then fixes.
+1. **In-app OpenCaselist panel.** Sign in, browse caselist/school/team, import a disclosed file into the editor.
+1. **AI features without API keys.** Evidence cutting, block generation and scouting run through an outside agent (Claude Code, Codex) driving documented commands, plus a copy-paste flow for chat AIs such as the Grok app, with quote verification against the source.
 2. **Batch validation and scale.** Verify larger selections; inspect malformed/incomplete documents, repeated disclosures and revisions. Establish acceptable time/memory behavior and resumable processing for lengthy runs.
 3. **Broader document coverage.** Exercise tables, images, footnotes, links and derived-reference cases with real examples. Consumers must use rawNode when the paragraph view is incomplete.
 4. **Mac smoke test.** Install the ARM64 Green build on the user's M5 MacBook Pro and repeat opening/editing/save/reopen/export checks.
@@ -46,4 +48,4 @@ Chrome flagged the Windows preview as a dangerous download. The user subsequentl
 - A remote HTTP ingestion service or hosted database.
 - Automatic Green preview updates and a signed release channel.
 
-These need explicit product decisions; the current implementation does not promise them. OpenCaselist download/ingest has not shipped yet.
+These need explicit product decisions; the current implementation does not promise them. OpenCaselist import exists as a command-line tool; it is not in the app yet.

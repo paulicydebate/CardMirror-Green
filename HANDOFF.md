@@ -45,7 +45,19 @@ The user already smoke-tested an earlier Green Windows build: green branding, op
 8. JSON Schema, contract documentation, CLI command and focused tests.
 9. Published roadmap and portable project instructions.
 
-No OpenCaselist downloader, remote ingest service, hosted database or search library is implemented yet.
+No remote ingest service, hosted database or search library is implemented yet.
+
+## OpenCaselist adapter milestone (Claude, 2026-10-25)
+
+Implemented on top of version 1 without changing it; full details in [OPENCASELIST.md](OPENCASELIST.md).
+
+- API facts verified from the live OpenAPI description (`https://api.opencaselist.com/v1/docs`) and the opencaselist.com web client. Nothing was invented; unverified points are listed in OPENCASELIST.md.
+- `src/opencaselist/client.ts`: read-only client with cookie session, 500 ms spacing, bounded retries for network/429/5xx, timeouts, size limit, runtime response checks, credential-free redirect handling.
+- `src/opencaselist/ingest.ts`: scoped discovery (caselist + school, optional team/side), one download per unique open-source path, original-byte hashes, `parseToDoc`, `createIngestBatch`; skips/failures in a separate `cardmirror.opencaselist.run` v1 manifest.
+- `src/tools/opencaselist-cli.ts`: `npm run caselist -- login|status|logout|caselists|schools|teams|rounds|export`. Hidden password prompt; only the token is saved, outside the repo.
+- Verified locally: typecheck clean; 14 new tests pass (client, adapter, CLI end-to-end against a local fake server); the 27 focused batch/extraction tests still pass; internal links pass.
+- Full local suite on Node 24: 4,153 passed, 65 failed, 47 skipped. All 65 failures are in `tests/collab/*` and fail identically with these changes stashed (`AbortSignal` instance mismatch on Node 24). CI uses Node 22, where they passed. GitHub CI for this milestone has not been checked yet.
+- **Not verified:** any request to the real OpenCaselist with an account.
 
 ## Architecture map
 
@@ -61,6 +73,8 @@ No OpenCaselist downloader, remote ingest service, hosted database or search lib
 | `tests/editor/card-ingest-batch.test.ts` | Classification, rich content, stable identities, duplicates, provenance and schema checks |
 | `tests/tools/cardmirror-ingest-cli.test.ts` | End-to-end CLI input preservation, new-output-only writes and failure behavior |
 | `.github/workflows/desktop-previews.yml` | Windows x64 / Mac ARM64 preview builds with publish disabled |
+| `src/opencaselist/client.ts`, `src/opencaselist/ingest.ts` | OpenCaselist API client and batch adapter (see OPENCASELIST.md) |
+| `src/tools/opencaselist-cli.ts` | `npm run caselist` sign-in, listing and export commands |
 | `apps/desktop/src/app-identity.ts` | Fork-specific name, app/profile/bridge identity and manual-preview-update policy |
 
 ## Setup and commands
@@ -119,9 +133,14 @@ Aggregate results:
 
 ## Next task for the receiving LLM
 
-Build the OpenCaselist ingestion adapter, preserving version 1. Start by verifying the currently available API/download interface, permitted access, season/league selection and any authentication needs using current authoritative sources. No endpoint has been verified or encoded in this repo; do not invent one.
+The adapter is built (see the milestone above). Next:
 
-Recommended sequence:
+1. Confirm GitHub CI is green for the adapter commit on both platforms.
+2. Limited real run, with the user signing in themselves (`npm run caselist -- login` in their own terminal; never handle the password): `status`, `caselists`, then `export --limit 3` on one team. Record the real caselist names, file formats, any redirect behavior and failures in OPENCASELIST.md. Fix what the real service disagrees with.
+3. Then widen to a whole school, and check repeatability and duplicate annotations on real data.
+4. Next features, per the AI design decision in AGENTS.md: an in-app OpenCaselist panel (sign in, browse, import a disclosed file into the editor), then the evidence-cutting job format and the copy-paste "Copy for AI / Paste AI result" flow with quote verification.
+
+The original adapter plan, kept for reference:
 1. Define a small selectable scope and implement document discovery with an injectable transport for tests.
 2. Retrieve original bytes without exposing credentials; record a stable disclosure/document ID and original URL.
 3. Parse supported DOCX/CMIR documents through `parseToDoc`, preserving original-byte hashes.
@@ -143,4 +162,4 @@ Do not build a search UI, hosted database, fuzzy matching or automatic profile s
 
 ## Prompt the user can give a new LLM
 
-Continue CardMirror Green at paulicydebate/cardmirror on branch feature/full-card-api. Read HANDOFF.md, AGENTS.md, CARDMIRROR_GREEN.md, ROADMAP.md and CARD_INGEST_V1.md. The v1 local exporter is complete; the next task is the OpenCaselist adapter described in HANDOFF.md. Keep PR #1 draft and leave main unchanged. Do not assume access to the previous chat or machine.
+Continue CardMirror Green at paulicydebate/cardmirror on branch feature/full-card-api. Read HANDOFF.md, AGENTS.md, CARDMIRROR_GREEN.md, ROADMAP.md and CARD_INGEST_V1.md. The v1 local exporter and the OpenCaselist adapter (mock-tested) are complete; the next task is a limited real OpenCaselist run, then the in-app panel, as described in HANDOFF.md. Keep PR #1 draft and leave main unchanged. Do not assume access to the previous chat or machine.
