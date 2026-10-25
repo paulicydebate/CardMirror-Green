@@ -7,12 +7,12 @@ const release = path.join(__dirname, '..', 'release');
 const arch = process.argv[2];
 assert.equal(process.arch, arch, 'Preview must be built on its native architecture');
 const mac = process.platform === 'darwin';
-const app = mac ? path.join(release, 'mac-arm64', 'CardMirror.app') : path.join(release, 'win-unpacked');
+const app = mac ? path.join(release, 'mac-arm64', 'cardmirror.app') : path.join(release, 'win-unpacked');
 const resources = mac ? path.join(app, 'Contents', 'Resources') : path.join(app, 'resources');
 for (const file of ['app.asar', 'renderer/index.html', 'new-template.cmir']) {
   assert.ok(fs.statSync(path.join(resources, file)).size > 0, `Missing ${file}`);
 }
-const native = path.join(resources, 'app.asar.unpacked', 'node_modules', '@koromix', `koffi-${process.platform}-${arch}`, 'koffi.node');
+const native = path.join(resources, 'app.asar.unpacked', 'node_modules', '@koromix', `koffi-${process.platform}-${arch}`, `${process.platform}_${arch}`, 'koffi.node');
 assert.ok(fs.statSync(native).size > 0, 'Missing native Koffi module');
 if (mac) {
   const executable = path.join(app, 'Contents', 'MacOS', 'cardmirror');
