@@ -413,6 +413,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('host:learn-store-changed', listener);
   },
 
+  /** OpenCaselist panel: every operation runs in main (which holds the
+   *  session token) and resolves to `{ ok, value }` / `{ ok, error, signedOut }`. */
+  opencaselist: (op: string, ...args: unknown[]) =>
+    ipcRenderer.invoke('host:opencaselist', op, ...args) as Promise<unknown>,
+
   /** Report this window's workspace mode to main at boot (and on the
    *  reload a mode toggle triggers) so the OS "Open with…" path knows
    *  which windows can take a file into their slot picker. */

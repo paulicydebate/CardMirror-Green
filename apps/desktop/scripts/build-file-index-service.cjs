@@ -36,6 +36,18 @@ buildSync({
   logLevel: 'warning',
 });
 
+// The OpenCaselist service (main-process side of the OpenCaselist panel):
+// bundled because it lives in src/opencaselist, outside rootDir.
+// opencaselist-ipc.ts `require`s the bundle at runtime.
+buildSync({
+  entryPoints: [path.join(__dirname, '..', '..', '..', 'src', 'opencaselist', 'app-service.ts')],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  outfile: path.join(__dirname, '..', 'dist', 'opencaselist-service.cjs'),
+  logLevel: 'warning',
+});
+
 // The voice recognizer worker: bundled because it imports the shared
 // command vocabulary from src/editor/voice; the native runtime stays an
 // external `require` resolved from the (asar-unpacked) node_modules.

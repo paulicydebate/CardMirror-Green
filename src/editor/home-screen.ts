@@ -82,6 +82,9 @@ export interface HomeScreenCallbacks {
    *  hosts that can't do recursive folder I/O (the web edition), in
    *  which case the button isn't shown. */
   bulkConvert?: () => void;
+  /** Open the OpenCaselist browser (CardMirror Green). Desktop only;
+   *  omitted → no tile. */
+  openCaselist?: () => void;
   /** Open the (temporary) bulk-compress migration tool. Electron-only,
    *  same as bulkConvert. */
   bulkCompress?: () => void;
@@ -205,6 +208,9 @@ class HomeScreen {
     runners.push(() => openLearnManage());
     // Settings — the last tile (9 in the normal layout).
     if (callbacks.openSettings) runners.push(() => this.callbacks?.openSettings?.());
+    // OpenCaselist (Green) — after Settings so upstream's 1-9 numbering
+    // is unchanged; it gets a number only when one is left over.
+    if (callbacks.openCaselist) runners.push(() => this.callbacks?.openCaselist?.());
     this.actionRunners = runners;
     const actions = document.createElement('div');
     actions.className = 'pmd-home-actions';
@@ -378,6 +384,18 @@ class HomeScreen {
             'Settings',
             'Appearance, keyboard shortcuts, files, and everything else.',
             () => this.callbacks?.openSettings?.(),
+          ),
+        ),
+      );
+    }
+    if (callbacks.openCaselist) {
+      qcGrid.appendChild(
+        labeledGroup(
+          'OpenCaselist',
+          this.actionCard(
+            'Browse OpenCaselist',
+            'Sign in with Tabroom and open a team’s disclosed files.',
+            () => this.callbacks?.openCaselist?.(),
           ),
         ),
       );

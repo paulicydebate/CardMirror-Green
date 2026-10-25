@@ -9615,8 +9615,8 @@ body:has(#comments-column:not([hidden])) :is(#editor, .pmd-pane-editor) .pmd-com
   color: var(--pmd-c-text);
 }
 .pmd-settings-btn-danger {
-  border-color: var(--pmd-c-danger, #c0392b);
-  color: var(--pmd-c-danger, #c0392b);
+  border-color: var(--pmd-c-error);
+  color: var(--pmd-c-error);
 }
 
 /* Shared scaffolding (modal button).
@@ -10961,6 +10961,94 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   font-size: 0.82rem;
   color: var(--pmd-c-text-muted);
   min-height: 1.2em;
+}
+
+/* ─── OpenCaselist panel (CardMirror Green) ─────────────────────── */
+.pmd-ocl-dialog {
+  max-width: 820px;
+  max-height: 88vh;
+}
+.pmd-ocl-dialog .pmd-bulk-header {
+  gap: 0.75rem;
+}
+.pmd-ocl-account {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--pmd-c-text-muted);
+}
+.pmd-ocl-body {
+  overflow: auto;
+  min-height: 0;
+}
+.pmd-ocl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.pmd-ocl-input,
+.pmd-ocl-list {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--pmd-c-border);
+  background: var(--pmd-c-bg);
+  color: var(--pmd-c-text);
+  width: 100%;
+  box-sizing: border-box;
+}
+.pmd-ocl-signin {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 420px;
+}
+.pmd-ocl-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.9rem;
+}
+@media (max-width: 560px) {
+  .pmd-ocl-columns { grid-template-columns: 1fr; }
+}
+.pmd-ocl-rounds {
+  overflow-x: auto;
+}
+.pmd-ocl-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.pmd-ocl-table th,
+.pmd-ocl-table td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid var(--pmd-c-border);
+  vertical-align: middle;
+}
+.pmd-ocl-table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--pmd-c-text-muted);
+}
+.pmd-ocl-file .pmd-bulk-btn {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.82rem;
+}
+.pmd-ocl-muted {
+  color: var(--pmd-c-text-muted);
+}
+.pmd-ocl-status {
+  padding: 0 1.25rem 0.9rem;
+}
+.pmd-ocl-status.pmd-ocl-error {
+  color: var(--pmd-c-error);
 }
 
 /* Bulk-compress: intro blurb + determinate progress bar. */

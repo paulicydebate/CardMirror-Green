@@ -11,6 +11,7 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 | Windows smoke test | User confirmed opening files, editing, saving, reopening and formatting checks |
 | Full-card extraction | Read-only plugin API includes tags, citation/body paragraphs, undertags, IDs, offsets and inline marks; derived references are not independently counted |
 | Representative format validation | A user DOCX and native CMIR passed source-text/mark checks; detailed extracts remain local |
+| In-app OpenCaselist panel | Sign in with Tabroom, browse caselist → school → team, open a disclosed .docx/.cmir as an unsaved document; token kept in the main process, OS-encrypted (mock-tested only) |
 | Cloud handoff | GitHub holds source, AGENTS.md, current status, contract documentation and this roadmap so another computer can continue with the desktop off |
 
 ## Completed in the batch-export milestone
@@ -28,8 +29,7 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 
 ## Next
 
-1. **OpenCaselist adapter: real-data check.** The adapter is built and mock-tested ([OPENCASELIST.md](OPENCASELIST.md)): verified API, sign-in, scoped discovery, downloads, provenance, retries and a separate run manifest. Remaining: a limited run with the user's own sign-in, then fixes.
-1. **In-app OpenCaselist panel.** Sign in, browse caselist/school/team, import a disclosed file into the editor.
+1. **OpenCaselist: real-data check.** The adapter, CLI and in-app panel are built and mock-tested ([OPENCASELIST.md](OPENCASELIST.md)). Remaining: the user signs in through the app panel (Home → Browse OpenCaselist) on a new preview build and opens ~3 files from one team; record real caselist names, file formats and any failures, then fix.
 1. **AI features without API keys.** Evidence cutting, block generation and scouting run through an outside agent (Claude Code, Codex) driving documented commands, plus a copy-paste flow for chat AIs such as the Grok app, with quote verification against the source.
 2. **Batch validation and scale.** Verify larger selections; inspect malformed/incomplete documents, repeated disclosures and revisions. Establish acceptable time/memory behavior and resumable processing for lengthy runs.
 3. **Broader document coverage.** Exercise tables, images, footnotes, links and derived-reference cases with real examples. Consumers must use rawNode when the paragraph view is incomplete.
@@ -48,4 +48,4 @@ Chrome flagged the Windows preview as a dangerous download. The user subsequentl
 - A remote HTTP ingestion service or hosted database.
 - Automatic Green preview updates and a signed release channel.
 
-These need explicit product decisions; the current implementation does not promise them. OpenCaselist import exists as a command-line tool; it is not in the app yet.
+These need explicit product decisions; the current implementation does not promise them. OpenCaselist browsing and single-file open are in the desktop app; bulk export is command-line only.

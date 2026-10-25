@@ -38,6 +38,7 @@ import { autoUpdater } from 'electron-updater';
 import { bundlePathFromExe, launchSwapHelper, macBundleSelfUpdatable } from './mac-swap-update.js';
 import { registerVoiceIpc } from './voice/ipc';
 import { registerFlowIpc } from './flow-bridge.js';
+import { registerOpenCaselistIpc } from './opencaselist-ipc.js';
 import { registerPairingIpc, relayUrl } from './pairing-ipc.js';
 import { LITE_BUILD } from './lite-build.js';
 import {
@@ -2689,6 +2690,7 @@ registerVoiceIpc();
 
 // Verbatim Flow bridge (Windows COM → Excel). No-ops off Windows.
 registerFlowIpc();
+registerOpenCaselistIpc();
 
 // cardmirror-bridge plugin surface (plugin API v1): jump broadcast via
 // the fast-paste bridge, plus flow-app discovery / POST relay from the

@@ -1,6 +1,6 @@
 # OpenCaselist adapter
 
-Status: repository library + command line, tested against mocked and local fake servers. **Not yet run against the real OpenCaselist with the user's account.** No app menu or panel yet.
+Status: repository library, command line, and an in-app panel in the desktop app, all tested against mocked and local fake servers. **Not yet run against the real OpenCaselist with the user's account.**
 
 ## What was verified, and how (2026-10-25)
 
@@ -15,7 +15,21 @@ Sources: the live API description at `https://api.opencaselist.com/v1/docs` (Ope
 
 **Not yet verified with a real account:** the exact caselist names for NFA-LD / NDT-CEDA / HS policy this season, the login response, whether downloads redirect to file storage, real file formats in the wild (.docx vs .doc/.pdf), rate limits, and token lifetime.
 
-## Use
+## In the app (desktop)
+
+Home screen → **Browse OpenCaselist**, or the command bar → "Browse OpenCaselist" (also under the File ribbon group).
+
+1. Sign in with your Tabroom email and password. The password field is cleared as soon as it is read; the password goes once to OpenCaselist and is never stored.
+2. Pick a caselist (remembered next time), filter and pick a school, pick a team.
+3. The team's disclosed rounds are listed (tournament, round, side, opponent, judge). **Open** downloads a `.docx`/`.cmir` file and opens it like File → Open (new window, slot picker, or in place) as an **unsaved** document, so Save asks where to put it. Other formats (e.g. PDF) are shown but not opened.
+4. An expired session returns to the sign-in form automatically. **Sign out** deletes the saved session.
+
+How it is built: the panel (`src/editor/opencaselist-ui.ts`) never sees the token. It calls `host:opencaselist` over IPC; the desktop main process (`apps/desktop/src/opencaselist-ipc.ts`) runs `src/opencaselist/app-service.ts` (esbuild-bundled to `dist/opencaselist-service.cjs`) with the same client, retries and spacing as the CLI. The token is saved in `<app user data>/opencaselist-session.bin`, encrypted with the OS keychain (Electron `safeStorage`); if the OS offers no encryption it is written owner-only in plain text, like the CLI. The app session and the CLI session are separate.
+
+The panel opens one file at a time. Bulk export (`export` below) is still CLI-only.
+
+## Command line
+
 
 Sign-in happens in your own terminal. The password prompt is hidden, the password is sent only to OpenCaselist and never stored, and only the returned session token is saved in `~/.cardmirror-green/opencaselist-session.json` (outside the repository; override the folder with `CARDMIRROR_GREEN_HOME`). Never paste credentials into an AI chat.
 
@@ -65,5 +79,9 @@ The manifest contains opponent/judge names from public disclosures, and the batc
 | `src/opencaselist/client.ts` | API client: login, listings, download, retries, spacing, timeouts, response checks |
 | `src/opencaselist/ingest.ts` | Scoped discovery, per-file download/parse, manifest, hand-off to `createIngestBatch` |
 | `src/tools/opencaselist-cli.ts` | `npm run caselist` commands, hidden password prompt, session file |
+| `src/opencaselist/app-service.ts` | Main-process service for the app panel: session store, list/download results as `{ok, value}` / `{ok, error, signedOut}` |
+| `apps/desktop/src/opencaselist-ipc.ts` | `host:opencaselist` IPC handler, encrypted session file |
+| `src/editor/opencaselist-ui.ts` | The panel: sign-in, caselist/school/team browser, rounds table, Open |
+| `tests/opencaselist/app-service.test.ts`, `tests/editor/opencaselist-ui.test.ts` | Service (mock transport) and panel (jsdom, fake bridge) tests |
 | `tests/opencaselist/*.test.ts` | Mocked-transport tests for client and adapter |
 | `tests/tools/opencaselist-cli.test.ts` | End-to-end CLI run against a local fake server |

@@ -59,6 +59,13 @@ Implemented on top of version 1 without changing it; full details in [OPENCASELI
 - Full local suite on Node 24: 4,153 passed, 65 failed, 47 skipped. All 65 failures are in `tests/collab/*` and fail identically with these changes stashed (`AbortSignal` instance mismatch on Node 24). CI uses Node 22, where they passed. GitHub CI for this milestone has not been checked yet.
 - **Not verified:** any request to the real OpenCaselist with an account.
 
+## In-app OpenCaselist panel (Claude, 2026-10-25)
+
+- Home screen tile and command "Browse OpenCaselist" (File group). Sign-in form, caselist/school/team browser, rounds table, Open → `routeOpenedFile` with `handle: null` (unsaved doc).
+- Network and token live in main: `apps/desktop/src/opencaselist-ipc.ts` + `src/opencaselist/app-service.ts` (bundled by `apps/desktop/scripts/build-file-index-service.cjs` into `dist/opencaselist-service.cjs`). Token file `<userData>/opencaselist-session.bin`, Electron `safeStorage`-encrypted when available.
+- Verified locally (Node 22): typecheck clean; desktop `build:main` + `build:service` succeed and the bundle loads; 9 service tests + 4 panel tests pass; all 3,112 editor tests pass; full suite 4,201 passed / 38 skipped / 1 failed — the failure is `tests/desktop/mac-swap-update.test.ts`, which expects `chmod 555` to block writes and cannot when the sandbox runs as root (unrelated). Screenshots of the panel with fake data looked correct.
+- **Not verified:** the panel inside a packaged app, and any real OpenCaselist request.
+
 ## Architecture map
 
 | File | Responsibility |
@@ -136,9 +143,9 @@ Aggregate results:
 The adapter is built (see the milestone above). Next:
 
 1. Confirm GitHub CI is green for the adapter commit on both platforms.
-2. Limited real run, with the user signing in themselves (`npm run caselist -- login` in their own terminal; never handle the password): `status`, `caselists`, then `export --limit 3` on one team. Record the real caselist names, file formats, any redirect behavior and failures in OPENCASELIST.md. Fix what the real service disagrees with.
+2. Limited real run, with the user signing in themselves — easiest through the app panel (Home → Browse OpenCaselist) on a fresh preview build, or `npm run caselist -- login` in their own terminal; never handle the password. Open ~3 files from one team (panel) or `export --limit 3` (CLI). Record the real caselist names, file formats, any redirect behavior and failures in OPENCASELIST.md. Fix what the real service disagrees with.
 3. Then widen to a whole school, and check repeatability and duplicate annotations on real data.
-4. Next features, per the AI design decision in AGENTS.md: an in-app OpenCaselist panel (sign in, browse, import a disclosed file into the editor), then the evidence-cutting job format and the copy-paste "Copy for AI / Paste AI result" flow with quote verification.
+4. Next features, per the AI design decision in AGENTS.md (the in-app OpenCaselist panel is done): the evidence-cutting job format and the copy-paste "Copy for AI / Paste AI result" flow with quote verification.
 
 The original adapter plan, kept for reference:
 1. Define a small selectable scope and implement document discovery with an injectable transport for tests.

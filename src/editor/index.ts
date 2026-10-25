@@ -133,6 +133,7 @@ import { setVoiceCalibrationOpener } from './voice/hooks.js';
 import { openCardEditor } from './learn-create-ui.js';
 import { openLearnManage } from './learn-manage-ui.js';
 import { openBulkConvert, runConvertSingleFileWeb } from './bulk-convert-ui.js';
+import { openOpenCaselist } from './opencaselist-ui.js';
 import { openBulkCompress, runCompressSingleFileWeb } from './bulk-compress-ui.js';
 import { bulkCompressEnabled } from './bulk-compress-gate.js';
 import { openClean, runCleanSingleFileWeb } from './clean-ui.js';
@@ -1793,6 +1794,9 @@ const ribbonContext: RibbonContext = {
         showToast('No speech doc yet — every window went to the docs side. Mark a speech doc first.');
       }
     })();
+  },
+  openOpenCaselist: () => {
+    openOpenCaselistPanel();
   },
   reopenWorkspace: () => {
     if (!getElectronHost()) {
@@ -4624,6 +4628,8 @@ const VIEWLESS_RIBBON_COMMANDS = new Set<AnyCommandId>([
   'insertInDocCopy',
   // Opens the Quick Cards manager overlay — no active doc required.
   'manageQuickCards',
+  // OpenCaselist browser — a modal; opened files route like File → Open.
+  'openOpenCaselist',
   // Multi-pane workspace commands — fire on the shell, not a
   // doc. View-less so they work even when no slot has a doc.
   'focusSlot1',
@@ -4677,6 +4683,7 @@ function runViewlessRibbon(id: AnyCommandId): void {
     case 'insertSelfLiveZone': ribbonContext.insertSelfLiveZone(); return;
     case 'insertInDocCopy': ribbonContext.insertInDocCopy(); return;
     case 'manageQuickCards': ribbonContext.manageQuickCards(); return;
+    case 'openOpenCaselist': ribbonContext.openOpenCaselist(); return;
     case 'toggleVoice': ribbonContext.toggleVoice(); return;
     case 'calibrateVoice': ribbonContext.calibrateVoice(); return;
     case 'startFlowHost': ribbonContext.startFlowHost(); return;
@@ -7341,6 +7348,8 @@ const homeCallbacks: HomeScreenCallbacks = {
   manageQuickCards: () => {
     void quickCardsManageUI.open();
   },
+  // OpenCaselist browser: desktop only (main process holds the session).
+  ...(getElectronHost() ? { openCaselist: () => openOpenCaselistPanel() } : {}),
   openSettings: () => {
     void loadSettingsUi().then((m) => m.openSettings());
   },
@@ -7368,6 +7377,19 @@ const homeCallbacks: HomeScreenCallbacks = {
       ? () => openBulkCompress()
       : () => void runCompressSingleFileWeb(),
 };
+
+/** Open the OpenCaselist panel. A downloaded file routes exactly like
+ *  File → Open (new window / slot picker / in place) as an unsaved
+ *  document: no handle, so Save asks where to put it. */
+function openOpenCaselistPanel(): void {
+  if (!getElectronHost()) {
+    showToast('OpenCaselist requires the desktop edition.');
+    return;
+  }
+  openOpenCaselist({
+    openFile: (file) => routeOpenedFile({ name: file.name, bytes: file.bytes, handle: null }),
+  });
+}
 
 /** Mount a fresh blank starter doc in this window, resetting the
  *  single-doc state vars. Shared by the home screen's New action
