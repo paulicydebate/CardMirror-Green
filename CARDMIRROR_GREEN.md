@@ -30,7 +30,7 @@ To continue the same assistant chat and desktop workspace from another device, u
 
 The extraction tests now live in `tests/editor/structured-card-extract.test.ts`, where the configured Vitest runner discovers them. Coverage includes multiple citations/paragraphs, missing IDs, offsets, derived-copy exclusion, mark attributes, native save/reopen, and plugin API integration.
 
-Next: compare extraction against representative debate documents, define a versioned batch-ingest contract with source provenance and deduplication, then build the OpenCaselist ingestion adapter. No OpenCaselist downloader or bulk-ingest implementation is shipped yet.
+Representative document validation and the version 1 local batch-export contract are implemented. See CARD_INGEST_V1.md for the format and ROADMAP.md for completed and planned work. Next is the OpenCaselist ingestion adapter; no remote downloader or ingestion service is shipped yet.
 
 The collaboration backoff-cap regression uses fake timers and a pinned high jitter draw, so its 50 ms cap is checked without relying on runner scheduling latency.
 
@@ -43,3 +43,9 @@ Two local user-supplied documents were checked. No user documents, extracted tex
 - Extraction paragraph/run text and offset checks passed. Both original file hashes and in-memory documents were unchanged by extraction.
 - These samples do not exercise tables, images, footnotes, inline breaks or derived references; no visual page-layout comparison was performed.
 - Required next contract decision: distinguish evidence, analytics and tag-only entries; keep incomplete records with explicit warnings rather than silently discarding them. Then add a versioned batch schema, provenance and deduplication before implementing OpenCaselist ingest.
+
+## Batch export milestone
+
+`npm run ingest:export -- --out batch.json input.docx another.cmir` exports schema version 1 without uploading documents or overwriting existing output. It distinguishes evidence, analytics, tag-only and incomplete records, preserves rich snapshots, and adds provenance, deterministic IDs and exact-duplicate annotations without dropping records. JSON Schema is in schemas/card-ingest-batch-v1.schema.json.
+
+Local focused validation: 27 tests passed, including classification, stable IDs across regenerated headings, changed-source revisions, rich nodes/tables, duplicate retention, schema validation, and CLI overwrite/error handling. Typecheck and internal link checks passed. The two representative files exported 174 records: 68 evidence, 71 analytics, 35 tag-only, no incomplete records, and 7 exact duplicate annotations (all records retained). Repeat imports produced the same batch/record IDs; both original file hashes were unchanged. Extracted user content stays local.

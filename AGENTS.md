@@ -1,6 +1,6 @@
 # CardMirror Green project handoff
 
-Read CARDMIRROR_GREEN.md first for setup, progress and cross-device use.
+Read CARDMIRROR_GREEN.md and ROADMAP.md first for setup, progress and cross-device use.
 
 - Repository: paulicydebate/cardmirror. Work only on feature/full-card-api.
 - Keep PR #1 draft. Do not merge it or modify main without a new explicit user request.
@@ -10,6 +10,6 @@ Read CARDMIRROR_GREEN.md first for setup, progress and cross-device use.
 - The extraction API is src/editor/structured-card-extract.ts, exposed through structuredCards() in src/editor/plugin-api.ts.
 - Tests belong under tests/**/*.test.ts; Vitest does not discover tests next to src files.
 - The API currently extracts direct citation/body/undertag paragraphs and text runs. Table contents and non-text inline nodes need an explicit representation before claiming lossless extraction of arbitrary documents.
-- OpenCaselist bulk ingest is planned, not implemented. Next work: representative document validation, versioned batch contract with provenance/deduplication, then an ingestion adapter.
+- The local version 1 batch exporter is implemented; see CARD_INGEST_V1.md and src/editor/card-ingest-batch.ts. OpenCaselist retrieval/ingest is not implemented. Next is the adapter, preserving source provenance and the evidence/analytic/tag_only/incomplete distinctions.
 - Keep progress, validation results and next steps in CARDMIRROR_GREEN.md so a fresh chat on another computer can continue without access to the desktop.
 - Store source in GitHub. Do not commit user debate files, credentials, node_modules or machine-specific app profiles.
