@@ -6,6 +6,7 @@
  * the real serializer.
  */
 import { describe, it, expect } from 'vitest';
+import path from 'node:path';
 import { schema, newHeadingId } from '../../src/schema/index.js';
 import { serializeNative } from '../../src/native/index.js';
 import {
@@ -60,7 +61,7 @@ describe('mirror planning', () => {
     expect(multi.map((s) => s.prefix)).toEqual(['Backfiles', 'Backfiles-2', 'Current']);
     // Shadow paths: extension swapped, tree preserved, non-convertibles null.
     expect(shadowPathFor(single[0]!, '/out', '/a/Debate/subdir/File Name.cmir')).toBe(
-      '/out/subdir/File Name.txt',
+      path.join('/out', 'subdir', 'File Name.txt'),
     );
     expect(shadowPathFor(single[0]!, '/out', '/a/Debate/notes.txt')).toBeNull();
     expect(shadowPathFor(single[0]!, '/out', '/elsewhere/x.cmir')).toBeNull();
