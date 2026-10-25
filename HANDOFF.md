@@ -1,0 +1,146 @@
+# CardMirror Green handoff
+
+This document is the starting point for a new LLM or developer. The previous chat and the Windows desktop do not need to be available.
+
+## Repository and non-negotiable scope
+
+- Repository: https://github.com/paulicydebate/cardmirror
+- Active branch: `feature/full-card-api`
+- Draft PR: https://github.com/paulicydebate/cardmirror/pull/1
+- Keep PR #1 draft. Do not merge it, modify main, force-push, or discard local work without a new explicit user instruction.
+- The fork is CardMirror Green. Preserve its green folder icon, separate installer/app ID, executable, user-data directory and bridge identity.
+- User's desktop is Windows x64. Their laptop is an M5 Apple Silicon MacBook Pro; use macOS ARM64 builds.
+- User wants source, progress and handoff information in GitHub so work can continue with the desktop turned off.
+- Do not commit private debate files, generated user-content batches, credentials or app profiles. Only code, synthetic fixtures, aggregate validation results and project documentation belong here.
+
+Read in this order: [AGENTS.md](AGENTS.md), this handoff, [CARDMIRROR_GREEN.md](CARDMIRROR_GREEN.md), [ROADMAP.md](ROADMAP.md), and [CARD_INGEST_V1.md](CARD_INGEST_V1.md).
+
+## Verified baseline
+
+Latest verified implementation commit: `e2bb9967d8fa053b4ed026c541f77992d0b545ba`. A later documentation-only handoff commit may be the branch head; inspect the actual head rather than resetting to this implementation commit.
+
+All checks for that implementation commit succeeded:
+- [Desktop previews](https://github.com/paulicydebate/cardmirror/actions/runs/40237622996)
+- [Three-platform CI](https://github.com/paulicydebate/cardmirror/actions/runs/40237626185)
+- [Feature-branch checks](https://github.com/paulicydebate/cardmirror/actions/runs/40237622994)
+- [PR checks](https://github.com/paulicydebate/cardmirror/actions/runs/40237626166)
+
+The desktop preview jobs ran the configured full suites: Windows 4,201 passed / 47 skipped, macOS 4,210 passed / 38 skipped. Platform/CI-dependent skips are expected; original user documents are not CI fixtures. Typecheck, renderer/main/service builds and packaged resource/architecture checks passed. The Mac app signature check passed; the build is ad-hoc signed, not notarized. These are build/functional checks, not malware clearance.
+
+Verified preview artifacts (90-day retention; they are NOT permanent release assets):
+- [Windows x64](https://github.com/paulicydebate/cardmirror/actions/runs/40237622996/artifacts/12615633099)
+- [macOS ARM64](https://github.com/paulicydebate/cardmirror/actions/runs/40237622996/artifacts/12615133555)
+
+The user already smoke-tested an earlier Green Windows build: green branding, opening DOCX/CMIR, editing, saving, reopening, formatting, DOCX export and card copying worked. The M5 Mac still needs a user smoke test. The new batch exporter is a repository CLI/library; it has not been added as an app menu or remote HTTP endpoint.
+
+## Completed in this milestone
+
+1. Version 1 local batch export for both DOCX and CMIR.
+2. Structural classification into `evidence`, `analytic`, `tag_only` and `incomplete`.
+3. Warnings rather than silent deletion of incomplete records.
+4. Original-byte hashes, logical source identifiers, parsed heading IDs and snapshot offsets.
+5. Stable record IDs across regenerated imported heading UUIDs.
+6. Exact-content fingerprints and duplicate annotations while retaining every record.
+7. Full parsed document snapshots and authoritative ordered rich record nodes.
+8. JSON Schema, contract documentation, CLI command and focused tests.
+9. Published roadmap and portable project instructions.
+
+No OpenCaselist downloader, remote ingest service, hosted database or search library is implemented yet.
+
+## Architecture map
+
+| File | Responsibility |
+|---|---|
+| `src/editor/structured-card-extract.ts` | Existing read-only paragraph/mark extraction for cards and analytics |
+| `src/editor/plugin-api.ts` | Exposes `structuredCards()` on the active document |
+| `src/editor/card-ingest-batch.ts` | `createIngestBatch(inputs)`, classification, canonical JSON, SHA-256, provenance, stable IDs and duplicate annotations |
+| `src/tools/cardmirror-ingest-cli.ts` | Local read-only multi-file export command |
+| `src/tools/cardmirror-read-lib.ts` | `parseToDoc`, reusing the editor's actual DOCX/native parsers |
+| `schemas/card-ingest-batch-v1.schema.json` | Published version 1 JSON shape |
+| `CARD_INGEST_V1.md` | Normative semantics, identity rules and consumer limitations |
+| `tests/editor/card-ingest-batch.test.ts` | Classification, rich content, stable identities, duplicates, provenance and schema checks |
+| `tests/tools/cardmirror-ingest-cli.test.ts` | End-to-end CLI input preservation, new-output-only writes and failure behavior |
+| `.github/workflows/desktop-previews.yml` | Windows x64 / Mac ARM64 preview builds with publish disabled |
+| `apps/desktop/src/app-identity.ts` | Fork-specific name, app/profile/bridge identity and manual-preview-update policy |
+
+## Setup and commands
+
+Use Node 22 (matching CI). In a new checkout:
+
+```sh
+git clone --branch feature/full-card-api https://github.com/paulicydebate/cardmirror.git
+cd cardmirror
+npm ci
+npm --prefix apps/desktop ci
+npm run typecheck
+npx vitest run tests/editor/card-ingest-batch.test.ts tests/tools/cardmirror-ingest-cli.test.ts tests/editor/structured-card-extract.test.ts tests/editor/plugin-api.test.ts
+npm run check:links
+```
+
+The focused command has 27 tests. Desktop dependencies are needed for the existing desktop tests/types and the schema test's already-pinned Ajv dependency.
+
+On an existing checkout, inspect `git status --short` first. Fetch/pull the feature branch only when local changes are safely accounted for. Do not synchronize node_modules across Windows and macOS.
+
+Local export:
+
+```sh
+npm run ingest:export -- --out batch.json "input.docx" "another.cmir"
+```
+
+Use a fresh output name: an existing output is deliberately not overwritten. All files are parsed before output is written; one failed input prevents a partial batch file. Nothing is uploaded. The CLI does not add absolute input paths to provenance, although rich document snapshots can contain paths already embedded in the source. Treat exports as private document content.
+
+## Contract rules to preserve
+
+- Envelope: `schema = cardmirror.ingest.batch`, `schemaVersion = 1`, `fingerprintAlgorithm = sha256-canonical-json-v1`.
+- Evidence means a card with substantive citation AND direct body-paragraph text. This is a structural label, not a judgment of source credibility.
+- Analytics remain analytics even without a citation or body. Tag-only records are retained.
+- Rich-only/table-only cards are incomplete and flagged for rich-content handling, rather than silently counted as plain evidence or tag-only notes.
+- `content` is the grouped paragraph view. `rawNode` is authoritative for original parsed order, tables and non-text inline content.
+- Whole parsed source snapshots retain outline/outside-card text and references. Derived self-reference/transclusion views do not produce independently attributed evidence records.
+- The snapshot is the editor's parsed representation, not every original Word ZIP/XML part.
+- `source.sha256` is the hash of original input bytes. Caller-supplied logical source IDs must be unique in a batch; the local CLI uses original-byte hash plus NFC-normalized basename. A future remote adapter should use stable disclosure/document IDs.
+- `from/to` are ProseMirror positions in the supplied snapshot, not DOCX byte offsets.
+- Canonical JSON uses sorted ECMAScript object keys and preserves arrays. Content hashes ignore only heading-node `attrs.id`; marks, paragraph boundaries, order and other attributes remain significant.
+- Exact duplicates have `duplicateOf` pointing to the first identical fingerprint. Never silently drop them. Fuzzy matching is not implemented.
+- Schema validation checks shape. Untrusted incoming batches also require semantic checks for references/counts/hashes.
+- Do not silently add fields or change hashing/classification semantics under version 1. Design an explicit version change if a breaking contract change is required.
+
+## Representative private-document validation
+
+Two real user files were checked locally. They and their generated extracts are NOT in GitHub and will not exist in a fresh checkout. Ask the user to reattach them or grant access to their private storage if another real-file check is needed. Use synthetic fixtures in committed tests.
+
+Aggregate results:
+- DOCX: 481 source paragraphs preserved exactly and in order; 16,058 directly highlighted characters preserved. 32 evidence-bearing card containers plus 35 tag-only entries.
+- CMIR: 36 evidence cards plus 71 analytics; native IDs/text/marks matched for 107 containers and 871 runs.
+- Combined batch: 174 retained records = 68 evidence + 71 analytics + 35 tag-only + 0 incomplete.
+- 7 exact duplicate annotations: 6 tag-only entries and 1 evidence record. All 174 records remain in the output (167 unique fingerprints).
+- Both exported batches passed JSON Schema validation. Re-importing the same files produced the same batch/record IDs. Source file hashes were unchanged.
+- These real files do not exercise tables, images, footnotes or reference subtrees; synthetic tests cover relevant raw-content retention cases. Do not generalize the real-file check into a universal lossless-format claim.
+
+## Next task for the receiving LLM
+
+Build the OpenCaselist ingestion adapter, preserving version 1. Start by verifying the currently available API/download interface, permitted access, season/league selection and any authentication needs using current authoritative sources. No endpoint has been verified or encoded in this repo; do not invent one.
+
+Recommended sequence:
+1. Define a small selectable scope and implement document discovery with an injectable transport for tests.
+2. Retrieve original bytes without exposing credentials; record a stable disclosure/document ID and original URL.
+3. Parse supported DOCX/CMIR documents through `parseToDoc`, preserving original-byte hashes.
+4. Feed successful documents into `createIngestBatch`.
+5. Implement bounded requests, rate-limit-aware retries, progress and explicit per-document errors.
+6. Use a separate run manifest or an explicit new schema version for resumability/partial failures; do not sneak error rows or download state into the strict v1 batch schema.
+7. Test with mocked transport and synthetic documents before a limited real-data run.
+8. Verify provenance, retained record counts, exact duplicates and repeatability. Expand scope only after the limited run succeeds.
+9. Update this handoff, the status guide and roadmap with the next verified baseline and remaining work.
+
+Do not build a search UI, hosted database, fuzzy matching or automatic profile sync as part of the adapter without explicit user agreement. These are possible later work, not committed scope.
+
+## Unresolved operational issues
+
+- Chrome reported the Windows preview as a dangerous download. The user later reported Green installed and working. That does NOT resolve the browser verdict. No malware-clearance result or false-positive determination has been established. Do not advise disabling protections or present passing tests/hash verification as proof of safety. Investigate the exact detected artifact and an appropriate scan/signing/distribution approach if this issue is resumed.
+- Preview updates are manual and must never install upstream CardMirror over Green. App profiles/settings/local Quick Cards are per machine; automatic profile synchronization is not implemented.
+- If an older preview replaced upstream CardMirror, installing Green does not restore upstream automatically. Green now installs alongside it.
+- Local extraction/validation outputs from the previous machine are private workspace artifacts, not repository files.
+
+## Prompt the user can give a new LLM
+
+Continue CardMirror Green at paulicydebate/cardmirror on branch feature/full-card-api. Read HANDOFF.md, AGENTS.md, CARDMIRROR_GREEN.md, ROADMAP.md and CARD_INGEST_V1.md. The v1 local exporter is complete; the next task is the OpenCaselist adapter described in HANDOFF.md. Keep PR #1 draft and leave main unchanged. Do not assume access to the previous chat or machine.

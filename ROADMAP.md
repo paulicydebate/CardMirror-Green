@@ -1,6 +1,6 @@
 # CardMirror Green roadmap
 
-Scope: work confirmed in this project chat. Repository: paulicydebate/cardmirror, branch feature/full-card-api. PR #1 stays draft and main stays unchanged.
+Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirmed in this project chat. Repository: paulicydebate/cardmirror, branch feature/full-card-api. PR #1 stays draft and main stays unchanged.
 
 ## Completed
 
@@ -24,7 +24,7 @@ Scope: work confirmed in this project chat. Repository: paulicydebate/cardmirror
 - Produce repeatable record IDs and exact-content fingerprints.
 - Mark exact duplicates while keeping all records and their provenance.
 - Publish a JSON Schema, contract guide and a local DOCX/CMIR export command.
-- Verified locally: 27 focused tests, typecheck, JSON Schema validation and repeat exports of both representative documents. The sample batch retains all 174 records and marks 7 exact duplicates.
+- Verified: 27 focused local tests, typecheck, JSON Schema validation, repeat exports of both representative documents, and green Windows/macOS CI for implementation commit e2bb996. The sample batch retains all 174 records and marks 7 exact duplicates.
 
 ## Next
 

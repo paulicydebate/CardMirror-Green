@@ -1,6 +1,6 @@
 # CardMirror Green project handoff
 
-Read CARDMIRROR_GREEN.md and ROADMAP.md first for setup, progress and cross-device use.
+For a fresh chat or another LLM, start with HANDOFF.md, then CARDMIRROR_GREEN.md, ROADMAP.md and CARD_INGEST_V1.md. These files replace any assumption that the prior chat or desktop is available.
 
 - Repository: paulicydebate/cardmirror. Work only on feature/full-card-api.
 - Keep PR #1 draft. Do not merge it or modify main without a new explicit user request.

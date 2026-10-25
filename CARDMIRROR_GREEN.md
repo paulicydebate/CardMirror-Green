@@ -49,3 +49,7 @@ Two local user-supplied documents were checked. No user documents, extracted tex
 `npm run ingest:export -- --out batch.json input.docx another.cmir` exports schema version 1 without uploading documents or overwriting existing output. It distinguishes evidence, analytics, tag-only and incomplete records, preserves rich snapshots, and adds provenance, deterministic IDs and exact-duplicate annotations without dropping records. JSON Schema is in schemas/card-ingest-batch-v1.schema.json.
 
 Local focused validation: 27 tests passed, including classification, stable IDs across regenerated headings, changed-source revisions, rich nodes/tables, duplicate retention, schema validation, and CLI overwrite/error handling. Typecheck and internal link checks passed. The two representative files exported 174 records: 68 evidence, 71 analytics, 35 tag-only, no incomplete records, and 7 exact duplicate annotations (all records retained). Repeat imports produced the same batch/record IDs; both original file hashes were unchanged. Extracted user content stays local.
+
+## Continue with another LLM
+
+Start with [HANDOFF.md](HANDOFF.md). It records the verified implementation commit, CI evidence, setup commands, architecture, contract invariants, private-data limitations, and the next OpenCaselist-adapter task. [ROADMAP.md](ROADMAP.md) separates completed work, planned work and optional future ideas. The next LLM does not need the previous chat or access to the original desktop.
