@@ -198,6 +198,24 @@ describe('flow NodeView', () => {
     expect([0, 1, 2, 3].map((r) => cellAt(sheet(), r, 0).text)).toEqual(['Adv 1 econ', 'Adv 2 war', '', 'Adv 3 rights']);
   });
 
+  it('document view: a blank argument stays a blank cell in the sheet', async () => {
+    const v = mount();
+    v.dom.querySelectorAll('.pmd-flow-head')[0]!.dispatchEvent(new MouseEvent('dblclick'));
+    await frame();
+    const secs = () => Array.from(v.dom.querySelectorAll<HTMLTextAreaElement>('.pmd-flow-docsec'));
+    type(secs()[0]!, 'res');
+    key(secs()[0]!, 'Enter');
+    await frame();
+    type(secs()[1]!, '  ');
+    key(secs()[1]!, 'Enter');
+    await frame();
+    type(secs()[2]!, 'Plan');
+    (Array.from(v.dom.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === 'Back to sheet')!).click();
+    await frame();
+    expect([0, 1, 2].map((r) => cellAt(book(v).sheets[0]!, r, 0).text)).toEqual(['res', '  ', 'Plan']);
+    expect(cell(v, 2, 0).value).toBe('Plan');
+  });
+
   it('document view: pasted lines and old multi-line cells become separate arguments', async () => {
     const v = mount();
     type(cell(v, 0, 0), 'one\ntwo\nthree');

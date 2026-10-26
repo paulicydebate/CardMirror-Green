@@ -277,33 +277,44 @@ export function columnToSections(sheet: FlowSheet, col: number): ColumnSection[]
  * - a known row whose section was removed has its cell emptied (the row
  *   stays, so other columns keep their alignment);
  * - a new section (rowId null) fills the next empty cell in this column
- *   below the previous section's row, or a new row inserted there.
+ *   below the previous section's row, or a new row inserted there. A blank
+ *   section still takes its row, so a gap left in document view stays a
+ *   gap in the sheet.
  */
 export function applyColumnSections(sheet: FlowSheet, col: number, sections: ColumnSection[]): FlowSheet {
-  if (col < 0 || col >= sheet.columns.length) return sheet;
+  return placeColumnSections(sheet, col, sections).sheet;
+}
+
+/** `applyColumnSections`, plus the row id each section ended up in. */
+export function placeColumnSections(sheet: FlowSheet, col: number, sections: ColumnSection[]): { sheet: FlowSheet; rowIds: Array<string | null> } {
+  if (col < 0 || col >= sheet.columns.length) return { sheet, rowIds: sections.map((s) => s.rowId) };
   const rows = sheet.rows.map((r) => ({ ...r, cells: Array.from({ length: Math.max(sheet.columns.length, r.cells.length) }, (_, i) => r.cells[i] ?? { text: '' }) }));
-  const kept = new Set(sections.map((s) => s.rowId).filter((id): id is string => id !== null));
+  const known = new Set(rows.map((r) => r.id));
+  const kept = new Set(sections.map((s) => s.rowId).filter((id): id is string => id !== null && known.has(id)));
   for (const r of rows) {
     if (!kept.has(r.id) && r.cells[col]!.text) r.cells[col] = { text: '' };
   }
+  const rowIds: Array<string | null> = [];
   let cursor = -1; // index of the row the previous section landed in
   for (const section of sections) {
     const text = section.text.slice(0, MAX_TEXT);
-    let index = section.rowId ? rows.findIndex((r) => r.id === section.rowId) : -1;
+    let index = section.rowId && kept.has(section.rowId) ? rows.findIndex((r) => r.id === section.rowId) : -1;
     if (index >= 0) {
       const old = rows[index]!.cells[col]!;
       rows[index]!.cells[col] = cleanCell({ ...old, text, hl: shiftRanges(old.hl, old.text, text) });
     } else {
       index = cursor + 1;
-      // Reuse an empty cell directly below; otherwise insert a row so nothing else shifts.
+      // Reuse an empty, unclaimed cell directly below; otherwise insert a row so nothing else shifts.
       if (!(index < rows.length && !rows[index]!.cells[col]!.text && !kept.has(rows[index]!.id))) {
         rows.splice(index, 0, emptyRow(sheet.columns.length));
       }
       rows[index]!.cells[col] = { text };
+      kept.add(rows[index]!.id);
     }
+    rowIds.push(index < MAX_ROWS ? rows[index]!.id : null);
     cursor = index;
   }
-  return { ...sheet, rows: rows.slice(0, MAX_ROWS) };
+  return { sheet: { ...sheet, rows: rows.slice(0, MAX_ROWS) }, rowIds };
 }
 
 // ─── Save / load ─────────────────────────────────────────────────────

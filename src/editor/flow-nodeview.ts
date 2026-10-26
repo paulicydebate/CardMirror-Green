@@ -23,7 +23,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView, NodeView } from 'prosemirror-view';
 import {
   addSheet,
-  applyColumnSections,
+  placeColumnSections,
   cellAt,
   columnSide,
   columnToSections,
@@ -812,20 +812,13 @@ export class FlowWorkbookView implements NodeView {
     this.render();
   }
 
-  /** Write the sections back and learn the row ids of newly created ones. */
+  /** Write the sections back and learn the row ids of newly created ones.
+   *  Blank arguments keep their row, so a gap left here stays in the sheet. */
   private commitSections(): void {
     const col = this.expandedCol;
     if (col === null) return;
-    const live = this.sections.filter((s) => s.rowId !== null || s.text.trim() !== '');
-    const next = applyColumnSections(this.sheet, col, live);
-    // New non-empty sections landed in rows; match them up in order.
-    const filled = columnToSections(next, col);
-    let k = 0;
-    this.sections = this.sections.map((s) => {
-      if (!s.text.trim()) return s;
-      const hit = filled[k++];
-      return hit ? { ...s, rowId: hit.rowId } : s;
-    });
+    const { sheet: next, rowIds } = placeColumnSections(this.sheet, col, this.sections);
+    this.sections = this.sections.map((s, i) => ({ ...s, rowId: rowIds[i] ?? s.rowId }));
     this.commit({ ...this.book, sheets: this.book.sheets.map((s) => (s.id === next.id ? next : s)) });
   }
 

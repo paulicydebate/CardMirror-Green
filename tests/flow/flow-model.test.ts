@@ -14,6 +14,7 @@ import {
   newWorkbook,
   nextOffName,
   parseFlow,
+  placeColumnSections,
   renameSheet,
   serializeFlow,
   setCell,
@@ -139,6 +140,22 @@ describe('column as document', () => {
       ['A3', 'y'],
       ['', 'z'],
     ]);
+  });
+
+  it('keeps a blank argument as a blank cell between its neighbors', () => {
+    const s = sheetWith([], ['x', 'y', 'z']);
+    const placed = placeColumnSections(s, 0, [
+      { rowId: null, text: 'res' },
+      { rowId: null, text: '' },
+      { rowId: null, text: 'Plan' },
+    ]);
+    expect(placed.sheet.rows.slice(0, 3).map((r) => r.cells[0]!.text)).toEqual(['res', '', 'Plan']);
+    expect(placed.rowIds).toEqual(['r0', 'r1', 'r2']);
+    // Committing again with the learned ids keeps the gap.
+    const again = applyColumnSections(placed.sheet, 0, [
+      { rowId: 'r0', text: 'res' }, { rowId: 'r1', text: '  ' }, { rowId: 'r2', text: 'Plan' }, { rowId: null, text: 'Adv' },
+    ]);
+    expect(again.rows.slice(0, 4).map((r) => r.cells[0]!.text)).toEqual(['res', '  ', 'Plan', 'Adv']);
   });
 
   it('empties the cells of deleted sections but keeps their rows', () => {
