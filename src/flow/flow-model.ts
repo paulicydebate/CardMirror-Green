@@ -25,12 +25,17 @@ export interface FlowCell {
   crossed?: boolean;
   bold?: boolean;
   extended?: boolean;
+  /** Highlighted character ranges [start, end) in `text`, sorted and non-overlapping. */
+  hl?: Array<[number, number]>;
 }
 
 export interface FlowRow {
   id: string;
   /** One entry per column; missing entries read as empty cells. */
   cells: FlowCell[];
+  /** The row's Prep cell: thumpers / prepped answers lined up with this row
+   *  (shown in the collapsible Prep column). */
+  prep?: FlowCell;
 }
 
 export interface FlowSheet {
@@ -180,6 +185,19 @@ export function setCell(book: FlowWorkbook, sheetId: string, row: number, col: n
   });
 }
 
+/** Edit the Prep cell of row `row`, growing the sheet if needed. */
+export function setPrep(book: FlowWorkbook, sheetId: string, row: number, patch: Partial<FlowCell>): FlowWorkbook {
+  return replaceSheet(book, sheetId, (s) => {
+    if (row < 0) return s;
+    const rows = [...s.rows];
+    while (rows.length <= row) rows.push(emptyRow(s.columns.length));
+    const next = cleanCell({ ...(rows[row]!.prep ?? { text: '' }), ...patch });
+    const { prep: _old, ...rest } = rows[row]!;
+    rows[row] = isEmptyCell(next) ? rest : { ...rest, prep: next };
+    return { ...s, rows };
+  });
+}
+
 /** Insert empty rows before `index` (index = rows.length appends). */
 export function insertRows(book: FlowWorkbook, sheetId: string, index: number, count = 1): FlowWorkbook {
   return replaceSheet(book, sheetId, (s) => {
@@ -273,7 +291,8 @@ export function applyColumnSections(sheet: FlowSheet, col: number, sections: Col
     const text = section.text.slice(0, MAX_TEXT);
     let index = section.rowId ? rows.findIndex((r) => r.id === section.rowId) : -1;
     if (index >= 0) {
-      rows[index]!.cells[col] = cleanCell({ ...rows[index]!.cells[col]!, text });
+      const old = rows[index]!.cells[col]!;
+      rows[index]!.cells[col] = cleanCell({ ...old, text, hl: shiftRanges(old.hl, old.text, text) });
     } else {
       index = cursor + 1;
       // Reuse an empty cell directly below; otherwise insert a row so nothing else shifts.
@@ -289,12 +308,78 @@ export function applyColumnSections(sheet: FlowSheet, col: number, sections: Col
 
 // ─── Save / load ─────────────────────────────────────────────────────
 
-function cleanCell(c: FlowCell): FlowCell {
+export function cleanCell(c: FlowCell): FlowCell {
   const out: FlowCell = { text: typeof c.text === 'string' ? c.text.slice(0, MAX_TEXT) : '' };
   if (c.crossed) out.crossed = true;
   if (c.bold) out.bold = true;
   if (c.extended) out.extended = true;
+  const hl = normalizeRanges(c.hl, out.text.length);
+  if (hl.length) out.hl = hl;
   return out;
+}
+
+const isEmptyCell = (c: FlowCell | undefined): boolean => !c || (!c.text && !c.hl?.length);
+
+/** Sort, clamp and merge highlight ranges; drop empty or invalid ones. */
+export function normalizeRanges(ranges: unknown, length: number): Array<[number, number]> {
+  if (!Array.isArray(ranges)) return [];
+  const clean: Array<[number, number]> = [];
+  for (const r of ranges) {
+    if (!Array.isArray(r) || typeof r[0] !== 'number' || typeof r[1] !== 'number') continue;
+    const a = Math.max(0, Math.min(length, Math.floor(r[0])));
+    const b = Math.max(0, Math.min(length, Math.floor(r[1])));
+    if (b > a) clean.push([a, b]);
+  }
+  clean.sort((x, y) => x[0] - y[0]);
+  const out: Array<[number, number]> = [];
+  for (const r of clean) {
+    const last = out[out.length - 1];
+    if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+    else out.push([r[0], r[1]]);
+  }
+  return out;
+}
+
+/** Move highlight ranges along with a text edit (found as the common prefix
+ *  and suffix of the old and new text): text typed inside a highlight stays
+ *  highlighted, deleted text takes its highlight with it. */
+export function shiftRanges(ranges: Array<[number, number]> | undefined, oldText: string, newText: string): Array<[number, number]> {
+  if (!ranges?.length) return [];
+  let pre = 0;
+  const max = Math.min(oldText.length, newText.length);
+  while (pre < max && oldText[pre] === newText[pre]) pre++;
+  let suf = 0;
+  while (suf < max - pre && oldText[oldText.length - 1 - suf] === newText[newText.length - 1 - suf]) suf++;
+  const oldEnd = oldText.length - suf; // edit replaced [pre, oldEnd) with newText[pre, newEnd)
+  const newEnd = newText.length - suf;
+  const delta = newEnd - oldEnd;
+  const map = (x: number, isEnd: boolean): number => {
+    if (x < pre) return x;
+    // Text typed right before a highlight's start pushes the highlight along.
+    if (x === pre && !isEnd) return oldEnd === pre ? x + delta : x;
+    if (x >= oldEnd) return x + delta;
+    // Inside the replaced span: an end stretches over inserted text, a start stays put.
+    return isEnd ? newEnd : pre;
+  };
+  return normalizeRanges(ranges.map(([a, b]) => [map(a, false), map(b, true)]), newText.length);
+}
+
+/** Toggle highlight over [start, end): removes it where the whole span is
+ *  already highlighted, adds it otherwise. */
+export function toggleRange(ranges: Array<[number, number]> | undefined, start: number, end: number, length: number): Array<[number, number]> {
+  const cur = normalizeRanges(ranges ?? [], length);
+  if (end <= start) return cur;
+  const covered = cur.some(([a, b]) => a <= start && end <= b);
+  if (!covered) return normalizeRanges([...cur, [start, end]], length);
+  const out: Array<[number, number]> = [];
+  for (const [a, b] of cur) {
+    if (b <= start || a >= end) out.push([a, b]);
+    else {
+      if (a < start) out.push([a, start]);
+      if (b > end) out.push([end, b]);
+    }
+  }
+  return normalizeRanges(out, length);
 }
 
 export function serializeFlow(book: FlowWorkbook): string {
@@ -307,17 +392,15 @@ export function serializeFlow(book: FlowWorkbook): string {
       name: s.name,
       side: s.side,
       columns: s.columns,
-      // Trailing empty rows are not worth storing; the editor pads on open.
-      rows: trimTrailingEmpty(s.rows).map((r) => ({ id: r.id, cells: r.cells.map(cleanCell) })),
+      // Every row is stored with its id (empty ones too): co-editing matches
+      // rows by id, so both computers must agree on every row's identity.
+      rows: s.rows.map((r) => (isEmptyCell(r.prep)
+        ? { id: r.id, cells: r.cells.map(cleanCell) }
+        : { id: r.id, cells: r.cells.map(cleanCell), prep: cleanCell(r.prep!) })),
     })),
   });
 }
 
-function trimTrailingEmpty(rows: FlowRow[]): FlowRow[] {
-  let end = rows.length;
-  while (end > 0 && rows[end - 1]!.cells.every((c) => !c.text)) end--;
-  return rows.slice(0, end);
-}
 
 export class FlowParseError extends Error {}
 
@@ -333,15 +416,20 @@ export function parseFlow(text: string, minRows = DEFAULT_ROWS): FlowWorkbook {
     const s = (raw ?? {}) as Record<string, unknown>;
     const columns = Array.isArray(s['columns']) ? s['columns'].slice(0, MAX_COLUMNS).map((c) => String(c).slice(0, 40)) : [];
     if (columns.length === 0) throw new FlowParseError(`Sheet ${i + 1} has no columns.`);
-    const rows: FlowRow[] = (Array.isArray(s['rows']) ? s['rows'] : []).slice(0, MAX_ROWS).map((rr: unknown) => {
+    const sheetId = typeof s['id'] === 'string' && s['id'] ? s['id'] : `sheet-${i + 1}`;
+    const rows: FlowRow[] = (Array.isArray(s['rows']) ? s['rows'] : []).slice(0, MAX_ROWS).map((rr: unknown, ri: number) => {
       const r = (rr ?? {}) as Record<string, unknown>;
       const cells = (Array.isArray(r['cells']) ? r['cells'] : []).slice(0, columns.length).map((cc: unknown) => cleanCell((cc ?? {}) as FlowCell));
       while (cells.length < columns.length) cells.push({ text: '' });
-      return { id: typeof r['id'] === 'string' && r['id'] ? r['id'] : newFlowId(), cells };
+      const id = typeof r['id'] === 'string' && r['id'] ? r['id'] : `${sheetId}~${ri}`;
+      const prep = r['prep'] && typeof r['prep'] === 'object' ? cleanCell(r['prep'] as FlowCell) : null;
+      return prep && !isEmptyCell(prep) ? { id, cells, prep } : { id, cells };
     });
-    while (rows.length < minRows) rows.push(emptyRow(columns.length));
+    // Padding rows get ids derived from the sheet, so every computer that
+    // opens the same file pads with identical rows.
+    while (rows.length < minRows) rows.push({ id: `${sheetId}~${rows.length}`, cells: Array.from({ length: columns.length }, () => ({ text: '' })) });
     return {
-      id: typeof s['id'] === 'string' && s['id'] ? s['id'] : newFlowId(),
+      id: sheetId,
       name: typeof s['name'] === 'string' && s['name'].trim() ? s['name'].slice(0, 100) : `Sheet ${i + 1}`,
       side: s['side'] === 'neg' ? 'neg' : 'aff',
       columns,

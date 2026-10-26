@@ -37,13 +37,17 @@ import {
   renameSheet,
   serializeFlow,
   setCell,
+  setPrep,
+  shiftRanges,
   sideName,
+  toggleRange,
   type ColumnSection,
   type FlowCell,
   type FlowSheet,
   type FlowWorkbook,
 } from '../flow/flow-model.js';
 import { confirmDialog, promptForText } from './text-prompt.js';
+import { EditHistory, mergeIncoming, recordLocalEdit } from '../flow/flow-merge.js';
 import {
   applyFlowTheme,
   colorwayColors,
@@ -76,7 +80,35 @@ function autoGrow(area: HTMLTextAreaElement): void {
   area.style.height = `${area.scrollHeight}px`;
 }
 
-interface FocusSpot { row: number; col: number; caret: number | 'end' }
+/** A grid cell: a speech column index, or 'prep' for the row's Prep cell. */
+type ColKey = number | 'prep';
+interface FocusSpot { row: number; col: ColKey; caret: number | 'end' }
+
+const colAttr = (col: ColKey): string => String(col);
+const parseCol = (v: string | undefined): ColKey => (v === 'prep' ? 'prep' : Number(v));
+
+/** Cheap fingerprint of a serialized flow, to recognize my own earlier states. */
+function fingerprint(data: string): string {
+  let h = 0;
+  for (let i = 0; i < data.length; i++) h = (Math.imul(h, 31) + data.charCodeAt(i)) | 0;
+  return `${data.length}:${h}`;
+}
+
+/** Paint highlight ranges into a cell's backdrop (a mirror of the textarea's text). */
+function paintHighlights(backdrop: HTMLElement, text: string, ranges: Array<[number, number]> | undefined): void {
+  backdrop.replaceChildren();
+  let at = 0;
+  for (const [a, b] of ranges ?? []) {
+    if (a > at) backdrop.append(text.slice(at, a));
+    const mark = document.createElement('mark');
+    mark.className = 'pmd-flow-mark';
+    mark.textContent = text.slice(a, b);
+    backdrop.append(mark);
+    at = b;
+  }
+  // A trailing newline needs a character after it to take up its line.
+  backdrop.append(text.slice(at) + (text.endsWith('\n') ? '\u200b' : ''));
+}
 
 export class FlowWorkbookView implements NodeView {
   readonly dom: HTMLDivElement;
@@ -89,6 +121,14 @@ export class FlowWorkbookView implements NodeView {
   private sections: ColumnSection[] = [];
   /** Last cell that had focus, for the toolbar. */
   private lastCell: FocusSpot | null = null;
+  /** Its last text selection, for the toolbar's Highlight button. */
+  private lastSel: { start: number; end: number } = { start: 0, end: 0 };
+  /** The Prep (thumpers) column is shown right after this speech column; null = hidden. */
+  private prepAfter: number | null = null;
+  /** My recent previous cell values, to spot a partner's stale copy of them. */
+  private readonly history = new EditHistory();
+  /** Fingerprints of states I have held, so my own undo/redo is never "merged". */
+  private readonly pastStates: string[] = [];
   private appearanceOpen = false;
   private theme: FlowTheme = loadFlowTheme();
   private readonly unsubscribeTheme: () => void;
@@ -142,7 +182,10 @@ export class FlowWorkbookView implements NodeView {
     const visible = sc ? sc.clientHeight : window.innerHeight;
     const style = getComputedStyle(this.dom);
     const margins = parseFloat(style.marginTop) + parseFloat(style.marginBottom);
-    const height = Math.max(360, Math.floor(visible - margins - 8));
+    // Space above the flow inside the scroller (the editor's top padding),
+    // so the flow's bottom lines up with the bottom of the window or pane.
+    const above = sc ? this.dom.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop - parseFloat(style.marginTop) : 0;
+    const height = Math.max(360, Math.floor(visible - Math.max(0, above) - margins - 4));
     if (this.dom.style.height !== `${height}px`) this.dom.style.height = `${height}px`;
   }
 
@@ -178,14 +221,74 @@ export class FlowWorkbookView implements NodeView {
     if (node.type.name !== 'flow_workbook') return false;
     const data = String(node.attrs['data'] ?? '');
     if (data === this.lastData) return true;
-    // Changed from outside (undo/redo/reload): re-read, keep the sheet and focus if possible.
-    const focus = this.currentFocus();
+    const incoming = this.parse(data);
+    const now = Date.now();
+    // My own undo/redo brings back a state I already had: take it as is.
+    // Anything else came from a co-editing partner: merge it cell by cell,
+    // keeping my newer text where their write raced mine.
+    const own = this.pastStates.includes(fingerprint(data));
+    const { book, keptMine } = own ? { book: incoming, keptMine: false } : mergeIncoming(incoming, this.book, this.history, now);
+    const before = this.book;
+    this.book = book;
     this.lastData = data;
-    this.book = this.parse(data);
+    this.remember(data);
     if (!this.book.sheets.some((s) => s.id === this.sheetId)) this.sheetId = this.book.sheets[0]!.id;
-    if (this.expandedCol !== null) this.sections = columnToSections(this.sheet, this.expandedCol);
-    this.render(focus ?? undefined);
+    this.refreshFrom(before);
+    // Re-send my kept cells so the partner gets them too (after this update finishes).
+    if (keptMine) setTimeout(() => this.commit(this.book), 0);
     return true;
+  }
+
+  private remember(data: string): void {
+    this.pastStates.push(fingerprint(data));
+    if (this.pastStates.length > 400) this.pastStates.splice(0, this.pastStates.length - 400);
+  }
+
+  /** Bring the screen up to date with `this.book` without disturbing whoever
+   *  is typing: same layout → patch cells in place; otherwise re-render and
+   *  restore focus and caret. */
+  private refreshFrom(before: FlowWorkbook): void {
+    const focus = this.currentFocus();
+    if (this.expandedCol !== null) {
+      this.refreshColumnDoc();
+      return;
+    }
+    if (!this.sameLayout(before, this.book)) {
+      this.render(focus ?? undefined);
+      return;
+    }
+    for (const area of Array.from(this.dom.querySelectorAll<HTMLTextAreaElement>('textarea.pmd-flow-cell'))) {
+      const row = Number(area.dataset['row']);
+      const col = parseCol(area.dataset['col']);
+      const cell = this.cellOf(row, col);
+      if (area.value !== cell.text) {
+        if (document.activeElement === area) {
+          // A partner changed the cell I am in: keep my caret where it was relative to the text.
+          const [start, end] = shiftRanges([[area.selectionStart, Math.max(area.selectionEnd, area.selectionStart + 1)]], area.value, cell.text)[0] ?? [cell.text.length, cell.text.length];
+          area.value = cell.text;
+          const caretEnd = area.selectionEnd === area.selectionStart ? start : end;
+          area.setSelectionRange(start, Math.min(caretEnd, cell.text.length));
+        } else {
+          area.value = cell.text;
+        }
+        autoGrow(area);
+      }
+      this.styleCell(area, cell);
+    }
+  }
+
+  /** Same sheets (ids, names, sides), and the shown sheet has the same columns and rows. */
+  private sameLayout(a: FlowWorkbook, b: FlowWorkbook): boolean {
+    if (a.sheets.length !== b.sheets.length) return false;
+    for (let i = 0; i < a.sheets.length; i++) {
+      const x = a.sheets[i]!;
+      const y = b.sheets[i]!;
+      if (x.id !== y.id || x.name !== y.name || x.side !== y.side) return false;
+    }
+    const x = a.sheets.find((s) => s.id === this.sheetId);
+    const y = b.sheets.find((s) => s.id === this.sheetId);
+    if (!x || !y || x.columns.join('\u0000') !== y.columns.join('\u0000') || x.rows.length !== y.rows.length) return false;
+    return x.rows.every((r, i) => r.id === y.rows[i]!.id);
   }
 
   /** The grid owns its own keyboard and mouse handling. */
@@ -208,15 +311,27 @@ export class FlowWorkbookView implements NodeView {
   // ─── Commit ───────────────────────────────────────────────────────
 
   private commit(book: FlowWorkbook): void {
-    this.book = book;
     const data = serializeFlow(book);
+    recordLocalEdit(this.history, this.book, book, Date.now());
+    this.book = book;
     if (data === this.lastData) return;
     const pos = this.getPos();
     if (pos === undefined) return;
+    this.remember(this.lastData);
     this.lastData = data;
+    this.remember(data);
     const node = this.view.state.doc.nodeAt(pos);
     if (!node || node.type.name !== 'flow_workbook') return;
     this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, data }));
+  }
+
+  private cellOf(row: number, col: ColKey): FlowCell {
+    if (col === 'prep') return this.sheet.rows[row]?.prep ?? { text: '' };
+    return cellAt(this.sheet, row, col);
+  }
+
+  private withCell(row: number, col: ColKey, patch: Partial<FlowCell>): FlowWorkbook {
+    return col === 'prep' ? setPrep(this.book, this.sheetId, row, patch) : setCell(this.book, this.sheetId, row, col, patch);
   }
 
   // ─── Rendering ────────────────────────────────────────────────────
@@ -283,8 +398,8 @@ export class FlowWorkbookView implements NodeView {
     const tools = el('div', 'pmd-flow-tools');
     const onCell = (fn: (spot: FocusSpot) => void) => () => { if (this.lastCell) fn(this.lastCell); };
     const flag = (f: 'bold' | 'crossed' | 'extended') => onCell(({ row, col }) => {
-      const cell = cellAt(this.sheet, row, col);
-      this.commit(setCell(this.book, this.sheetId, row, col, { [f]: !cell[f] }));
+      const cell = this.cellOf(row, col);
+      this.commit(this.withCell(row, col, { [f]: !cell[f] }));
       this.render({ row, col, caret: 'end' });
     });
     const inGrid = this.expandedCol === null;
@@ -292,6 +407,13 @@ export class FlowWorkbookView implements NodeView {
       this.tool('B', `Bold (${isMac ? 'Cmd' : 'Ctrl'}+B)`, flag('bold'), !inGrid),
       this.tool('S\u0336', `Cross out (${isMac ? 'Cmd' : 'Ctrl'}+Shift+X)`, flag('crossed'), !inGrid),
       this.tool('\u21A6', `Extend (${isMac ? 'Cmd' : 'Ctrl'}+Shift+L)`, flag('extended'), !inGrid),
+      this.tool('Highlight', `Highlight the selected text, or the whole cell (${isMac ? 'Cmd' : 'Ctrl'}+Shift+H)`, onCell(({ row, col }) => {
+        this.toggleHighlight(row, col, this.lastSel.start, this.lastSel.end);
+      }), !inGrid),
+      this.tool(this.prepAfter === null ? 'Prep' : 'Close prep', `Thumpers / prepped answers next to the current speech (${isMac ? 'Cmd' : 'Ctrl'}+Shift+P)`, () => {
+        const c = this.lastCell?.col;
+        this.togglePrep(this.prepAfter !== null ? this.prepAfter : typeof c === 'number' ? c : 0);
+      }, !inGrid),
       this.tool('+ Row', `Insert row below (${isMac ? 'Cmd' : 'Ctrl'}+Enter)`, onCell(({ row, col }) => {
         this.commit(insertRows(this.book, this.sheetId, row + 1));
         this.render({ row: row + 1, col, caret: 'end' });
@@ -301,7 +423,7 @@ export class FlowWorkbookView implements NodeView {
         this.render({ row: Math.max(0, Math.min(row, this.sheet.rows.length - 1)), col, caret: 'end' });
       }), !inGrid),
       this.tool(inGrid ? 'Open as doc' : 'Back to sheet', inGrid ? 'Open the current speech as a document (double-click a header)' : 'Back to the spreadsheet (Escape)', () => {
-        if (inGrid) this.expand(this.lastCell?.col ?? 0);
+        if (inGrid) this.expand(typeof this.lastCell?.col === 'number' ? this.lastCell.col : 0);
         else this.collapse();
       }),
       this.tool('Appearance', 'Colors, text size and font', () => {
@@ -413,6 +535,8 @@ export class FlowWorkbookView implements NodeView {
     const sheet = this.sheet;
     const wrap = el('div', 'pmd-flow-gridwrap');
     const table = el('table', 'pmd-flow-grid');
+    const prepAfter = this.prepAfter !== null && this.prepAfter < sheet.columns.length ? this.prepAfter : null;
+    if (prepAfter === null) this.prepAfter = null;
     const head = el('tr');
     sheet.columns.forEach((name, col) => {
       const th = el('th', `pmd-flow-head pmd-flow-side-${columnSide(this.book.event, sheet, col)} pmd-flow-fill-${speechFillSlot(name, col)}${col % 2 ? ' pmd-flow-odd' : ''}`);
@@ -420,6 +544,13 @@ export class FlowWorkbookView implements NodeView {
       th.title = 'Double-click to open this speech as a document';
       th.addEventListener('dblclick', () => this.expand(col));
       head.appendChild(th);
+      if (col === prepAfter) {
+        const pth = el('th', 'pmd-flow-head pmd-flow-prep-head');
+        const chip = el('span', 'pmd-flow-chip', 'Prep');
+        pth.appendChild(chip);
+        pth.title = `Thumpers and prepped answers, lined up with each row. ${isMac ? 'Cmd' : 'Ctrl'}+Shift+P closes it.`;
+        head.appendChild(pth);
+      }
     });
     table.appendChild(el('thead')).appendChild(head);
     const body = el('tbody');
@@ -429,6 +560,11 @@ export class FlowWorkbookView implements NodeView {
         const td = el('td', `pmd-flow-td pmd-flow-side-${columnSide(this.book.event, sheet, col)} pmd-flow-fill-${speechFillSlot(sheet.columns[col]!, col)}${col % 2 ? ' pmd-flow-odd' : ''}`);
         td.appendChild(this.renderCell(cellAt(sheet, r, col), r, col));
         tr.appendChild(td);
+        if (col === prepAfter) {
+          const ptd = el('td', 'pmd-flow-td pmd-flow-prep');
+          ptd.appendChild(this.renderCell(row.prep ?? { text: '' }, r, 'prep'));
+          tr.appendChild(ptd);
+        }
       });
       body.appendChild(tr);
     });
@@ -437,24 +573,68 @@ export class FlowWorkbookView implements NodeView {
     return wrap;
   }
 
-  private renderCell(cell: FlowCell, row: number, col: number): HTMLTextAreaElement {
+  /** A cell: a textarea over a backdrop that paints its highlighted ranges. */
+  private renderCell(cell: FlowCell, row: number, col: ColKey): HTMLElement {
+    const box = el('div', 'pmd-flow-cellwrap');
+    const backdrop = el('div', 'pmd-flow-cell pmd-flow-backdrop');
+    backdrop.setAttribute('aria-hidden', 'true');
     const area = el('textarea', 'pmd-flow-cell');
     area.rows = 1;
     area.spellcheck = true;
     area.value = cell.text;
     area.dataset['row'] = String(row);
-    area.dataset['col'] = String(col);
-    area.setAttribute('aria-label', `${this.sheet.columns[col]} row ${row + 1}`);
-    area.classList.toggle('pmd-flow-bold', !!cell.bold);
-    area.classList.toggle('pmd-flow-crossed', !!cell.crossed);
-    area.classList.toggle('pmd-flow-extended', !!cell.extended);
+    area.dataset['col'] = colAttr(col);
+    area.setAttribute('aria-label', `${col === 'prep' ? 'Prep' : this.sheet.columns[col]} row ${row + 1}`);
+    box.append(backdrop, area);
+    this.styleCell(area, cell);
     area.addEventListener('input', () => {
       autoGrow(area);
-      this.commit(setCell(this.book, this.sheetId, row, col, { text: area.value }));
+      const old = this.cellOf(row, col);
+      const next = this.withCell(row, col, { text: area.value, hl: shiftRanges(old.hl, old.text, area.value) });
+      this.commit(next);
+      this.styleCell(area, this.cellOf(row, col));
     });
     area.addEventListener('keydown', (e) => this.onCellKey(e, area, row, col));
     area.addEventListener('focus', () => { this.lastCell = { row, col, caret: 'end' }; });
-    return area;
+    const trackSel = (): void => {
+      if (document.activeElement === area) this.lastSel = { start: area.selectionStart, end: area.selectionEnd };
+    };
+    area.addEventListener('select', trackSel);
+    area.addEventListener('keyup', trackSel);
+    area.addEventListener('mouseup', trackSel);
+    return box;
+  }
+
+  /** Classes and highlight backdrop for a cell textarea. */
+  private styleCell(area: HTMLTextAreaElement, cell: FlowCell): void {
+    for (const f of ['bold', 'crossed', 'extended'] as const) area.classList.toggle(`pmd-flow-${f}`, !!cell[f]);
+    const backdrop = area.previousElementSibling as HTMLElement | null;
+    if (!backdrop?.classList.contains('pmd-flow-backdrop')) return;
+    backdrop.classList.toggle('pmd-flow-bold', !!cell.bold);
+    paintHighlights(backdrop, area.value, cell.hl);
+  }
+
+  /** Highlight the selected text of a cell (or the whole cell when nothing is
+   *  selected); highlighting already-highlighted text removes it. */
+  private toggleHighlight(row: number, col: ColKey, start: number, end: number): void {
+    const cell = this.cellOf(row, col);
+    const len = cell.text.length;
+    let hl: Array<[number, number]>;
+    if (end > start) hl = toggleRange(cell.hl, start, end, len);
+    else hl = cell.hl?.length ? [] : len ? [[0, len]] : [];
+    this.commit(this.withCell(row, col, { hl }));
+    const area = this.dom.querySelector<HTMLTextAreaElement>(`textarea.pmd-flow-cell[data-row="${row}"][data-col="${colAttr(col)}"]`);
+    if (area) this.styleCell(area, this.cellOf(row, col));
+  }
+
+  /** Show the Prep column right after `col`, or hide it if it is already there. */
+  private togglePrep(col: number): void {
+    const focus = this.currentFocus();
+    this.prepAfter = this.prepAfter === col ? null : col;
+    const spot = this.prepAfter === null
+      ? (focus && focus.col === 'prep' ? { row: focus.row, col, caret: 'end' as const } : focus)
+      : { row: focus?.row ?? 0, col: 'prep' as const, caret: 'end' as const };
+    this.render(spot ?? undefined);
   }
 
   private renderColumnDoc(): HTMLElement {
@@ -527,6 +707,29 @@ export class FlowWorkbookView implements NodeView {
       wrap.appendChild(add);
     });
     return wrap;
+  }
+
+  /** A partner edit while a column is open as a document: update the other
+   *  arguments in place and leave the one being typed in alone. */
+  private refreshColumnDoc(): void {
+    const col = this.expandedCol!;
+    const rows = new Map(this.sheet.rows.map((r) => [r.id, r]));
+    const active = document.activeElement;
+    const typing = active instanceof HTMLTextAreaElement && active.classList.contains('pmd-flow-docsec') && this.dom.contains(active);
+    if (!typing || this.sections.some((sec) => sec.rowId && !rows.has(sec.rowId))) {
+      this.sections = columnToSections(this.sheet, col);
+      this.render();
+      return;
+    }
+    this.sections.forEach((sec, i) => {
+      if (!sec.rowId) return;
+      const text = rows.get(sec.rowId)!.cells[col]?.text ?? '';
+      const area = this.dom.querySelector<HTMLTextAreaElement>(`.pmd-flow-docsec[data-section="${i}"]`);
+      if (!area || area === active || area.value === text) return;
+      this.sections[i] = { ...sec, text };
+      area.value = text;
+      autoGrow(area);
+    });
   }
 
   // ─── Column document view ─────────────────────────────────────────
@@ -628,22 +831,33 @@ export class FlowWorkbookView implements NodeView {
 
   // ─── Cell keys ────────────────────────────────────────────────────
 
-  private onCellKey(e: KeyboardEvent, area: HTMLTextAreaElement, row: number, col: number): void {
+  private onCellKey(e: KeyboardEvent, area: HTMLTextAreaElement, row: number, col: ColKey): void {
     const cols = this.sheet.columns.length;
     const mod = modKey(e);
     const key = e.key;
+    const k = key.toLowerCase();
     const toggle = (flag: 'bold' | 'crossed' | 'extended'): void => {
       e.preventDefault();
-      const cell = cellAt(this.sheet, row, col);
-      this.commit(setCell(this.book, this.sheetId, row, col, { [flag]: !cell[flag] }));
-      area.classList.toggle(`pmd-flow-${flag}`, !cell[flag]);
+      const cell = this.cellOf(row, col);
+      this.commit(this.withCell(row, col, { [flag]: !cell[flag] }));
+      this.styleCell(area, this.cellOf(row, col));
     };
-    if (mod && !e.shiftKey && key.toLowerCase() === 'b') return toggle('bold');
-    if (mod && e.shiftKey && key.toLowerCase() === 'x') return toggle('crossed');
-    if (mod && e.shiftKey && key.toLowerCase() === 'l') return toggle('extended');
-    if (mod && e.shiftKey && key.toLowerCase() === 'e') {
+    if (mod && !e.shiftKey && k === 'b') return toggle('bold');
+    if (mod && e.shiftKey && k === 'x') return toggle('crossed');
+    if (mod && e.shiftKey && k === 'l') return toggle('extended');
+    if (mod && e.shiftKey && k === 'h') {
       e.preventDefault();
-      this.expand(col);
+      this.toggleHighlight(row, col, area.selectionStart, area.selectionEnd);
+      return;
+    }
+    if (mod && e.shiftKey && k === 'p') {
+      e.preventDefault();
+      this.togglePrep(col === 'prep' ? this.prepAfter ?? 0 : col);
+      return;
+    }
+    if (mod && e.shiftKey && k === 'e') {
+      e.preventDefault();
+      if (typeof col === 'number') this.expand(col);
       return;
     }
     if (mod && key === 'Enter') {
@@ -665,8 +879,14 @@ export class FlowWorkbookView implements NodeView {
     }
     if (key === 'Tab' && !mod && !e.altKey) {
       e.preventDefault();
-      const next = col + (e.shiftKey ? -1 : 1);
-      if (next >= 0 && next < cols) this.move(row, next);
+      // Visual order: speech columns, with Prep right after `prepAfter` when shown.
+      const order: ColKey[] = [];
+      for (let c = 0; c < cols; c++) {
+        order.push(c);
+        if (c === this.prepAfter) order.push('prep');
+      }
+      const next = order[order.indexOf(col) + (e.shiftKey ? -1 : 1)];
+      if (next !== undefined) this.move(row, next);
       return;
     }
     if (key === 'ArrowUp' && !e.shiftKey && !mod && area.selectionStart === 0 && area.selectionEnd === 0) {
@@ -683,7 +903,7 @@ export class FlowWorkbookView implements NodeView {
   }
 
   /** Focus a cell, adding rows when moving past the bottom. */
-  private move(row: number, col: number): void {
+  private move(row: number, col: ColKey): void {
     if (row >= this.sheet.rows.length) {
       this.commit(insertRows(this.book, this.sheetId, this.sheet.rows.length, row - this.sheet.rows.length + 1));
       this.render({ row, col, caret: 'end' });
@@ -693,7 +913,7 @@ export class FlowWorkbookView implements NodeView {
   }
 
   private focusCell(spot: FocusSpot): void {
-    const area = this.dom.querySelector<HTMLTextAreaElement>(`.pmd-flow-cell[data-row="${spot.row}"][data-col="${spot.col}"]`);
+    const area = this.dom.querySelector<HTMLTextAreaElement>(`textarea.pmd-flow-cell[data-row="${spot.row}"][data-col="${colAttr(spot.col)}"]`);
     if (!area) return;
     area.focus();
     const at = spot.caret === 'end' ? area.value.length : Math.min(spot.caret, area.value.length);
@@ -703,7 +923,7 @@ export class FlowWorkbookView implements NodeView {
   private currentFocus(): FocusSpot | null {
     const active = document.activeElement;
     if (!(active instanceof HTMLTextAreaElement) || !this.dom.contains(active) || !active.dataset['row']) return null;
-    return { row: Number(active.dataset['row']), col: Number(active.dataset['col']), caret: active.selectionStart };
+    return { row: Number(active.dataset['row']), col: parseCol(active.dataset['col']), caret: active.selectionStart };
   }
 
   // ─── Sheets ───────────────────────────────────────────────────────

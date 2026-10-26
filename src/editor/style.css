@@ -11139,11 +11139,13 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   color: var(--flow-text);
   font-family: var(--flow-font);
   box-shadow: var(--flow-shadow);
-  user-select: text;
+  /* Labels and buttons are not text to select; cells (textareas) still are. */
+  user-select: none;
   white-space: normal;
   -webkit-font-smoothing: antialiased;
 }
 .pmd-flow-root.pmd-flow-selected { outline: none; }
+.pmd-flow-root *:not(textarea)::selection { background: transparent; }
 .pmd-flow-root button { font-family: var(--pmd-ui-font, system-ui, sans-serif); transition: background 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
 
 /* Sheet list (left) */
@@ -11324,8 +11326,32 @@ body.pmd-recovery-active.pmd-multi-doc #app {
 .pmd-flow-side-aff .pmd-flow-cell { color: var(--flow-aff); caret-color: var(--flow-aff); }
 .pmd-flow-side-neg .pmd-flow-cell { color: var(--flow-neg); caret-color: var(--flow-neg); }
 .pmd-flow-cell:hover { background: color-mix(in srgb, var(--flow-text) 4%, transparent); }
-.pmd-flow-side-aff .pmd-flow-cell:focus { box-shadow: 0 0 0 2px var(--flow-aff), 0 0 0 6px color-mix(in srgb, var(--flow-aff) 18%, transparent); background: var(--flow-bg); }
-.pmd-flow-side-neg .pmd-flow-cell:focus { box-shadow: 0 0 0 2px var(--flow-neg), 0 0 0 6px color-mix(in srgb, var(--flow-neg) 18%, transparent); background: var(--flow-bg); }
+.pmd-flow-side-aff .pmd-flow-cell:focus { box-shadow: 0 0 0 2px var(--flow-aff), 0 0 0 6px color-mix(in srgb, var(--flow-aff) 18%, transparent); }
+.pmd-flow-side-neg .pmd-flow-cell:focus { box-shadow: 0 0 0 2px var(--flow-neg), 0 0 0 6px color-mix(in srgb, var(--flow-neg) 18%, transparent); }
+/* Highlighting: the textarea sits over a mirror of its own text that paints
+   the highlighted ranges, so highlights show behind the typed text. */
+.pmd-flow-cellwrap { position: relative; }
+.pmd-flow-cellwrap textarea.pmd-flow-cell { position: relative; z-index: 1; }
+.pmd-flow-root .pmd-flow-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  color: transparent !important;
+  pointer-events: none;
+  overflow: hidden;
+  min-height: 0;
+  box-shadow: none !important;
+}
+.pmd-flow-mark { background: var(--flow-hl); color: transparent; border-radius: 2px; }
+/* Prep (thumpers) column: opened next to the current speech. */
+.pmd-flow-prep-head .pmd-flow-chip { color: var(--flow-text); background: color-mix(in srgb, var(--flow-text) 12%, transparent); }
+.pmd-flow-root .pmd-flow-td.pmd-flow-prep {
+  background: color-mix(in srgb, var(--flow-accent) 7%, var(--flow-bg));
+  border-left: 1px dashed color-mix(in srgb, var(--flow-text) 30%, transparent);
+  border-right: 1px dashed color-mix(in srgb, var(--flow-text) 30%, transparent);
+}
+.pmd-flow-prep .pmd-flow-cell { color: var(--flow-text); caret-color: var(--flow-text); }
+.pmd-flow-prep .pmd-flow-cell:focus { box-shadow: 0 0 0 2px var(--flow-text), 0 0 0 6px color-mix(in srgb, var(--flow-text) 14%, transparent); }
 .pmd-flow-cell:focus { position: relative; z-index: 1; }
 .pmd-flow-bold { font-weight: 700; }
 .pmd-flow-crossed { text-decoration: line-through; text-decoration-thickness: 2px; opacity: 0.5; }
@@ -12549,6 +12575,33 @@ body.pmd-multi-nav-empty.pmd-multi-doc #status-bar {
  * The expanded-slot data attribute is exposed purely as a hook for
  * future styling (focus rings, transitions, etc.); the visibility
  * itself is driven by per-element [hidden]. */
+/* Drag-to-resize divider on a pane's right edge (CardMirror Green). */
+.pmd-pane-resizer {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  z-index: 30;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+.pmd-pane-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+.pmd-pane-resizer:hover::after,
+body.pmd-pane-resizing .pmd-pane-resizer::after { background: var(--pmd-c-accent); }
+body.pmd-pane-resizing { cursor: col-resize; user-select: none; }
+body.pmd-pane-resizing iframe { pointer-events: none; }
+
 .pmd-multi-row[data-expanded] .pmd-pane {
   flex: 1 1 0;
   min-width: 0;

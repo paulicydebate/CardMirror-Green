@@ -68,6 +68,12 @@ The OpenCaselist panel worked with the user's real account (user report, 2026-10
 
 Home → **New flow** (or command bar → New Flow). Sheets per position, one column per speech (NPDA first, also NFA-LD and policy), cells that wrap, keyboard-first. Double-click a speech header to open that column as a document; Escape returns to the grid. Works in any window or three-pane slot and saves as .cmir. See [FLOW.md](FLOW.md).
 
+## Flow and three-pane updates after the first student test (2026-10-26)
+
+- Co-editing a flow no longer interrupts the other person or loses concurrent typing (see FLOW.md, Co-editing).
+- Flow cells support highlighting (Ctrl/Cmd+Shift+H) and a Prep column for thumpers (Ctrl/Cmd+Shift+P).
+- Three-pane mode: drag the divider between panes to resize them; double-click a divider to even them out. Widths are remembered per computer. Not available while a pane is expanded or in the paged wide layout with three panes.
+
 ## Continue with another LLM
 
 Start with [HANDOFF.md](HANDOFF.md). It records the verified implementation commit, CI evidence, setup commands, architecture, contract invariants, private-data limitations, and the next OpenCaselist-adapter task. [ROADMAP.md](ROADMAP.md) separates completed work, planned work and optional future ideas. The next LLM does not need the previous chat or access to the original desktop.

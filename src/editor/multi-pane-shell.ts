@@ -57,6 +57,26 @@ type DocFormat = 'cmir' | 'docx';
  *  Returns null for filenames with neither a `.cmir` nor `.docx`
  *  extension (the caller can fall back to format detection by
  *  content sniffing, or just default to docx). */
+const PANE_WEIGHTS_KEY = 'cmg-pane-weights';
+
+/** Saved drag-resized pane widths (flex weights per slot); all 1 = even. */
+function loadPaneWeights(): Record<SlotId, number> {
+  const even: Record<SlotId, number> = { slot1: 1, slot2: 1, slot3: 1 };
+  try {
+    const raw = JSON.parse(localStorage.getItem(PANE_WEIGHTS_KEY) ?? 'null') as Record<string, unknown> | null;
+    if (!raw) return even;
+    for (const id of SLOT_IDS) {
+      const v = raw[id];
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0.05 && v < 20) even[id] = v;
+    }
+  } catch { /* storage unavailable: even split */ }
+  return even;
+}
+
+function savePaneWeights(weights: Record<SlotId, number>): void {
+  try { localStorage.setItem(PANE_WEIGHTS_KEY, JSON.stringify(weights)); } catch { /* not persisted */ }
+}
+
 function formatFromFilename(name: string): DocFormat | null {
   const lower = name.toLowerCase();
   if (lower.endsWith('.cmir')) return 'cmir';
@@ -1578,6 +1598,7 @@ class MultiPaneShell {
       this.rowEl.appendChild(this.slots[id].paneEl);
       this.navRailEl.appendChild(this.slots[id].navSectionEl);
     }
+    this.installPaneResizers();
     // Repaint every slot footer's co-editing indicator whenever a session's
     // status/presence changes or one starts/ends. The shell is a lifetime
     // singleton (mountMultiPaneShell early-returns if built), so this
@@ -1835,6 +1856,7 @@ class MultiPaneShell {
       if (!stillTwo) this.clearArrangedSplit();
     }
     this.navRailEl.dataset['active'] = String(active);
+    this.applyPaneWeights();
     // Active-count change → pane widths change → re-sync.
     this.scheduleSyncAllCardIntrinsicWidths();
     // Every open / close / send-to-slot lands here, so this is the one
@@ -3480,6 +3502,107 @@ class MultiPaneShell {
     from.showRecord(rec);
     const released = from.releaseVisible();
     if (released) target.push(released);
+  }
+
+  // ─── Drag-to-resize panes (CardMirror Green) ──────────────────────
+  // Each pane carries a thin divider on its right edge; dragging it trades
+  // width with the next visible pane. Widths are kept as flex weights per
+  // slot (sum preserved between the two panes), remembered on this
+  // computer, and double-clicking a divider evens all panes out again.
+  // Not used while a slot is expanded or in the paged wide layout with
+  // three panes, where widths are fixed by design.
+
+  private paneWeights: Record<SlotId, number> = loadPaneWeights();
+  private readonly paneResizers = new Map<SlotId, HTMLDivElement>();
+
+  private installPaneResizers(): void {
+    for (const id of SLOT_IDS) {
+      const handle = document.createElement('div');
+      handle.className = 'pmd-pane-resizer';
+      handle.title = 'Drag to resize · double-click to even out';
+      handle.setAttribute('role', 'separator');
+      handle.setAttribute('aria-orientation', 'vertical');
+      handle.addEventListener('pointerdown', (e) => this.beginPaneResize(id, e));
+      // Keep the press from starting a text selection across the panes.
+      handle.addEventListener('mousedown', (e) => e.preventDefault());
+      handle.addEventListener('dblclick', () => {
+        for (const sid of SLOT_IDS) this.paneWeights[sid] = 1;
+        savePaneWeights(this.paneWeights);
+        this.applyPaneWeights();
+        this.scheduleSyncAllCardIntrinsicWidths();
+      });
+      this.slots[id].paneEl.appendChild(handle);
+      this.paneResizers.set(id, handle);
+    }
+  }
+
+  private paneResizeAllowed(active: number): boolean {
+    if (this.expandedSlot || active < 2) return false;
+    return !(this.layoutMode === 'wide' && active === 3);
+  }
+
+  /** Apply the stored weights to the visible panes and show a divider on
+   *  every visible pane that has a visible neighbour to its right. */
+  private applyPaneWeights(): void {
+    const shown = SLOT_IDS.filter((id) => this.slotShown(this.slots[id]));
+    const allowed = this.paneResizeAllowed(shown.length);
+    shown.forEach((id, i) => {
+      const handle = this.paneResizers.get(id);
+      if (handle) handle.hidden = !allowed || i === shown.length - 1;
+    });
+    for (const id of SLOT_IDS) {
+      const handle = this.paneResizers.get(id);
+      if (handle && !shown.includes(id)) handle.hidden = true;
+    }
+    if (!allowed || this.arrangedSplit) {
+      if (!this.arrangedSplit) for (const id of SLOT_IDS) this.slots[id].paneEl.style.flex = '';
+      return;
+    }
+    for (const id of SLOT_IDS) {
+      this.slots[id].paneEl.style.flex = shown.includes(id) ? `${this.paneWeights[id]} 1 0` : '';
+    }
+  }
+
+  private beginPaneResize(id: SlotId, e: PointerEvent): void {
+    const shown = SLOT_IDS.filter((sid) => this.slotShown(this.slots[sid]));
+    const i = shown.indexOf(id);
+    const nextId = shown[i + 1];
+    if (i < 0 || !nextId || !this.paneResizeAllowed(shown.length)) return;
+    e.preventDefault();
+    // A manual drag replaces an Arrange Windows split.
+    if (this.arrangedSplit) {
+      this.arrangedSplit = null;
+      for (const sid of shown) {
+        this.paneWeights[sid] = this.slots[sid].paneEl.getBoundingClientRect().width || 1;
+      }
+    }
+    const a = this.slots[id].paneEl;
+    const b = this.slots[nextId].paneEl;
+    const wa = a.getBoundingClientRect().width;
+    const wb = b.getBoundingClientRect().width;
+    const total = this.paneWeights[id] + this.paneWeights[nextId];
+    const startX = e.clientX;
+    const MIN = 220;
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture?.(e.pointerId);
+    document.body.classList.add('pmd-pane-resizing');
+    const move = (ev: PointerEvent): void => {
+      const na = Math.min(Math.max(wa + (ev.clientX - startX), MIN), wa + wb - MIN);
+      this.paneWeights[id] = (total * na) / (wa + wb);
+      this.paneWeights[nextId] = total - this.paneWeights[id];
+      this.applyPaneWeights();
+    };
+    const up = (): void => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      document.body.classList.remove('pmd-pane-resizing');
+      savePaneWeights(this.paneWeights);
+      this.scheduleSyncAllCardIntrinsicWidths();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
   }
 
   private applyArrangedSplit(): void {

@@ -17,6 +17,9 @@ import {
   renameSheet,
   serializeFlow,
   setCell,
+  setPrep,
+  shiftRanges,
+  toggleRange,
   type FlowSheet,
 } from '../../src/flow/flow-model.js';
 
@@ -64,16 +67,47 @@ describe('flow workbook', () => {
     expect(deleteSheet(one, one.sheets[0]!.id).sheets).toHaveLength(1); // last sheet stays
   });
 
-  it('round-trips through save/load, trimming and re-padding empty rows', () => {
+  it('round-trips through save/load, keeping every row id', () => {
     let book = newWorkbook('policy');
     book = setCell(book, book.sheets[0]!.id, 2, 0, { text: 'Adv 1 — econ', crossed: true });
     const saved = serializeFlow(book);
-    expect(JSON.parse(saved).sheets[0].rows).toHaveLength(3);
+    expect(JSON.parse(saved).sheets[0].rows).toHaveLength(20);
     const loaded = parseFlow(saved);
     expect(loaded.event).toBe('policy');
     expect(loaded.sheets[0]!.rows).toHaveLength(20);
     expect(cellAt(loaded.sheets[0]!, 2, 0)).toEqual({ text: 'Adv 1 — econ', crossed: true });
     expect(loaded.sheets[0]!.rows[2]!.id).toBe(book.sheets[0]!.rows[2]!.id);
+  });
+
+  it('pads short files with the same row ids on every computer', () => {
+    const data = JSON.stringify({ format: 'cardmirror.flow', version: 1, event: 'npda', sheets: [{ id: 's1', name: 'Gov', side: 'aff', columns: ['PMC', 'LOC'], rows: [{ cells: [{ text: 'x' }] }] }] });
+    const a = parseFlow(data).sheets[0]!.rows.map((r) => r.id);
+    const b = parseFlow(data).sheets[0]!.rows.map((r) => r.id);
+    expect(a).toEqual(b);
+    expect(a[0]).toBe('s1~0');
+    expect(a).toHaveLength(20);
+  });
+
+  it('keeps highlight ranges and prep cells through save/load and edits', () => {
+    let book = newWorkbook('npda');
+    const id = book.sheets[0]!.id;
+    book = setCell(book, id, 0, 0, { text: 'nuclear war is likely', hl: [[0, 11], [15, 21], [99, 120]] });
+    book = setPrep(book, id, 0, { text: 'Thumper: China tensions', hl: [[0, 7]] });
+    const back = parseFlow(serializeFlow(book));
+    expect(cellAt(back.sheets[0]!, 0, 0).hl).toEqual([[0, 11], [15, 21]]);
+    expect(back.sheets[0]!.rows[0]!.prep).toEqual({ text: 'Thumper: China tensions', hl: [[0, 7]] });
+    expect(setPrep(back, id, 0, { text: '', hl: [] }).sheets[0]!.rows[0]!.prep).toBeUndefined();
+  });
+
+  it('moves highlights with typing and toggles ranges', () => {
+    expect(shiftRanges([[4, 8]], 'the war now', 'the big war now')).toEqual([[8, 12]]);
+    expect(shiftRanges([[4, 11]], 'the war now', 'the waXr now')).toEqual([[4, 12]]);
+    expect(shiftRanges([[4, 7]], 'the war now', 'the wars now')).toEqual([[4, 8]]);
+    expect(shiftRanges([[4, 7]], 'the war now', 'the now')).toEqual([]);
+    expect(shiftRanges([[0, 3]], 'the war', 'X the war')).toEqual([[2, 5]]);
+    expect(toggleRange([], 2, 5, 10)).toEqual([[2, 5]]);
+    expect(toggleRange([[0, 10]], 2, 5, 10)).toEqual([[0, 2], [5, 10]]);
+    expect(toggleRange([[0, 3]], 2, 6, 10)).toEqual([[0, 6]]);
   });
 
   it('rejects files that are not flows', () => {

@@ -33,7 +33,7 @@ function mount(): EditorView {
 
 const book = (v: EditorView) => parseFlow(String(v.state.doc.firstChild!.attrs['data']));
 const cell = (v: EditorView, row: number, col: number): HTMLTextAreaElement =>
-  v.dom.querySelector<HTMLTextAreaElement>(`.pmd-flow-cell[data-row="${row}"][data-col="${col}"]`)!;
+  v.dom.querySelector<HTMLTextAreaElement>(`textarea.pmd-flow-cell[data-row="${row}"][data-col="${col}"]`)!;
 function type(area: HTMLTextAreaElement, text: string): void {
   area.value = text;
   area.dispatchEvent(new Event('input'));
@@ -50,7 +50,7 @@ describe('flow NodeView', () => {
     const heads = Array.from(v.dom.querySelectorAll('.pmd-flow-head'));
     expect(heads.map((h) => h.textContent)).toEqual(['PMC', 'LOC', 'MG', 'MO', 'LOR', 'PMR']);
     expect(heads.map((h) => h.classList.contains('pmd-flow-side-aff'))).toEqual([true, false, true, false, false, true]);
-    expect(v.dom.querySelectorAll('.pmd-flow-cell')).toHaveLength(6 * 20);
+    expect(v.dom.querySelectorAll('textarea.pmd-flow-cell')).toHaveLength(6 * 20);
   });
 
   it('commits typing to the document, survives save/load, and undoes', () => {
@@ -216,6 +216,60 @@ describe('flow NodeView', () => {
     last.dispatchEvent(paste);
     await frame();
     expect(secs().map((s) => s.value)).toEqual(['one', 'two', 'three A', 'B', 'C']);
+  });
+
+  it('highlights selected text (or the whole cell) and paints it behind the text', () => {
+    const v = mount();
+    const c = cell(v, 0, 0);
+    type(c, 'nuclear war is likely');
+    c.focus();
+    c.setSelectionRange(0, 11);
+    key(c, 'H', { ctrlKey: true, metaKey: true, shiftKey: true });
+    expect(cellAt(book(v).sheets[0]!, 0, 0).hl).toEqual([[0, 11]]);
+    const marks = () => Array.from(c.parentElement!.querySelectorAll('mark.pmd-flow-mark')).map((m) => m.textContent);
+    expect(marks()).toEqual(['nuclear war']);
+    // Typing inside the highlight keeps it highlighted.
+    c.value = 'nuclear world war is likely';
+    c.dispatchEvent(new Event('input'));
+    expect(marks()).toEqual(['nuclear world war']);
+    // Nothing selected: toggles the whole cell (here: clears it).
+    c.setSelectionRange(3, 3);
+    key(c, 'H', { ctrlKey: true, metaKey: true, shiftKey: true });
+    expect(cellAt(book(v).sheets[0]!, 0, 0).hl).toBeUndefined();
+    key(c, 'H', { ctrlKey: true, metaKey: true, shiftKey: true });
+    expect(cellAt(book(v).sheets[0]!, 0, 0).hl).toEqual([[0, 27]]);
+  });
+
+  it('opens the Prep column next to the current speech and keeps it with the rows', async () => {
+    const v = mount();
+    const loc = cell(v, 1, 1);
+    loc.focus();
+    key(loc, 'P', { ctrlKey: true, metaKey: true, shiftKey: true });
+    await frame();
+    const heads = Array.from(v.dom.querySelectorAll('.pmd-flow-head')).map((h) => h.textContent);
+    expect(heads).toEqual(['PMC', 'LOC', 'Prep', 'MG', 'MO', 'LOR', 'PMR']);
+    const prep = v.dom.querySelector<HTMLTextAreaElement>('textarea.pmd-flow-cell[data-row="1"][data-col="prep"]')!;
+    expect(document.activeElement).toBe(prep);
+    type(prep, 'Thumper: China tensions');
+    expect(book(v).sheets[0]!.rows[1]!.prep?.text).toBe('Thumper: China tensions');
+    // Tab goes on to MG; Shift+Tab from MG comes back to Prep.
+    key(prep, 'Tab');
+    expect(document.activeElement).toBe(cell(v, 1, 2));
+    key(cell(v, 1, 2), 'Tab', { shiftKey: true });
+    expect(document.activeElement).toBe(prep);
+    key(prep, 'P', { ctrlKey: true, metaKey: true, shiftKey: true });
+    await frame();
+    expect(v.dom.querySelector('.pmd-flow-prep-head')).toBeNull();
+    // The prep text is saved even while the column is hidden.
+    expect(book(v).sheets[0]!.rows[1]!.prep?.text).toBe('Thumper: China tensions');
+  });
+
+  it('undo after typing is not mistaken for a partner’s stale copy', () => {
+    const v = mount();
+    type(cell(v, 0, 0), 'A');
+    type(cell(v, 0, 0), 'AB');
+    undo(v.state, v.dispatch);
+    expect(cell(v, 0, 0).value).not.toBe('AB');
   });
 
   it('re-renders when the data changes from outside', () => {

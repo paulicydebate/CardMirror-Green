@@ -48,6 +48,7 @@ export const FLOW_BASES: Record<FlowBaseId, BaseSpec> = {
       '--flow-tint-aff': 'color-mix(in srgb, var(--flow-aff) 5%, transparent)',
       '--flow-tint-neg': 'color-mix(in srgb, var(--flow-neg) 5%, transparent)',
       '--flow-stripe': 'transparent',
+      '--flow-hl': 'rgba(34, 230, 80, 0.38)',
     },
   },
   dark: {
@@ -61,6 +62,7 @@ export const FLOW_BASES: Record<FlowBaseId, BaseSpec> = {
       '--flow-muted': '#9b9ba3', '--flow-shadow': '0 10px 30px rgba(0, 0, 0, 0.35)',
       '--flow-tint-aff': 'transparent', '--flow-tint-neg': 'transparent',
       '--flow-stripe': 'rgba(255, 255, 255, 0.03)',
+      '--flow-hl': 'rgba(57, 255, 20, 0.30)',
     },
   },
   classic: {
@@ -75,6 +77,7 @@ export const FLOW_BASES: Record<FlowBaseId, BaseSpec> = {
       '--flow-tint-aff': 'transparent', '--flow-tint-neg': 'transparent', '--flow-stripe': 'transparent',
       // The pastel column fills of the user's parli template.
       '--flow-fill-0': '#ffff99', '--flow-fill-1': '#ccffcc', '--flow-fill-2': '#ffcc99', '--flow-fill-3': '#ccffff',
+      '--flow-hl': '#00ff00',
     },
   },
   contrast: {
@@ -88,6 +91,7 @@ export const FLOW_BASES: Record<FlowBaseId, BaseSpec> = {
       '--flow-muted': '#cfcfcf', '--flow-shadow': 'none',
       '--flow-tint-aff': 'transparent', '--flow-tint-neg': 'transparent',
       '--flow-stripe': 'rgba(255, 255, 255, 0.06)',
+      '--flow-hl': 'rgba(0, 255, 0, 0.45)',
     },
   },
 };
