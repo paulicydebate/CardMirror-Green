@@ -73,6 +73,13 @@ Implemented on top of version 1 without changing it; full details in [OPENCASELI
 - Verified locally: typecheck; 19 new tests (matcher, editor glue on real ProseMirror docs, dialog in jsdom); screenshot of the dialog with a sample reply, which also showed the non-adjacent-words mistake now covered by an explicit prompt rule.
 - **Not verified:** a real Grok conversation.
 
+## Spreadsheet flow milestone (Claude, 2026-10-26)
+
+- New block `flow_workbook` (schema) rendered by `src/editor/flow-nodeview.ts`; model in `src/flow/`. Commands: `newFlow` (File group, Home tile). Details: [FLOW.md](FLOW.md).
+- Verified locally: typecheck; 15 new tests (model, column↔document round trip, NodeView typing/keys/undo/sheets/document view, Word export round trip); full suite 4,269 passed with only the sandbox-only mac-swap failure; screenshots of grid and document view.
+- **Not verified:** use in the packaged app, three-pane mode by hand, live collaboration on a flow.
+- Licensing: flower is GPL-3.0; nothing from it is used.
+
 ## Architecture map
 
 | File | Responsibility |

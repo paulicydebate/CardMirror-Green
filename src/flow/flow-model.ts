@@ -58,6 +58,8 @@ export interface FlowFormatPreset {
   negColumns: string[];
   /** Display names of the two sides. */
   sideNames: [string, string];
+  /** Speeches given by the first side (aff / gov); the rest are the second side's. */
+  affSpeeches: string[];
   /** Sheets a new flow starts with. */
   starterSheets: Array<{ name: string; side: FlowSide }>;
 }
@@ -74,6 +76,7 @@ export const FLOW_FORMATS: Record<string, FlowFormatPreset> = {
     affColumns: ['PMC', 'LOC', 'MG', 'MO', 'LOR', 'PMR'],
     negColumns: ['LOC', 'MG', 'MO', 'LOR', 'PMR'],
     sideNames: ['Gov', 'Opp'],
+    affSpeeches: ['PMC', 'MG', 'PMR'],
     starterSheets: [{ name: 'Gov case', side: 'aff' }, { name: 'Off 1', side: 'neg' }],
   },
   nfald: {
@@ -81,6 +84,7 @@ export const FLOW_FORMATS: Record<string, FlowFormatPreset> = {
     affColumns: ['1AC', '1NC', '1AR', 'NR', '2AR'],
     negColumns: ['1NC', '1AR', 'NR', '2AR'],
     sideNames: ['Aff', 'Neg'],
+    affSpeeches: ['1AC', '1AR', '2AR'],
     starterSheets: [{ name: 'Aff case', side: 'aff' }, { name: 'Off 1', side: 'neg' }],
   },
   policy: {
@@ -88,6 +92,7 @@ export const FLOW_FORMATS: Record<string, FlowFormatPreset> = {
     affColumns: ['1AC', '1NC', '2AC', '2NC/1NR', '1AR', '2NR', '2AR'],
     negColumns: ['1NC', '2AC', '2NC/1NR', '1AR', '2NR', '2AR'],
     sideNames: ['Aff', 'Neg'],
+    affSpeeches: ['1AC', '2AC', '1AR', '2AR'],
     starterSheets: [{ name: 'Aff case', side: 'aff' }, { name: 'Off 1', side: 'neg' }],
   },
 };
@@ -119,6 +124,24 @@ export function columnsFor(event: string, side: FlowSide): string[] {
   const preset = FLOW_FORMATS[event];
   if (!preset) return ['1', '2', '3', '4', '5', '6'];
   return side === 'aff' ? preset.affColumns : preset.negColumns;
+}
+
+/** Which side gives the speech in column `col` (for column colors). Known
+ *  speech names use the event's list; unknown ones alternate from the
+ *  sheet's own side. */
+export function columnSide(event: string, sheet: FlowSheet, col: number): FlowSide {
+  const name = sheet.columns[col] ?? '';
+  const preset = FLOW_FORMATS[event];
+  if (preset && (preset.affColumns.includes(name) || preset.negColumns.includes(name))) {
+    return preset.affSpeeches.includes(name) ? 'aff' : 'neg';
+  }
+  const first = sheet.side;
+  return col % 2 === 0 ? first : first === 'aff' ? 'neg' : 'aff';
+}
+
+export function sideName(event: string, side: FlowSide): string {
+  const names = FLOW_FORMATS[event]?.sideNames ?? ['Aff', 'Neg'];
+  return side === 'aff' ? names[0] : names[1];
 }
 
 export function newWorkbook(event = 'npda'): FlowWorkbook {

@@ -135,6 +135,7 @@ import { openLearnManage } from './learn-manage-ui.js';
 import { openBulkConvert, runConvertSingleFileWeb } from './bulk-convert-ui.js';
 import { openOpenCaselist } from './opencaselist-ui.js';
 import { openChatCut } from './chat-cut-ui.js';
+import { FLOW_FORMATS, newWorkbook, serializeFlow } from '../flow/flow-model.js';
 import { openBulkCompress, runCompressSingleFileWeb } from './bulk-compress-ui.js';
 import { bulkCompressEnabled } from './bulk-compress-gate.js';
 import { openClean, runCleanSingleFileWeb } from './clean-ui.js';
@@ -1798,6 +1799,9 @@ const ribbonContext: RibbonContext = {
   },
   openOpenCaselist: () => {
     openOpenCaselistPanel();
+  },
+  newFlow: () => {
+    void openNewFlow();
   },
   reopenWorkspace: () => {
     if (!getElectronHost()) {
@@ -4637,6 +4641,8 @@ const VIEWLESS_RIBBON_COMMANDS = new Set<AnyCommandId>([
   'manageQuickCards',
   // OpenCaselist browser — a modal; opened files route like File → Open.
   'openOpenCaselist',
+  // New spreadsheet flow — opens a new document like File → Open.
+  'newFlow',
   // Multi-pane workspace commands — fire on the shell, not a
   // doc. View-less so they work even when no slot has a doc.
   'focusSlot1',
@@ -4691,6 +4697,7 @@ function runViewlessRibbon(id: AnyCommandId): void {
     case 'insertInDocCopy': ribbonContext.insertInDocCopy(); return;
     case 'manageQuickCards': ribbonContext.manageQuickCards(); return;
     case 'openOpenCaselist': ribbonContext.openOpenCaselist(); return;
+    case 'newFlow': ribbonContext.newFlow(); return;
     case 'toggleVoice': ribbonContext.toggleVoice(); return;
     case 'calibrateVoice': ribbonContext.calibrateVoice(); return;
     case 'startFlowHost': ribbonContext.startFlowHost(); return;
@@ -7355,6 +7362,7 @@ const homeCallbacks: HomeScreenCallbacks = {
   manageQuickCards: () => {
     void quickCardsManageUI.open();
   },
+  newFlow: () => void openNewFlow(),
   // OpenCaselist browser: desktop only (main process holds the session).
   ...(getElectronHost() ? { openCaselist: () => openOpenCaselistPanel() } : {}),
   openSettings: () => {
@@ -7396,6 +7404,23 @@ function openOpenCaselistPanel(): void {
   openOpenCaselist({
     openFile: (file) => routeOpenedFile({ name: file.name, bytes: file.bytes, handle: null }),
   });
+}
+
+/** Ask for the debate format, then open a new spreadsheet-flow document
+ *  (a flow block plus an empty notes paragraph) through the normal open
+ *  routing: new window, slot picker or in place. Unsaved until Save As. */
+async function openNewFlow(): Promise<void> {
+  const event = await promptForChoice({
+    message: 'New flow',
+    detail: 'Which format? Sheets get one column per speech; you can add sheets as you go.',
+    choices: Object.entries(FLOW_FORMATS).map(([value, preset], i) => ({ value, label: preset.label, primary: i === 0 })),
+  });
+  if (!event) return;
+  const doc = schema.nodes['doc']!.create(null, [
+    schema.nodes['flow_workbook']!.create({ data: serializeFlow(newWorkbook(event)) }),
+    schema.nodes['paragraph']!.create(),
+  ]);
+  await routeOpenedFile({ name: `${FLOW_FORMATS[event]!.label.split(' ')[0]} flow.cmir`, bytes: serializeNative(doc), handle: null });
 }
 
 /** Mount a fresh blank starter doc in this window, resetting the

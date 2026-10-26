@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addSheet,
+  columnSide,
   applyColumnSections,
   cellAt,
   columnToSections,
@@ -35,6 +36,10 @@ describe('flow workbook', () => {
     expect(book.sheets[0]!.rows).toHaveLength(20);
     expect(newWorkbook('policy').sheets[1]!.columns[0]).toBe('1NC');
     expect(newWorkbook('nope').event).toBe('npda');
+    const gov = book.sheets[0]!;
+    expect(gov.columns.map((_, i) => columnSide('npda', gov, i))).toEqual(['aff', 'neg', 'aff', 'neg', 'neg', 'aff']);
+    const custom = { ...gov, columns: ['X', 'Y'] };
+    expect([0, 1].map((i) => columnSide('npda', custom, i))).toEqual(['aff', 'neg']);
   });
 
   it('edits cells, rows and sheets without mutating the original', () => {

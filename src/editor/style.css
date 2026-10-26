@@ -11119,6 +11119,156 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   color: var(--pmd-c-error);
 }
 
+/* ─── Spreadsheet flow (CardMirror Green) ───────────────────────── */
+.pmd-flow-root {
+  --pmd-flow-aff: #2563eb;
+  --pmd-flow-neg: #dc2626;
+  font-family: var(--pmd-ui-font);
+  margin: 0.5rem 0 1rem;
+  border: 1px solid var(--pmd-c-border);
+  border-radius: 6px;
+  background: var(--pmd-c-bg);
+  user-select: text;
+  white-space: normal;
+}
+.pmd-flow-root.pmd-flow-selected {
+  outline: 2px solid var(--pmd-c-accent);
+}
+.pmd-flow-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid var(--pmd-c-border);
+}
+.pmd-flow-tab,
+.pmd-flow-add {
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 4px;
+  border: 1px solid var(--pmd-c-border);
+  background: var(--pmd-c-bg);
+  color: var(--pmd-c-text);
+  cursor: pointer;
+}
+.pmd-flow-tab.pmd-flow-side-aff { border-bottom: 3px solid var(--pmd-flow-aff); }
+.pmd-flow-tab.pmd-flow-side-neg { border-bottom: 3px solid var(--pmd-flow-neg); }
+.pmd-flow-tab-active {
+  font-weight: 600;
+  background: var(--pmd-c-button-hover);
+}
+.pmd-flow-add { color: var(--pmd-c-text-muted); }
+.pmd-flow-add:hover, .pmd-flow-tab:hover { background: var(--pmd-c-button-hover); }
+.pmd-flow-add:disabled { opacity: 0.45; cursor: default; }
+.pmd-flow-del { margin-left: 0.5rem; }
+.pmd-flow-event {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--pmd-c-text-muted);
+}
+.pmd-flow-gridwrap {
+  overflow: auto;
+  max-height: 75vh;
+}
+.pmd-flow-grid {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  min-width: 640px;
+}
+.pmd-flow-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--pmd-c-bg);
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.3rem;
+  border-bottom: 2px solid currentColor;
+  cursor: zoom-in;
+  user-select: none;
+}
+.pmd-flow-head.pmd-flow-side-aff { color: var(--pmd-flow-aff); }
+.pmd-flow-head.pmd-flow-side-neg { color: var(--pmd-flow-neg); }
+.pmd-flow-td {
+  vertical-align: top;
+  padding: 0;
+  border-right: 1px solid var(--pmd-c-border);
+  border-bottom: 1px solid color-mix(in srgb, var(--pmd-c-border) 50%, transparent);
+}
+.pmd-flow-td.pmd-flow-side-aff { background: color-mix(in srgb, var(--pmd-flow-aff) 5%, transparent); }
+.pmd-flow-td.pmd-flow-side-neg { background: color-mix(in srgb, var(--pmd-flow-neg) 5%, transparent); }
+.pmd-flow-cell,
+.pmd-flow-docsec {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--pmd-c-text);
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pmd-flow-cell {
+  font-size: 0.85rem;
+  line-height: 1.3;
+  padding: 0.25rem 0.35rem;
+  min-height: 1.8em;
+}
+.pmd-flow-cell:focus {
+  box-shadow: inset 0 0 0 2px var(--pmd-c-accent);
+  background: var(--pmd-c-bg);
+}
+.pmd-flow-side-aff .pmd-flow-cell { color: color-mix(in srgb, var(--pmd-flow-aff) 70%, var(--pmd-c-text)); }
+.pmd-flow-side-neg .pmd-flow-cell { color: color-mix(in srgb, var(--pmd-flow-neg) 70%, var(--pmd-c-text)); }
+.pmd-flow-bold { font-weight: 700; }
+.pmd-flow-crossed { text-decoration: line-through; opacity: 0.6; }
+.pmd-flow-extended { border-left: 3px solid var(--pmd-c-text-muted); }
+.pmd-flow-doc {
+  padding: 0.5rem 1rem 1rem;
+  max-height: 75vh;
+  overflow: auto;
+}
+.pmd-flow-docbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  position: sticky;
+  top: 0;
+  background: var(--pmd-c-bg);
+  padding: 0.35rem 0;
+  margin-bottom: 0.4rem;
+  border-bottom: 2px solid currentColor;
+}
+.pmd-flow-doc.pmd-flow-side-aff .pmd-flow-docbar { color: var(--pmd-flow-aff); }
+.pmd-flow-doc.pmd-flow-side-neg .pmd-flow-docbar { color: var(--pmd-flow-neg); }
+.pmd-flow-docbar .pmd-flow-add { margin-left: auto; }
+.pmd-flow-docsec {
+  font-size: 1rem;
+  line-height: 1.5;
+  padding: 0.4rem 0.5rem;
+  border-left: 3px solid var(--pmd-c-border);
+  margin-top: 0.4rem;
+}
+.pmd-flow-docsec:focus { border-left-color: var(--pmd-c-accent); }
+.pmd-flow-addsec {
+  font: inherit;
+  font-size: 0.75rem;
+  border: none;
+  background: none;
+  color: var(--pmd-c-text-muted);
+  cursor: pointer;
+  padding: 0.1rem 0.5rem;
+  opacity: 0.5;
+}
+.pmd-flow-addsec:hover, .pmd-flow-addsec:focus { opacity: 1; }
+
 /* Bulk-compress: intro blurb + determinate progress bar. */
 .pmd-bulk-blurb {
   margin: 0 0 0.4rem 0;

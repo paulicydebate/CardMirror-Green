@@ -160,7 +160,7 @@ function intrinsicHeightStyle(node: PMNode): string {
  * (see its content expression).
  */
 const BLOCK_CONTENT =
-  '(paragraph | pocket | hat | block | card | analytic_unit | undertag | cite_paragraph | card_body | table | transclusion_ref | self_ref)*';
+  '(paragraph | pocket | hat | block | card | analytic_unit | undertag | cite_paragraph | card_body | table | transclusion_ref | self_ref | flow_workbook)*';
 
 export const nodes: { [name: string]: NodeSpec } = {
   /** Top-level container. Sequence of block-level content. */
@@ -588,6 +588,33 @@ export const nodes: { [name: string]: NodeSpec } = {
       },
       0,
     ],
+  },
+
+  /**
+   * A flow workbook (CardMirror Green): a spreadsheet flow with sheets,
+   * speech columns and argument rows, stored as one serialized
+   * `cardmirror.flow` JSON string (src/flow/flow-model.ts). A leaf atom: the
+   * grid is edited by its NodeView (src/editor/flow-nodeview.ts), which
+   * commits changes back as attr updates, so undo/redo, save and every
+   * window / three-pane slot handle it like any other block.
+   */
+  flow_workbook: {
+    atom: true,
+    selectable: true,
+    draggable: false,
+    attrs: {
+      data: {
+        default: '',
+        validate: (v: unknown) => typeof v === 'string',
+      },
+    },
+    parseDOM: [
+      {
+        tag: 'div.pmd-flow-workbook',
+        getAttrs: (dom: HTMLElement) => ({ data: dom.getAttribute('data-flow') ?? '' }),
+      },
+    ],
+    toDOM: (node) => ['div', { class: 'pmd-flow-workbook', 'data-flow': String(node.attrs['data'] ?? '') }],
   },
 
   /**

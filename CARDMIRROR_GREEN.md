@@ -64,6 +64,10 @@ Command bar → **Cut Card with Chat AI (Copy/Paste)** with the cursor in a card
 
 The OpenCaselist panel worked with the user's real account (user report, 2026-10-26).
 
+## Spreadsheet flow (2026-10-26)
+
+Home → **New flow** (or command bar → New Flow). Sheets per position, one column per speech (NPDA first, also NFA-LD and policy), cells that wrap, keyboard-first. Double-click a speech header to open that column as a document; Escape returns to the grid. Works in any window or three-pane slot and saves as .cmir. See [FLOW.md](FLOW.md).
+
 ## Continue with another LLM
 
 Start with [HANDOFF.md](HANDOFF.md). It records the verified implementation commit, CI evidence, setup commands, architecture, contract invariants, private-data limitations, and the next OpenCaselist-adapter task. [ROADMAP.md](ROADMAP.md) separates completed work, planned work and optional future ideas. The next LLM does not need the previous chat or access to the original desktop.

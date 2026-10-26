@@ -85,6 +85,8 @@ export interface HomeScreenCallbacks {
   /** Open the OpenCaselist browser (CardMirror Green). Desktop only;
    *  omitted → no tile. */
   openCaselist?: () => void;
+  /** Start a new spreadsheet flow (CardMirror Green); omitted → no tile. */
+  newFlow?: () => void;
   /** Open the (temporary) bulk-compress migration tool. Electron-only,
    *  same as bulkConvert. */
   bulkCompress?: () => void;
@@ -211,6 +213,7 @@ class HomeScreen {
     // OpenCaselist (Green) — after Settings so upstream's 1-9 numbering
     // is unchanged; it gets a number only when one is left over.
     if (callbacks.openCaselist) runners.push(() => this.callbacks?.openCaselist?.());
+    if (callbacks.newFlow) runners.push(() => this.callbacks?.newFlow?.());
     this.actionRunners = runners;
     const actions = document.createElement('div');
     actions.className = 'pmd-home-actions';
@@ -396,6 +399,18 @@ class HomeScreen {
             'Browse OpenCaselist',
             'Sign in with Tabroom and open a team’s disclosed files.',
             () => this.callbacks?.openCaselist?.(),
+          ),
+        ),
+      );
+    }
+    if (callbacks.newFlow) {
+      qcGrid.appendChild(
+        labeledGroup(
+          'Flow',
+          this.actionCard(
+            'New flow',
+            'A spreadsheet flow with tabs; open any speech as a document.',
+            () => this.callbacks?.newFlow?.(),
           ),
         ),
       );
