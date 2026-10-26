@@ -12,6 +12,8 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 | Full-card extraction | Read-only plugin API includes tags, citation/body paragraphs, undertags, IDs, offsets and inline marks; derived references are not independently counted |
 | Representative format validation | A user DOCX and native CMIR passed source-text/mark checks; detailed extracts remain local |
 | In-app OpenCaselist panel | Sign in with Tabroom, browse caselist → school → team, open a disclosed .docx/.cmir as an unsaved document; token kept in the main process, OS-encrypted (mock-tested only) |
+| OpenCaselist real check | User reported the in-app panel working with their real account (2026-10-26) |
+| Chat cutting (copy-paste) | Copy a prompt for Grok/any chat AI, paste the reply; every quote verified against the card before underline/emphasis/green highlight are applied in one undoable step |
 | Cloud handoff | GitHub holds source, AGENTS.md, current status, contract documentation and this roadmap so another computer can continue with the desktop off |
 
 ## Completed in the batch-export milestone
@@ -29,8 +31,9 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 
 ## Next
 
-1. **OpenCaselist: real-data check.** The adapter, CLI and in-app panel are built and mock-tested ([OPENCASELIST.md](OPENCASELIST.md)). Remaining: the user signs in through the app panel (Home → Browse OpenCaselist) on a new preview build and opens ~3 files from one team; record real caselist names, file formats and any failures, then fix.
-1. **AI features without API keys.** Evidence cutting, block generation and scouting run through an outside agent (Claude Code, Codex) driving documented commands, plus a copy-paste flow for chat AIs such as the Grok app, with quote verification against the source.
+1. **Chat cutting: user check.** Try "Cut Card with Chat AI" with Grok on a few real cards ([CHAT_CUT.md](CHAT_CUT.md)); tune the prompt from what Grok gets wrong.
+1. **Chat cutting, next pieces.** Cut a raw article into a new card; AI-suggested omissions; a CLI so Claude Code/Codex can apply `cardmirror.cut.v1` replies to files; several cards per prompt.
+1. **Block generation and scouting** through the same copy-paste pattern.
 2. **Batch validation and scale.** Verify larger selections; inspect malformed/incomplete documents, repeated disclosures and revisions. Establish acceptable time/memory behavior and resumable processing for lengthy runs.
 3. **Broader document coverage.** Exercise tables, images, footnotes, links and derived-reference cases with real examples. Consumers must use rawNode when the paragraph view is incomplete.
 4. **Mac smoke test.** Install the ARM64 Green build on the user's M5 MacBook Pro and repeat opening/editing/save/reopen/export checks.

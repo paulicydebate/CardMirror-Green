@@ -289,6 +289,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
     commands: [
       'aiAskAboutSelection',
       'aiCreateCite',
+      'chatCutCard',
       'reformatAllCites',
       'translate',
       'repairText',

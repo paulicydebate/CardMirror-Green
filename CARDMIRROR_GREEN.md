@@ -58,6 +58,12 @@ Local focused validation: 27 tests passed, including classification, stable IDs 
 
 Desktop app: Home → **Browse OpenCaselist** (or the command bar). Sign in with Tabroom, pick caselist → school → team, and **Open** a disclosed .docx/.cmir as an unsaved document. The session token stays in the app's main process, encrypted with the OS keychain. Mock-tested only; the first real sign-in is the next check. See [OPENCASELIST.md](OPENCASELIST.md).
 
+## Cut a card with a chat AI (2026-10-26)
+
+Command bar → **Cut Card with Chat AI (Copy/Paste)** with the cursor in a card. Copy the prompt into Grok, paste its reply back; quotes that are not in the card are rejected and listed, the rest is applied as one undoable step with green highlighting. No API key. See [CHAT_CUT.md](CHAT_CUT.md).
+
+The OpenCaselist panel worked with the user's real account (user report, 2026-10-26).
+
 ## Continue with another LLM
 
 Start with [HANDOFF.md](HANDOFF.md). It records the verified implementation commit, CI evidence, setup commands, architecture, contract invariants, private-data limitations, and the next OpenCaselist-adapter task. [ROADMAP.md](ROADMAP.md) separates completed work, planned work and optional future ideas. The next LLM does not need the previous chat or access to the original desktop.

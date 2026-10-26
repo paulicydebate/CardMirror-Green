@@ -1,6 +1,6 @@
 # OpenCaselist adapter
 
-Status: repository library, command line, and an in-app panel in the desktop app, all tested against mocked and local fake servers. **Not yet run against the real OpenCaselist with the user's account.**
+Status: repository library, command line, and an in-app panel in the desktop app. Tested against mocked and local fake servers, and the user reported on 2026-10-26 that the in-app panel "worked perfectly" with their real account on the preview build from commit f3e1ccc (sign-in, browsing and opening files). Details not yet recorded: which caselists/files were tried and on which computer. The CLI `export` has still only been mock-tested.
 
 ## What was verified, and how (2026-10-25)
 
@@ -13,7 +13,7 @@ Sources: the live API description at `https://api.opencaselist.com/v1/docs` (Ope
 - The published spec omits several fields the web client uses (`round_id`, `opensource`, `display_name`, `level`), so the client checks responses at runtime and fails clearly rather than guessing.
 - `robots.txt` disallows nothing. OpenCaselist itself offers weekly bulk downloads per caselist (`GET caselists/{caselist}/downloads`); the adapter does not use them yet.
 
-**Not yet verified with a real account:** the exact caselist names for NFA-LD / NDT-CEDA / HS policy this season, the login response, whether downloads redirect to file storage, real file formats in the wild (.docx vs .doc/.pdf), rate limits, and token lifetime.
+**Not yet verified with a real account (beyond the user's panel check above):** the exact caselist names for NFA-LD / NDT-CEDA / HS policy this season, the login response, whether downloads redirect to file storage, real file formats in the wild (.docx vs .doc/.pdf), rate limits, and token lifetime.
 
 ## In the app (desktop)
 

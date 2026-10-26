@@ -11051,6 +11051,74 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   color: var(--pmd-c-error);
 }
 
+/* ─── Cut card with chat AI (CardMirror Green) ──────────────────── */
+.pmd-ccut-dialog {
+  max-width: 640px;
+  max-height: 90vh;
+}
+.pmd-ccut-body {
+  overflow: auto;
+  min-height: 0;
+  gap: 0.6rem;
+}
+.pmd-ccut-input {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--pmd-c-border);
+  background: var(--pmd-c-bg);
+  color: var(--pmd-c-text);
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.pmd-ccut-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+.pmd-ccut-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+.pmd-ccut-row .pmd-bulk-btn-primary {
+  width: auto;
+}
+.pmd-ccut-target {
+  width: 5.5rem;
+}
+.pmd-ccut-details summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--pmd-c-text-muted);
+  margin-bottom: 0.35rem;
+}
+.pmd-ccut-report {
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.pmd-ccut-report:empty {
+  display: none;
+}
+.pmd-ccut-summary {
+  font-weight: 600;
+}
+.pmd-ccut-problems {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--pmd-c-error);
+}
+.pmd-ccut-note {
+  color: var(--pmd-c-text-muted);
+}
+.pmd-ccut-report.pmd-ccut-error {
+  color: var(--pmd-c-error);
+}
+
 /* Bulk-compress: intro blurb + determinate progress bar. */
 .pmd-bulk-blurb {
   margin: 0 0 0.4rem 0;

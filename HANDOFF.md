@@ -66,6 +66,13 @@ Implemented on top of version 1 without changing it; full details in [OPENCASELI
 - Verified locally (Node 22): typecheck clean; desktop `build:main` + `build:service` succeed and the bundle loads; 9 service tests + 4 panel tests pass; all 3,112 editor tests pass; full suite 4,201 passed / 38 skipped / 1 failed — the failure is `tests/desktop/mac-swap-update.test.ts`, which expects `chmod 555` to block writes and cannot when the sandbox runs as root (unrelated). Screenshots of the panel with fake data looked correct.
 - **Not verified:** the panel inside a packaged app, and any real OpenCaselist request.
 
+## Chat cutting milestone (Claude, 2026-10-26)
+
+- User report: the in-app OpenCaselist panel worked with their real account on the f3e1ccc preview build.
+- New: copy-paste card cutting for chat AIs — `src/cutting/chat-cut.ts` (prompt, parser, verified matcher), `src/editor/chat-cut-apply.ts`, `src/editor/chat-cut-ui.ts`, command `chatCutCard` in the AI group. Format and rules: [CHAT_CUT.md](CHAT_CUT.md).
+- Verified locally: typecheck; 19 new tests (matcher, editor glue on real ProseMirror docs, dialog in jsdom); screenshot of the dialog with a sample reply, which also showed the non-adjacent-words mistake now covered by an explicit prompt rule.
+- **Not verified:** a real Grok conversation.
+
 ## Architecture map
 
 | File | Responsibility |
@@ -145,7 +152,7 @@ The adapter is built (see the milestone above). Next:
 1. Confirm GitHub CI is green for the adapter commit on both platforms.
 2. Limited real run, with the user signing in themselves — easiest through the app panel (Home → Browse OpenCaselist) on a fresh preview build, or `npm run caselist -- login` in their own terminal; never handle the password. Open ~3 files from one team (panel) or `export --limit 3` (CLI). Record the real caselist names, file formats, any redirect behavior and failures in OPENCASELIST.md. Fix what the real service disagrees with.
 3. Then widen to a whole school, and check repeatability and duplicate annotations on real data.
-4. Next features, per the AI design decision in AGENTS.md (the in-app OpenCaselist panel is done): the evidence-cutting job format and the copy-paste "Copy for AI / Paste AI result" flow with quote verification.
+4. Next features, per the AI design decision in AGENTS.md (the OpenCaselist panel and copy-paste chat cutting are done): the user's Grok check of chat cutting, then the next pieces listed in CHAT_CUT.md, then block generation and scouting through the same pattern.
 
 The original adapter plan, kept for reference:
 1. Define a small selectable scope and implement document discovery with an injectable transport for tests.

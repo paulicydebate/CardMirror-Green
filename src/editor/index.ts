@@ -134,6 +134,7 @@ import { openCardEditor } from './learn-create-ui.js';
 import { openLearnManage } from './learn-manage-ui.js';
 import { openBulkConvert, runConvertSingleFileWeb } from './bulk-convert-ui.js';
 import { openOpenCaselist } from './opencaselist-ui.js';
+import { openChatCut } from './chat-cut-ui.js';
 import { openBulkCompress, runCompressSingleFileWeb } from './bulk-compress-ui.js';
 import { bulkCompressEnabled } from './bulk-compress-gate.js';
 import { openClean, runCleanSingleFileWeb } from './clean-ui.js';
@@ -1962,6 +1963,12 @@ const ribbonContext: RibbonContext = {
   aiCreateCite: () => {
     if (!view) return;
     runAiCreateCite(view);
+  },
+  // Copy-paste cutting for chat AIs: needs no API key, so it is not
+  // gated on the AI-features setting.
+  chatCutCard: () => {
+    if (!view) return;
+    openChatCut(view);
   },
   reformatAllCites: () => {
     if (!view) return;

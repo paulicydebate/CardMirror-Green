@@ -4637,6 +4637,7 @@ export type RibbonCommandId =
   | 'addNoteToSelection'
   | 'aiAskAboutSelection'
   | 'aiCreateCite'
+  | 'chatCutCard'
   | 'reformatAllCites'
   | 'translate'
   | 'repairText'
@@ -4922,6 +4923,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'addNoteToSelection',
   'aiAskAboutSelection',
   'aiCreateCite',
+  'chatCutCard',
   'reformatAllCites',
   'translate',
   'repairText',
@@ -5152,6 +5154,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   addNoteToSelection: 'Add Note to Selection',
   aiAskAboutSelection: 'Ask AI About Selection',
   aiCreateCite: 'Format Cite From Selection (AI)',
+  chatCutCard: 'Cut Card with Chat AI (Copy/Paste)',
   reformatAllCites: 'Reformat Every Cite in Document (AI)',
   translate: 'Translate Selection to Clipboard (AI)',
   repairText: 'Repair OCR/PDF Text (AI)',
@@ -5392,6 +5395,7 @@ export const RIBBON_COMMAND_ALIASES: Partial<Record<RibbonCommandId, readonly st
   smartShrink: ['smart shrink', 'deep shrink'],
   condenseAndShrink: ['fast condense', 'condense and shrink', 'condense shrink'],
   aiAskAboutSelection: ['question'],
+  chatCutCard: ['grok', 'chatgpt', 'copy prompt', 'paste ai reply', 'ai cut', 'cut evidence', 'cut card', 'highlight card', 'underline card'],
   reformatAllCites: ['reformat all cites', 'reformat cites', 'all cites', 'every cite', 'bulk cite'],
   pasteAsText: ['paste without formatting', 'paste unformatted', 'paste text'],
   pasteCondensed: ['paste condense', 'paste merge', 'paste flatten', 'paste no paragraphs', 'destructive paste'],
@@ -5589,6 +5593,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   addNoteToSelection: 'Mod-Shift-n',
   aiAskAboutSelection: 'Mod-Shift-q',
   aiCreateCite: 'Mod-Shift-x',
+  chatCutCard: '',
   // Deliberately unbound: one model request per cite in the document is
   // far too expensive to sit behind a stray chord. Bind it in Settings →
   // Keyboard shortcuts if you want one.
@@ -5884,6 +5889,8 @@ export interface RibbonContext {
   addNoteToSelection: () => void;
   aiAskAboutSelection: () => void;
   aiCreateCite: () => void;
+  /** Copy-paste cutting with a chat AI (no API key) for the focused card. */
+  chatCutCard: () => void;
   /** Confirm, then run the cite creator over every cite paragraph in the
    *  document — one model request each. */
   reformatAllCites: () => void;
@@ -6118,6 +6125,7 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   addNoteToSelection: () => {},
   aiAskAboutSelection: () => {},
   aiCreateCite: () => {},
+  chatCutCard: () => {},
   reformatAllCites: () => {},
   translate: () => {},
   repairText: () => {},
@@ -6454,6 +6462,12 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
         if (state.selection.empty) return false;
         if (!dispatch) return true;
         ctx.aiCreateCite();
+        return true;
+      };
+    case 'chatCutCard':
+      return (_state, dispatch) => {
+        if (!dispatch) return true;
+        ctx.chatCutCard();
         return true;
       };
     case 'reformatAllCites':
