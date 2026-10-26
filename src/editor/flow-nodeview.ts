@@ -46,14 +46,17 @@ import {
 import { confirmDialog, promptForText } from './text-prompt.js';
 import {
   applyFlowTheme,
-  FLOW_PRESETS,
+  colorwayColors,
+  DEFAULT_FLOW_THEME,
+  FLOW_BASES,
+  FLOW_COLORWAYS,
   loadFlowTheme,
   onFlowThemeChange,
   saveFlowTheme,
   speechFillSlot,
   themeSideColors,
+  type FlowBaseId,
   type FlowFont,
-  type FlowPresetId,
   type FlowTextSize,
   type FlowTheme,
 } from './flow-theme.js';
@@ -272,56 +275,90 @@ export class FlowWorkbookView implements NodeView {
     head.appendChild(el('strong', undefined, 'Appearance'));
     head.appendChild(this.tool('\u00D7', 'Close', () => { this.appearanceOpen = false; this.render(); }));
     panel.appendChild(head);
-    const presets = el('div', 'pmd-flow-presets');
-    for (const [id, spec] of Object.entries(FLOW_PRESETS) as Array<[FlowPresetId, (typeof FLOW_PRESETS)[FlowPresetId]]>) {
-      const b = el('button', 'pmd-flow-preset' + (this.theme.preset === id ? ' pmd-flow-preset-on' : ''));
-      b.type = 'button';
-      b.dataset['preset'] = id;
-      const sw = el('span', 'pmd-flow-swatch');
-      sw.style.background = spec.vars['--flow-bg']!;
-      sw.append(Object.assign(el('i'), { style: `background:${spec.vars['--flow-fill-0'] ?? spec.vars['--flow-aff']}` }),
-        Object.assign(el('i'), { style: `background:${spec.vars['--flow-fill-1'] ?? spec.vars['--flow-neg']}` }));
-      b.append(sw, el('span', undefined, spec.label));
-      b.addEventListener('click', () => saveFlowTheme({ ...this.theme, preset: id, affText: null, negText: null }));
-      presets.appendChild(b);
-    }
-    panel.appendChild(presets);
-    const colors = themeSideColors(this.theme);
-    const row = (label: string, control: HTMLElement): HTMLElement => {
-      const r = el('label', 'pmd-flow-app-row');
-      r.append(el('span', undefined, label), control);
-      return r;
+    const section = (title: string): HTMLElement => {
+      const h = el('div', 'pmd-flow-app-label', title);
+      panel.appendChild(h);
+      return h;
     };
+
+    section('Background');
+    const bases = el('div', 'pmd-flow-segment');
+    for (const [id, spec] of Object.entries(FLOW_BASES) as Array<[FlowBaseId, (typeof FLOW_BASES)[FlowBaseId]]>) {
+      const b = el('button', 'pmd-flow-seg' + (this.theme.base === id ? ' pmd-flow-seg-on' : ''), spec.label);
+      b.type = 'button';
+      b.dataset['base'] = id;
+      b.setAttribute('aria-pressed', String(this.theme.base === id));
+      b.addEventListener('click', () => {
+        // Classic sheet reads best in one ink color; leaving it brings the color back.
+        const colorway = id === 'classic' ? 'ink' : this.theme.colorway === 'ink' ? 'green-pink' : this.theme.colorway;
+        saveFlowTheme({ ...this.theme, base: id, colorway });
+      });
+      bases.appendChild(b);
+    }
+    panel.appendChild(bases);
+
+    section('Colorway');
+    const ways = el('div', 'pmd-flow-colorways');
+    for (const [id, cw] of Object.entries(FLOW_COLORWAYS)) {
+      const on = this.theme.colorway === id && !this.theme.affText && !this.theme.negText;
+      const b = el('button', 'pmd-flow-colorway' + (on ? ' pmd-flow-colorway-on' : ''));
+      b.type = 'button';
+      b.dataset['colorway'] = id;
+      b.title = cw.label;
+      b.setAttribute('aria-pressed', String(on));
+      const shades = colorwayColors(id, this.theme.base);
+      const dots = el('span', 'pmd-flow-dots');
+      const d1 = el('i');
+      d1.style.background = shades.aff;
+      const d2 = el('i');
+      d2.style.background = shades.neg;
+      dots.append(d1, d2);
+      b.append(dots, el('span', undefined, cw.label));
+      b.addEventListener('click', () => saveFlowTheme({ ...this.theme, colorway: id, affText: null, negText: null }));
+      ways.appendChild(b);
+    }
+    panel.appendChild(ways);
+
+    section('Pick your own');
+    const colors = themeSideColors(this.theme);
+    const custom = el('div', 'pmd-flow-custom');
     for (const side of ['aff', 'neg'] as const) {
+      const label = el('label', 'pmd-flow-colorpick');
       const input = el('input');
       input.type = 'color';
       input.value = colors[side];
       input.addEventListener('input', () => saveFlowTheme({ ...this.theme, [side === 'aff' ? 'affText' : 'negText']: input.value }));
-      panel.appendChild(row(`${sideName(this.book.event, side)} text`, input));
+      label.append(input, el('span', undefined, sideName(this.book.event, side)));
+      custom.appendChild(label);
     }
-    const size = el('select');
+    panel.appendChild(custom);
+
+    section('Text');
+    const sizes = el('div', 'pmd-flow-segment');
     for (const [v, l] of [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']] as const) {
-      const o = el('option', undefined, l);
-      o.value = v;
-      o.selected = this.theme.size === v;
-      size.appendChild(o);
+      const b = el('button', 'pmd-flow-seg' + (this.theme.size === v ? ' pmd-flow-seg-on' : ''), l);
+      b.type = 'button';
+      b.addEventListener('click', () => saveFlowTheme({ ...this.theme, size: v as FlowTextSize }));
+      sizes.appendChild(b);
     }
-    size.addEventListener('change', () => saveFlowTheme({ ...this.theme, size: size.value as FlowTextSize }));
-    panel.appendChild(row('Text size', size));
-    const font = el('select');
-    for (const [v, l] of [['', 'Theme default'], ['ui', 'App font'], ['arial', 'Arial'], ['serif', 'Serif']] as const) {
+    panel.appendChild(sizes);
+    const font = el('select', 'pmd-flow-select');
+    font.setAttribute('aria-label', 'Font');
+    for (const [v, l] of [['', 'Font: theme default'], ['ui', 'Font: app font'], ['arial', 'Font: Arial'], ['serif', 'Font: serif']] as const) {
       const o = el('option', undefined, l);
       o.value = v;
       o.selected = (this.theme.font ?? '') === v;
       font.appendChild(o);
     }
     font.addEventListener('change', () => saveFlowTheme({ ...this.theme, font: (font.value || null) as FlowFont | null }));
-    panel.appendChild(row('Font', font));
-    const reset = el('button', 'pmd-flow-tool', 'Reset to theme colors');
+    panel.appendChild(font);
+
+    const foot = el('div', 'pmd-flow-app-foot');
+    const reset = el('button', 'pmd-flow-tool', 'Reset');
     reset.type = 'button';
-    reset.addEventListener('click', () => saveFlowTheme({ ...this.theme, affText: null, negText: null, size: 'medium', font: null }));
-    panel.appendChild(reset);
-    panel.appendChild(el('div', 'pmd-flow-app-note', 'Applies to every flow on this computer. Not saved in the file.'));
+    reset.addEventListener('click', () => saveFlowTheme({ ...DEFAULT_FLOW_THEME }));
+    foot.append(el('span', 'pmd-flow-app-note', 'For every flow on this computer; not saved in the file.'), reset);
+    panel.appendChild(foot);
     return panel;
   }
 
@@ -331,7 +368,8 @@ export class FlowWorkbookView implements NodeView {
     const table = el('table', 'pmd-flow-grid');
     const head = el('tr');
     sheet.columns.forEach((name, col) => {
-      const th = el('th', `pmd-flow-head pmd-flow-side-${columnSide(this.book.event, sheet, col)} pmd-flow-fill-${speechFillSlot(name, col)}${col % 2 ? ' pmd-flow-odd' : ''}`, name);
+      const th = el('th', `pmd-flow-head pmd-flow-side-${columnSide(this.book.event, sheet, col)} pmd-flow-fill-${speechFillSlot(name, col)}${col % 2 ? ' pmd-flow-odd' : ''}`);
+      th.appendChild(el('span', 'pmd-flow-chip', name));
       th.title = 'Double-click to open this speech as a document';
       th.addEventListener('dblclick', () => this.expand(col));
       head.appendChild(th);

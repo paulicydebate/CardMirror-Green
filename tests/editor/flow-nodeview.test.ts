@@ -126,24 +126,32 @@ describe('flow NodeView', () => {
     expect(v.dom.querySelector('.pmd-flow-grid')).not.toBeNull();
   });
 
-  it('applies appearance themes to every flow and keeps them out of the file', async () => {
+  it('applies backgrounds and colorways to every flow and keeps them out of the file', () => {
     localStorage.clear();
     const v = mount();
     const root = v.dom.querySelector<HTMLElement>('.pmd-flow-root')!;
-    expect(root.dataset['flowTheme']).toBe('light');
+    // Default: dark with Green & Pink.
+    expect(root.dataset['flowTheme']).toBe('dark');
+    expect(root.style.getPropertyValue('--flow-aff')).toBe('#4ade80');
+    expect(root.style.getPropertyValue('--flow-neg')).toBe('#f472b6');
     (Array.from(v.dom.querySelectorAll<HTMLButtonElement>('.pmd-flow-tool')).find((b) => b.textContent === 'Appearance')!).click();
-    v.dom.querySelector<HTMLButtonElement>('.pmd-flow-preset[data-preset="classic"]')!.click();
-    expect(root.dataset['flowTheme']).toBe('classic');
+    expect(v.dom.querySelectorAll('.pmd-flow-colorway').length).toBeGreaterThanOrEqual(10);
+    v.dom.querySelector<HTMLButtonElement>('.pmd-flow-colorway[data-colorway="yellow-purple"]')!.click();
+    expect(root.style.getPropertyValue('--flow-neg')).toBe('#c084fc');
+    v.dom.querySelector<HTMLButtonElement>('.pmd-flow-seg[data-base="light"]')!.click();
+    // Same colorway, darker shades for a light background.
+    expect(root.style.getPropertyValue('--flow-neg')).toBe('#7e22ce');
+    v.dom.querySelector<HTMLButtonElement>('.pmd-flow-seg[data-base="classic"]')!.click();
     expect(root.classList.contains('pmd-flow-usefills')).toBe(true);
     expect(root.style.getPropertyValue('--flow-fill-1')).toBe('#ccffcc');
     // Parli template colors per speech: PMC yellow, LOC green, MG orange, MO cyan, LOR yellow, PMR cyan.
     const slots = Array.from(v.dom.querySelectorAll('.pmd-flow-head')).map((h) => /pmd-flow-fill-(\d)/.exec(h.className)![1]);
     expect(slots).toEqual(['0', '1', '2', '3', '0', '3']);
-    const color = v.dom.querySelectorAll<HTMLInputElement>('.pmd-flow-appearance input[type="color"]')[0]!;
+    const color = v.dom.querySelectorAll<HTMLInputElement>('.pmd-flow-appearance input[type="color"]')[1]!;
     color.value = '#123456';
     color.dispatchEvent(new Event('input'));
-    expect(root.style.getPropertyValue('--flow-aff')).toBe('#123456');
-    expect(JSON.parse(localStorage.getItem('cmg-flow-theme')!)).toMatchObject({ preset: 'classic', affText: '#123456' });
+    expect(root.style.getPropertyValue('--flow-neg')).toBe('#123456');
+    expect(JSON.parse(localStorage.getItem('cmg-flow-theme')!)).toMatchObject({ base: 'classic', negText: '#123456' });
     expect(String(v.state.doc.firstChild!.attrs['data'])).not.toContain('classic');
     localStorage.clear();
   });
