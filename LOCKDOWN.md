@@ -79,12 +79,22 @@ When lockdown starts, every window leaves its co-edit sessions (`src/editor/coll
 - **Indicator:** a fixed, click-through red border on every window, plus a small banner showing elapsed time and an End button.
 - **Web and mobile:** the browser builds show "desktop app only".
 
-## Open questions for the user
+## Decisions (user, 2026-10-26)
 
-1. Should opening other files be allowed during lockdown? The default proposal is to allow it but log it.
-2. Can the debater end lockdown themselves? The proposal is yes, with confirmation and logging.
-3. Border color: red or yellow?
-4. Should keyboard macros and autocorrect expansions be blocked, or only logged?
+1. **No opening files during lockdown.** New blank windows and blank documents are allowed; opening or reading any existing file is not. Block every path:
+   - Open dialog, recents and the start screen.
+   - File search and browse panes, and card search results that read files.
+   - Drag-and-drop of files; files sent by the OS (double-click or "open with" reaching the running app through second-instance/open-file).
+   - OpenCaselist downloads, transclusion that resolves another file, the recovery dialog, and pop-out carrying a file.
+   - Saving the open work (Save / Save As to a new file) stays allowed.
+   - Each refusal is logged.
+2. **Debaters can end lockdown themselves.** The start and end times are recorded in the log, shown in the end dialog with the seal code, and shown in the log viewer.
+3. **Border: yellow.**
+4. **Keyboard macros and autocorrect expansions: logged, not blocked.** Exempt them from the large-insert block with an allow meta and record their text.
+
+## Still open
+
+- **Documents already open when lockdown starts.** Proposal: lockdown closes them (after a save prompt) or refuses to start until only blank or new documents are open, since otherwise prepped files stay readable. Confirm with the user.
 
 ## Suggested build order
 
