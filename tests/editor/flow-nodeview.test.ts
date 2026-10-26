@@ -96,7 +96,7 @@ describe('flow NodeView', () => {
     v.dom.querySelector('.pmd-flow-tab-active')!.dispatchEvent(new MouseEvent('dblclick'));
     await frame();
     expect(book(v).sheets[1]!.name).toBe('Politics DA');
-    (Array.from(v.dom.querySelectorAll<HTMLButtonElement>('.pmd-flow-add')).find((b) => b.textContent === 'Delete sheet')!).click();
+    (Array.from(v.dom.querySelectorAll<HTMLButtonElement>('.pmd-flow-tool')).find((b) => b.textContent === 'Delete sheet')!).click();
     await frame();
     expect(book(v).sheets.map((s) => s.name)).toEqual(['Gov case', 'Off 1']);
   });
@@ -124,6 +124,40 @@ describe('flow NodeView', () => {
       ['Adv 2', ''],
     ]);
     expect(v.dom.querySelector('.pmd-flow-grid')).not.toBeNull();
+  });
+
+  it('applies appearance themes to every flow and keeps them out of the file', async () => {
+    localStorage.clear();
+    const v = mount();
+    const root = v.dom.querySelector<HTMLElement>('.pmd-flow-root')!;
+    expect(root.dataset['flowTheme']).toBe('light');
+    (Array.from(v.dom.querySelectorAll<HTMLButtonElement>('.pmd-flow-tool')).find((b) => b.textContent === 'Appearance')!).click();
+    v.dom.querySelector<HTMLButtonElement>('.pmd-flow-preset[data-preset="classic"]')!.click();
+    expect(root.dataset['flowTheme']).toBe('classic');
+    expect(root.classList.contains('pmd-flow-usefills')).toBe(true);
+    expect(root.style.getPropertyValue('--flow-fill-1')).toBe('#ccffcc');
+    // Parli template colors per speech: PMC yellow, LOC green, MG orange, MO cyan, LOR yellow, PMR cyan.
+    const slots = Array.from(v.dom.querySelectorAll('.pmd-flow-head')).map((h) => /pmd-flow-fill-(\d)/.exec(h.className)![1]);
+    expect(slots).toEqual(['0', '1', '2', '3', '0', '3']);
+    const color = v.dom.querySelectorAll<HTMLInputElement>('.pmd-flow-appearance input[type="color"]')[0]!;
+    color.value = '#123456';
+    color.dispatchEvent(new Event('input'));
+    expect(root.style.getPropertyValue('--flow-aff')).toBe('#123456');
+    expect(JSON.parse(localStorage.getItem('cmg-flow-theme')!)).toMatchObject({ preset: 'classic', affText: '#123456' });
+    expect(String(v.state.doc.firstChild!.attrs['data'])).not.toContain('classic');
+    localStorage.clear();
+  });
+
+  it('toolbar acts on the last focused cell', () => {
+    const v = mount();
+    const c = cell(v, 1, 2);
+    type(c, 'Turn');
+    c.dispatchEvent(new Event('focus'));
+    (Array.from(v.dom.querySelectorAll<HTMLButtonElement>('.pmd-flow-tool')).find((b) => b.textContent === 'B')!).click();
+    expect(cellAt(book(v).sheets[0]!, 1, 2)).toMatchObject({ text: 'Turn', bold: true });
+    (Array.from(v.dom.querySelectorAll<HTMLButtonElement>('.pmd-flow-tool')).find((b) => b.textContent === '+ Row')!).click();
+    expect(cellAt(book(v).sheets[0]!, 2, 2).text).toBe('');
+    expect(cellAt(book(v).sheets[0]!, 1, 2).text).toBe('Turn');
   });
 
   it('re-renders when the data changes from outside', () => {

@@ -44,6 +44,19 @@ import {
   type FlowWorkbook,
 } from '../flow/flow-model.js';
 import { confirmDialog, promptForText } from './text-prompt.js';
+import {
+  applyFlowTheme,
+  FLOW_PRESETS,
+  loadFlowTheme,
+  onFlowThemeChange,
+  saveFlowTheme,
+  speechFillSlot,
+  themeSideColors,
+  type FlowFont,
+  type FlowPresetId,
+  type FlowTextSize,
+  type FlowTheme,
+} from './flow-theme.js';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const modKey = (e: KeyboardEvent): boolean => (isMac ? e.metaKey : e.ctrlKey);
@@ -71,6 +84,11 @@ export class FlowWorkbookView implements NodeView {
   private expandedCol: number | null = null;
   /** Sections of the expanded column, kept locally so empty new sections survive edits. */
   private sections: ColumnSection[] = [];
+  /** Last cell that had focus, for the toolbar. */
+  private lastCell: FocusSpot | null = null;
+  private appearanceOpen = false;
+  private theme: FlowTheme = loadFlowTheme();
+  private readonly unsubscribeTheme: () => void;
 
   constructor(node: PMNode, private readonly view: EditorView, private readonly getPos: () => number | undefined) {
     this.dom = el('div', 'pmd-flow-root');
@@ -78,7 +96,17 @@ export class FlowWorkbookView implements NodeView {
     this.lastData = String(node.attrs['data'] ?? '');
     this.book = this.parse(this.lastData);
     this.sheetId = this.book.sheets[0]!.id;
+    applyFlowTheme(this.dom, this.theme);
+    this.unsubscribeTheme = onFlowThemeChange((theme) => {
+      this.theme = theme;
+      applyFlowTheme(this.dom, theme);
+      if (this.appearanceOpen) this.render(this.lastCell ?? undefined);
+    });
     this.render();
+  }
+
+  destroy(): void {
+    this.unsubscribeTheme();
   }
 
   private parse(data: string): FlowWorkbook {
@@ -144,16 +172,20 @@ export class FlowWorkbookView implements NodeView {
   // ─── Rendering ────────────────────────────────────────────────────
 
   private render(focus?: FocusSpot): void {
-    this.dom.replaceChildren(this.renderTabs(), this.expandedCol === null ? this.renderGrid() : this.renderColumnDoc());
+    const main = el('div', 'pmd-flow-main');
+    main.append(this.renderTopbar(), this.expandedCol === null ? this.renderGrid() : this.renderColumnDoc());
+    this.dom.replaceChildren(this.renderSidebar(), main);
+    if (this.appearanceOpen) this.dom.appendChild(this.renderAppearance());
     requestAnimationFrame(() => {
       this.dom.querySelectorAll('textarea').forEach((t) => autoGrow(t));
       if (focus) this.focusCell(focus);
     });
   }
 
-  private renderTabs(): HTMLElement {
+  private renderSidebar(): HTMLElement {
     const bar = el('div', 'pmd-flow-tabs');
     bar.setAttribute('role', 'tablist');
+    bar.setAttribute('aria-orientation', 'vertical');
     for (const s of this.book.sheets) {
       const tab = el('button', 'pmd-flow-tab' + (s.id === this.sheetId ? ' pmd-flow-tab-active' : '') + ` pmd-flow-side-${s.side}`, s.name);
       tab.type = 'button';
@@ -169,22 +201,128 @@ export class FlowWorkbookView implements NodeView {
       tab.addEventListener('dblclick', () => void this.rename(s));
       bar.appendChild(tab);
     }
-    const ev = FLOW_FORMATS[this.book.event];
-    const addAff = el('button', 'pmd-flow-add', `+ ${sideName(this.book.event, 'aff')}`);
-    addAff.type = 'button';
-    addAff.title = `New ${sideName(this.book.event, 'aff')} sheet`;
-    addAff.addEventListener('click', () => this.add('aff'));
-    const addNeg = el('button', 'pmd-flow-add', `+ ${sideName(this.book.event, 'neg')}`);
-    addNeg.type = 'button';
-    addNeg.title = `New ${sideName(this.book.event, 'neg')} sheet`;
-    addNeg.addEventListener('click', () => this.add('neg'));
-    const del = el('button', 'pmd-flow-add pmd-flow-del', 'Delete sheet');
-    del.type = 'button';
-    del.disabled = this.book.sheets.length < 2;
-    del.addEventListener('click', () => void this.removeSheet());
-    const label = el('span', 'pmd-flow-event', ev?.label ?? 'Custom');
-    bar.append(addAff, addNeg, del, label);
+    const adds = el('div', 'pmd-flow-adds');
+    for (const side of ['aff', 'neg'] as const) {
+      const add = el('button', `pmd-flow-add pmd-flow-side-${side}`, `+ ${sideName(this.book.event, side)}`);
+      add.type = 'button';
+      add.title = `New ${sideName(this.book.event, side)} sheet`;
+      add.addEventListener('click', () => this.add(side));
+      adds.appendChild(add);
+    }
+    bar.appendChild(adds);
+    bar.appendChild(el('div', 'pmd-flow-event', FLOW_FORMATS[this.book.event]?.label ?? 'Custom'));
     return bar;
+  }
+
+  /** A toolbar button that acts on the last-focused cell without stealing focus. */
+  private tool(label: string, title: string, run: () => void, disabled = false): HTMLButtonElement {
+    const b = el('button', 'pmd-flow-tool', label);
+    b.type = 'button';
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.disabled = disabled;
+    b.addEventListener('mousedown', (e) => e.preventDefault());
+    b.addEventListener('click', run);
+    return b;
+  }
+
+  private renderTopbar(): HTMLElement {
+    const sheet = this.sheet;
+    const bar = el('div', 'pmd-flow-topbar');
+    bar.appendChild(el('div', `pmd-flow-title pmd-flow-side-${sheet.side}`, sheet.name));
+    const tools = el('div', 'pmd-flow-tools');
+    const onCell = (fn: (spot: FocusSpot) => void) => () => { if (this.lastCell) fn(this.lastCell); };
+    const flag = (f: 'bold' | 'crossed' | 'extended') => onCell(({ row, col }) => {
+      const cell = cellAt(this.sheet, row, col);
+      this.commit(setCell(this.book, this.sheetId, row, col, { [f]: !cell[f] }));
+      this.render({ row, col, caret: 'end' });
+    });
+    const inGrid = this.expandedCol === null;
+    tools.append(
+      this.tool('B', `Bold (${isMac ? 'Cmd' : 'Ctrl'}+B)`, flag('bold'), !inGrid),
+      this.tool('S\u0336', `Cross out (${isMac ? 'Cmd' : 'Ctrl'}+Shift+X)`, flag('crossed'), !inGrid),
+      this.tool('\u21A6', `Extend (${isMac ? 'Cmd' : 'Ctrl'}+Shift+L)`, flag('extended'), !inGrid),
+      this.tool('+ Row', `Insert row below (${isMac ? 'Cmd' : 'Ctrl'}+Enter)`, onCell(({ row, col }) => {
+        this.commit(insertRows(this.book, this.sheetId, row + 1));
+        this.render({ row: row + 1, col, caret: 'end' });
+      }), !inGrid),
+      this.tool('\u2212 Row', `Delete row (${isMac ? 'Cmd' : 'Ctrl'}+Shift+Backspace)`, onCell(({ row, col }) => {
+        this.commit(deleteRows(this.book, this.sheetId, row));
+        this.render({ row: Math.max(0, Math.min(row, this.sheet.rows.length - 1)), col, caret: 'end' });
+      }), !inGrid),
+      this.tool(inGrid ? 'Open as doc' : 'Back to sheet', inGrid ? 'Open the current speech as a document (double-click a header)' : 'Back to the spreadsheet (Escape)', () => {
+        if (inGrid) this.expand(this.lastCell?.col ?? 0);
+        else this.collapse();
+      }),
+      this.tool('Appearance', 'Colors, text size and font', () => {
+        this.appearanceOpen = !this.appearanceOpen;
+        this.render();
+      }),
+      this.tool('Delete sheet', 'Delete this sheet', () => void this.removeSheet(), this.book.sheets.length < 2),
+    );
+    bar.appendChild(tools);
+    return bar;
+  }
+
+  private renderAppearance(): HTMLElement {
+    const panel = el('div', 'pmd-flow-appearance');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', 'Flow appearance');
+    const head = el('div', 'pmd-flow-app-head');
+    head.appendChild(el('strong', undefined, 'Appearance'));
+    head.appendChild(this.tool('\u00D7', 'Close', () => { this.appearanceOpen = false; this.render(); }));
+    panel.appendChild(head);
+    const presets = el('div', 'pmd-flow-presets');
+    for (const [id, spec] of Object.entries(FLOW_PRESETS) as Array<[FlowPresetId, (typeof FLOW_PRESETS)[FlowPresetId]]>) {
+      const b = el('button', 'pmd-flow-preset' + (this.theme.preset === id ? ' pmd-flow-preset-on' : ''));
+      b.type = 'button';
+      b.dataset['preset'] = id;
+      const sw = el('span', 'pmd-flow-swatch');
+      sw.style.background = spec.vars['--flow-bg']!;
+      sw.append(Object.assign(el('i'), { style: `background:${spec.vars['--flow-fill-0'] ?? spec.vars['--flow-aff']}` }),
+        Object.assign(el('i'), { style: `background:${spec.vars['--flow-fill-1'] ?? spec.vars['--flow-neg']}` }));
+      b.append(sw, el('span', undefined, spec.label));
+      b.addEventListener('click', () => saveFlowTheme({ ...this.theme, preset: id, affText: null, negText: null }));
+      presets.appendChild(b);
+    }
+    panel.appendChild(presets);
+    const colors = themeSideColors(this.theme);
+    const row = (label: string, control: HTMLElement): HTMLElement => {
+      const r = el('label', 'pmd-flow-app-row');
+      r.append(el('span', undefined, label), control);
+      return r;
+    };
+    for (const side of ['aff', 'neg'] as const) {
+      const input = el('input');
+      input.type = 'color';
+      input.value = colors[side];
+      input.addEventListener('input', () => saveFlowTheme({ ...this.theme, [side === 'aff' ? 'affText' : 'negText']: input.value }));
+      panel.appendChild(row(`${sideName(this.book.event, side)} text`, input));
+    }
+    const size = el('select');
+    for (const [v, l] of [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']] as const) {
+      const o = el('option', undefined, l);
+      o.value = v;
+      o.selected = this.theme.size === v;
+      size.appendChild(o);
+    }
+    size.addEventListener('change', () => saveFlowTheme({ ...this.theme, size: size.value as FlowTextSize }));
+    panel.appendChild(row('Text size', size));
+    const font = el('select');
+    for (const [v, l] of [['', 'Theme default'], ['ui', 'App font'], ['arial', 'Arial'], ['serif', 'Serif']] as const) {
+      const o = el('option', undefined, l);
+      o.value = v;
+      o.selected = (this.theme.font ?? '') === v;
+      font.appendChild(o);
+    }
+    font.addEventListener('change', () => saveFlowTheme({ ...this.theme, font: (font.value || null) as FlowFont | null }));
+    panel.appendChild(row('Font', font));
+    const reset = el('button', 'pmd-flow-tool', 'Reset to theme colors');
+    reset.type = 'button';
+    reset.addEventListener('click', () => saveFlowTheme({ ...this.theme, affText: null, negText: null, size: 'medium', font: null }));
+    panel.appendChild(reset);
+    panel.appendChild(el('div', 'pmd-flow-app-note', 'Applies to every flow on this computer. Not saved in the file.'));
+    return panel;
   }
 
   private renderGrid(): HTMLElement {
@@ -193,7 +331,7 @@ export class FlowWorkbookView implements NodeView {
     const table = el('table', 'pmd-flow-grid');
     const head = el('tr');
     sheet.columns.forEach((name, col) => {
-      const th = el('th', `pmd-flow-head pmd-flow-side-${columnSide(this.book.event, sheet, col)}`, name);
+      const th = el('th', `pmd-flow-head pmd-flow-side-${columnSide(this.book.event, sheet, col)} pmd-flow-fill-${speechFillSlot(name, col)}${col % 2 ? ' pmd-flow-odd' : ''}`, name);
       th.title = 'Double-click to open this speech as a document';
       th.addEventListener('dblclick', () => this.expand(col));
       head.appendChild(th);
@@ -203,7 +341,7 @@ export class FlowWorkbookView implements NodeView {
     sheet.rows.forEach((row, r) => {
       const tr = el('tr');
       sheet.columns.forEach((_, col) => {
-        const td = el('td', `pmd-flow-td pmd-flow-side-${columnSide(this.book.event, sheet, col)}`);
+        const td = el('td', `pmd-flow-td pmd-flow-side-${columnSide(this.book.event, sheet, col)} pmd-flow-fill-${speechFillSlot(sheet.columns[col]!, col)}${col % 2 ? ' pmd-flow-odd' : ''}`);
         td.appendChild(this.renderCell(cellAt(sheet, r, col), r, col));
         tr.appendChild(td);
       });
@@ -230,6 +368,7 @@ export class FlowWorkbookView implements NodeView {
       this.commit(setCell(this.book, this.sheetId, row, col, { text: area.value }));
     });
     area.addEventListener('keydown', (e) => this.onCellKey(e, area, row, col));
+    area.addEventListener('focus', () => { this.lastCell = { row, col, caret: 'end' }; });
     return area;
   }
 
@@ -239,11 +378,7 @@ export class FlowWorkbookView implements NodeView {
     const wrap = el('div', `pmd-flow-doc pmd-flow-side-${columnSide(this.book.event, sheet, col)}`);
     const bar = el('div', 'pmd-flow-docbar');
     bar.appendChild(el('strong', undefined, `${sheet.columns[col]} — ${sheet.name}`));
-    const back = el('button', 'pmd-flow-add', 'Back to spreadsheet');
-    back.type = 'button';
-    back.title = 'Escape';
-    back.addEventListener('click', () => this.collapse());
-    bar.appendChild(back);
+    bar.appendChild(el('span', 'pmd-flow-hint', 'Escape returns to the spreadsheet'));
     wrap.appendChild(bar);
     if (this.sections.length === 0) this.sections = [{ rowId: null, text: '' }];
     this.sections.forEach((section, i) => {

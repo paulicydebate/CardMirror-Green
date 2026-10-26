@@ -1,12 +1,14 @@
 # Spreadsheet flowing
 
-Status (2026-10-26): first version in the app, tested with automated tests and screenshots. **Not yet tried by the user.** Waiting on the user's Google Sheets flow template to match its layout.
+Status (2026-10-26): in the app, tested with automated tests and screenshots. **Not yet tried by the user.** Matched to the user's parli template (Parli_Flow_Template_Master.xlsm, not committed) and their Flower setup: separate LOR and PMR columns on every sheet, never a combined neg block.
 
 Why: NPDA prep rules forbid copy-paste during prep, and debaters flow in spreadsheets. A flow inside CardMirror lets prep be typed straight onto the flow, next to the user's documents, including in the three-pane workspace.
 
 ## Use
 
 - Home → **New flow**, or the command bar → **New Flow (Spreadsheet)**. Pick NPDA, NFA-LD or Policy. The flow opens like any document (new window, three-pane slot picker, or in place) and is saved as a `.cmir` file with Save As.
+- **Layout:** sheet list on the left, sheet title and toolbar on top (Bold, Cross out, Extend, + Row, − Row, Open as doc, Appearance, Delete sheet), grid below.
+- **Appearance:** presets Light, Dark (Flower-style: green/orange text), Classic sheet (the parli template's pastel column fills: PMC yellow, LOC green, MG orange, MO cyan, LOR yellow, PMR cyan; Arial) and High contrast; plus custom Gov/Opp text colors, text size and font. Stored per computer (localStorage), applied to all flows, never saved in the file.
 - **Tabs:** one sheet per position. `+ Gov` / `+ Opp` (or Aff/Neg) add a sheet starting at that side's first speech; double-click a tab to rename it; Delete sheet asks first if the sheet has text (undo restores it).
 - **Grid:** one column per speech, colored by the side giving it (blue = aff/gov, red = neg/opp). Cells wrap and grow; the speech headers stay visible while scrolling.
 - **Keys in a cell:** Enter = cell below (adds rows at the bottom), Shift+Enter = new line in the cell, Tab / Shift+Tab = next / previous speech, Up/Down at the edge of the text = row above/below, Ctrl/Cmd+Enter = insert row below, Ctrl/Cmd+Shift+Backspace = delete row, Ctrl/Cmd+B = bold, Ctrl/Cmd+Shift+X = cross out, Ctrl/Cmd+Shift+L = extend.
@@ -35,12 +37,12 @@ The user's favorite flow app, flower (github.com/MrinalA2009/debate-flowerX), is
 | `src/flow/flow-model.ts` | Workbook model, presets, immutable edits, `cardmirror.flow` v1 save/load, column ↔ sections |
 | `src/flow/flow-to-pm.ts` | Flow → heading + table blocks (Word export) |
 | `src/schema/nodes.ts` (`flow_workbook`) | Leaf block holding the serialized flow in its `data` attr |
+| `src/editor/flow-theme.ts` | Appearance presets, overrides, storage and live updates |
 | `src/editor/flow-nodeview.ts` | Tabs, grid, keyboard, column document view; commits each edit as one transaction |
 | `tests/flow/*`, `tests/editor/flow-nodeview.test.ts` | Model, export and in-editor tests |
 
 ## Not done yet
 
-- Matching the user's Google Sheets template (needs the example).
 - Send to flow from a document (cards/tags into the active cell), for Mac and Windows.
 - Rich text (underline/highlight) in cells and in the column document view; cells are plain text with bold/crossed/extended.
 - Excel (.xlsx) export for Google Sheets users; speech timers; arrows between arguments.

@@ -11119,87 +11119,138 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   color: var(--pmd-c-error);
 }
 
-/* ─── Spreadsheet flow (CardMirror Green) ───────────────────────── */
+/* ─── Spreadsheet flow (CardMirror Green) ─────────────────────────
+   Colors come from CSS variables set per flow by flow-theme.ts
+   (preset + the user's overrides), so every theme shares these rules. */
 .pmd-flow-root {
-  --pmd-flow-aff: #2563eb;
-  --pmd-flow-neg: #dc2626;
-  font-family: var(--pmd-ui-font);
+  position: relative;
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
   margin: 0.5rem 0 1rem;
-  border: 1px solid var(--pmd-c-border);
-  border-radius: 6px;
-  background: var(--pmd-c-bg);
+  border: 1px solid var(--flow-line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--flow-bg);
+  color: var(--flow-text);
+  font-family: var(--flow-font);
   user-select: text;
   white-space: normal;
 }
-.pmd-flow-root.pmd-flow-selected {
-  outline: 2px solid var(--pmd-c-accent);
-}
+.pmd-flow-root.pmd-flow-selected { outline: 2px solid var(--flow-accent); }
+.pmd-flow-root button { font-family: var(--pmd-ui-font, system-ui, sans-serif); }
+
+/* Sheet list (left) */
 .pmd-flow-tabs {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.35rem 0.5rem;
-  border-bottom: 1px solid var(--pmd-c-border);
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.5rem 0.4rem;
+  background: var(--flow-panel);
+  border-right: 1px solid var(--flow-line);
+  min-height: 12rem;
 }
-.pmd-flow-tab,
-.pmd-flow-add {
-  font: inherit;
+.pmd-flow-tab {
+  text-align: left;
   font-size: 0.82rem;
-  padding: 0.2rem 0.6rem;
-  border-radius: 4px;
-  border: 1px solid var(--pmd-c-border);
-  background: var(--pmd-c-bg);
-  color: var(--pmd-c-text);
+  padding: 0.35rem 0.55rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.pmd-flow-tab.pmd-flow-side-aff { border-bottom: 3px solid var(--pmd-flow-aff); }
-.pmd-flow-tab.pmd-flow-side-neg { border-bottom: 3px solid var(--pmd-flow-neg); }
+.pmd-flow-tab.pmd-flow-side-aff { color: var(--flow-aff); }
+.pmd-flow-tab.pmd-flow-side-neg { color: var(--flow-neg); }
+.pmd-flow-tab:hover { background: color-mix(in srgb, var(--flow-text) 8%, transparent); }
 .pmd-flow-tab-active {
   font-weight: 600;
-  background: var(--pmd-c-button-hover);
+  background: color-mix(in srgb, var(--flow-accent) 18%, transparent);
 }
-.pmd-flow-add { color: var(--pmd-c-text-muted); }
-.pmd-flow-add:hover, .pmd-flow-tab:hover { background: var(--pmd-c-button-hover); }
-.pmd-flow-add:disabled { opacity: 0.45; cursor: default; }
-.pmd-flow-del { margin-left: 0.5rem; }
+.pmd-flow-adds { display: flex; gap: 0.3rem; margin-top: 0.5rem; padding: 0 0.15rem; }
+.pmd-flow-add {
+  font-size: 0.8rem;
+  padding: 0.15rem 0.3rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.pmd-flow-add.pmd-flow-side-aff { color: var(--flow-aff); }
+.pmd-flow-add.pmd-flow-side-neg { color: var(--flow-neg); }
+.pmd-flow-add:hover { text-decoration: underline; }
 .pmd-flow-event {
-  margin-left: auto;
-  font-size: 0.75rem;
-  color: var(--pmd-c-text-muted);
+  margin-top: auto;
+  padding: 0.5rem 0.4rem 0;
+  font-size: 0.7rem;
+  color: var(--flow-muted);
 }
-.pmd-flow-gridwrap {
-  overflow: auto;
-  max-height: 75vh;
+
+/* Title + toolbar (top) */
+.pmd-flow-main { min-width: 0; display: flex; flex-direction: column; }
+.pmd-flow-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--flow-line);
 }
+.pmd-flow-title { font-size: 1.1rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pmd-flow-title.pmd-flow-side-aff { color: var(--flow-aff); }
+.pmd-flow-title.pmd-flow-side-neg { color: var(--flow-neg); }
+.pmd-flow-tools { margin-left: auto; display: flex; flex-wrap: wrap; gap: 0.2rem; justify-content: flex-end; }
+.pmd-flow-tool {
+  font-size: 0.78rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--flow-muted);
+  cursor: pointer;
+}
+.pmd-flow-tool:hover { color: var(--flow-text); border-color: var(--flow-line); }
+.pmd-flow-tool:disabled { opacity: 0.35; cursor: default; }
+
+/* Grid */
+.pmd-flow-gridwrap { overflow: auto; max-height: 75vh; }
 .pmd-flow-grid {
   border-collapse: collapse;
   table-layout: fixed;
   width: 100%;
-  min-width: 640px;
+  min-width: 600px;
 }
 .pmd-flow-head {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--pmd-c-bg);
-  font-size: 0.8rem;
-  font-weight: 700;
-  padding: 0.3rem;
-  border-bottom: 2px solid currentColor;
+  background: var(--flow-bg);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.45rem 0.3rem 0.35rem;
   cursor: zoom-in;
   user-select: none;
 }
-.pmd-flow-head.pmd-flow-side-aff { color: var(--pmd-flow-aff); }
-.pmd-flow-head.pmd-flow-side-neg { color: var(--pmd-flow-neg); }
+.pmd-flow-head.pmd-flow-side-aff { color: var(--flow-aff); }
+.pmd-flow-head.pmd-flow-side-neg { color: var(--flow-neg); }
 .pmd-flow-td {
   vertical-align: top;
   padding: 0;
-  border-right: 1px solid var(--pmd-c-border);
-  border-bottom: 1px solid color-mix(in srgb, var(--pmd-c-border) 50%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--flow-line) 55%, transparent);
 }
-.pmd-flow-td.pmd-flow-side-aff { background: color-mix(in srgb, var(--pmd-flow-aff) 5%, transparent); }
-.pmd-flow-td.pmd-flow-side-neg { background: color-mix(in srgb, var(--pmd-flow-neg) 5%, transparent); }
+.pmd-flow-td.pmd-flow-side-aff { background: var(--flow-tint-aff); }
+.pmd-flow-td.pmd-flow-side-neg { background: var(--flow-tint-neg); }
+.pmd-flow-stripes .pmd-flow-td.pmd-flow-odd,
+.pmd-flow-stripes .pmd-flow-head.pmd-flow-odd { background: var(--flow-stripe); }
+.pmd-flow-stripes .pmd-flow-head.pmd-flow-odd { background: color-mix(in srgb, var(--flow-bg) 100%, var(--flow-stripe)); }
+/* Classic sheet: whole columns filled per speech, like the parli template. */
+.pmd-flow-usefills .pmd-flow-td,
+.pmd-flow-usefills .pmd-flow-head { border-right: 1px solid var(--flow-line); }
+.pmd-flow-usefills .pmd-flow-fill-0 { background: var(--flow-fill-0); }
+.pmd-flow-usefills .pmd-flow-fill-1 { background: var(--flow-fill-1); }
+.pmd-flow-usefills .pmd-flow-fill-2 { background: var(--flow-fill-2); }
+.pmd-flow-usefills .pmd-flow-fill-3 { background: var(--flow-fill-3); }
+.pmd-flow-usefills .pmd-flow-head { font-family: "Arial Black", var(--flow-font); font-weight: 400; font-size: 0.9rem; color: var(--flow-text); }
 .pmd-flow-cell,
 .pmd-flow-docsec {
   display: block;
@@ -11210,64 +11261,112 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   resize: none;
   overflow: hidden;
   background: transparent;
-  color: var(--pmd-c-text);
   font: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .pmd-flow-cell {
-  font-size: 0.85rem;
+  font-size: var(--flow-size);
   line-height: 1.3;
-  padding: 0.25rem 0.35rem;
-  min-height: 1.8em;
+  padding: 0.3rem 0.45rem;
+  min-height: 1.9em;
+  border-radius: 4px;
 }
-.pmd-flow-cell:focus {
-  box-shadow: inset 0 0 0 2px var(--pmd-c-accent);
-  background: var(--pmd-c-bg);
-}
-.pmd-flow-side-aff .pmd-flow-cell { color: color-mix(in srgb, var(--pmd-flow-aff) 70%, var(--pmd-c-text)); }
-.pmd-flow-side-neg .pmd-flow-cell { color: color-mix(in srgb, var(--pmd-flow-neg) 70%, var(--pmd-c-text)); }
+.pmd-flow-side-aff .pmd-flow-cell { color: var(--flow-aff); }
+.pmd-flow-side-neg .pmd-flow-cell { color: var(--flow-neg); }
+.pmd-flow-cell::placeholder { color: var(--flow-muted); }
+.pmd-flow-cell:focus { box-shadow: inset 0 -2px 0 var(--flow-accent); background: color-mix(in srgb, var(--flow-accent) 7%, transparent); }
 .pmd-flow-bold { font-weight: 700; }
-.pmd-flow-crossed { text-decoration: line-through; opacity: 0.6; }
-.pmd-flow-extended { border-left: 3px solid var(--pmd-c-text-muted); }
-.pmd-flow-doc {
-  padding: 0.5rem 1rem 1rem;
-  max-height: 75vh;
-  overflow: auto;
-}
+.pmd-flow-crossed { text-decoration: line-through; opacity: 0.55; }
+.pmd-flow-extended { box-shadow: inset 3px 0 0 var(--flow-muted); }
+
+/* Column as a document */
+.pmd-flow-doc { padding: 0.4rem 1.2rem 1rem; max-height: 75vh; overflow: auto; }
 .pmd-flow-docbar {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: 0.75rem;
   position: sticky;
   top: 0;
-  background: var(--pmd-c-bg);
+  background: var(--flow-bg);
   padding: 0.35rem 0;
   margin-bottom: 0.4rem;
   border-bottom: 2px solid currentColor;
 }
-.pmd-flow-doc.pmd-flow-side-aff .pmd-flow-docbar { color: var(--pmd-flow-aff); }
-.pmd-flow-doc.pmd-flow-side-neg .pmd-flow-docbar { color: var(--pmd-flow-neg); }
-.pmd-flow-docbar .pmd-flow-add { margin-left: auto; }
+.pmd-flow-doc.pmd-flow-side-aff .pmd-flow-docbar { color: var(--flow-aff); }
+.pmd-flow-doc.pmd-flow-side-neg .pmd-flow-docbar { color: var(--flow-neg); }
+.pmd-flow-hint { font-size: 0.75rem; color: var(--flow-muted); }
 .pmd-flow-docsec {
-  font-size: 1rem;
-  line-height: 1.5;
-  padding: 0.4rem 0.5rem;
-  border-left: 3px solid var(--pmd-c-border);
+  font-size: calc(var(--flow-size) * 1.15);
+  line-height: 1.55;
+  padding: 0.45rem 0.6rem;
+  border-left: 3px solid var(--flow-line);
   margin-top: 0.4rem;
 }
-.pmd-flow-docsec:focus { border-left-color: var(--pmd-c-accent); }
+.pmd-flow-doc.pmd-flow-side-aff .pmd-flow-docsec { color: var(--flow-aff); }
+.pmd-flow-doc.pmd-flow-side-neg .pmd-flow-docsec { color: var(--flow-neg); }
+.pmd-flow-docsec:focus { border-left-color: var(--flow-accent); }
 .pmd-flow-addsec {
-  font: inherit;
   font-size: 0.75rem;
   border: none;
   background: none;
-  color: var(--pmd-c-text-muted);
+  color: var(--flow-muted);
   cursor: pointer;
-  padding: 0.1rem 0.5rem;
-  opacity: 0.5;
+  padding: 0.1rem 0.6rem;
+  opacity: 0.6;
 }
 .pmd-flow-addsec:hover, .pmd-flow-addsec:focus { opacity: 1; }
+
+/* Appearance panel */
+.pmd-flow-appearance {
+  position: absolute;
+  top: 2.6rem;
+  right: 0.6rem;
+  z-index: 3;
+  width: 17rem;
+  padding: 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--flow-line);
+  background: var(--flow-panel);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-family: var(--pmd-ui-font, system-ui, sans-serif);
+  font-size: 0.82rem;
+}
+.pmd-flow-app-head { display: flex; align-items: center; justify-content: space-between; }
+.pmd-flow-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 0.35rem; }
+.pmd-flow-preset {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem;
+  font-size: 0.75rem;
+  border-radius: 6px;
+  border: 1px solid var(--flow-line);
+  background: transparent;
+  color: var(--flow-text);
+  cursor: pointer;
+  text-align: left;
+}
+.pmd-flow-preset-on { border-color: var(--flow-accent); box-shadow: 0 0 0 1px var(--flow-accent); }
+.pmd-flow-swatch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 4px;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+}
+.pmd-flow-swatch i { display: block; width: 8px; height: 14px; border-radius: 2px; }
+.pmd-flow-app-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.pmd-flow-app-row select { font: inherit; }
+.pmd-flow-app-note { font-size: 0.7rem; color: var(--flow-muted); }
+@media (max-width: 700px) {
+  .pmd-flow-root { grid-template-columns: 1fr; }
+  .pmd-flow-tabs { flex-direction: row; flex-wrap: wrap; min-height: 0; border-right: none; border-bottom: 1px solid var(--flow-line); }
+  .pmd-flow-event { margin: 0 0 0 auto; padding: 0.3rem; }
+}
 
 /* Bulk-compress: intro blurb + determinate progress bar. */
 .pmd-bulk-blurb {
