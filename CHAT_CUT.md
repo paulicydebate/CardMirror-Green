@@ -1,6 +1,6 @@
 # Cut a card with a chat AI (copy-paste)
 
-Status: implemented in the app and tested locally with automated tests and screenshots (2026-10-26). **Not yet tried by the user with Grok.**
+Status: implemented; first user test with Grok (2026-10-26): quotes matched and applied correctly, but Grok block-highlighted whole clauses. The prompt now asks for word-level (skeleton) highlighting with a word budget, and the dialog warns about heavy or block highlighting. Re-test pending; the user will also compare Claude chat with their own card-cutting skill.
 
 Lets any chat AI (the Grok app on PC, Mac or phone; ChatGPT; Claude chat) cut a card without an API key. CardMirror Green does the non-AI part: it builds the prompt, checks the reply against the card's text, and applies the formatting.
 
@@ -13,6 +13,11 @@ Lets any chat AI (the Grok app on PC, Mac or phone; ChatGPT; Claude chat) cut a 
 5. **Apply to card**. One step: Ctrl+Z / Cmd+Z undoes it. The dialog can stay open while you switch to the chat app.
 
 Options: replace the card's existing underline/emphasis/highlight (on by default); use the AI's tag (on by default only when the card has no tag).
+
+## Highlight quality
+
+- The prompt sets a highlight budget: the user's number, or about 12% of the card's words (20–80) when left blank, and asks for word-level highlighting (mostly 1–4 word runs, never whole sentences) that reads as natural sentences, with a made-up good/bad example.
+- The dialog warns (does not block) when highlighted words exceed half the underlined words, and counts highlight quotes longer than 8 words.
 
 ## Safety rules (enforced in code, not by trusting the AI)
 

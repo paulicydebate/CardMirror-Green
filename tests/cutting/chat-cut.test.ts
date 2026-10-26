@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCutPrompt,
+  defaultHighlightTarget,
   CHAT_CUT_FORMAT,
   matchCutReply,
   normalizeWithMap,
@@ -21,10 +22,29 @@ describe('chat cut prompt', () => {
   it('includes the rules, the format and only the cleaned card text', () => {
     const prompt = buildCutPrompt({ tag: 'Escalation  risk', cite: 'Smith 25', paragraphs: ['  a\n b ', '', 'c'], purpose: 'war is likely', targetWords: 40 });
     expect(prompt).toContain('The card should prove: war is likely');
-    expect(prompt).toContain('Aim for about 40 highlighted words.');
+    expect(prompt).toContain('HIGHLIGHT about 40 words in total (never more than 50)');
+    expect(prompt).toContain('not whole sentences or clauses');
     expect(prompt).toContain(`"format": "${CHAT_CUT_FORMAT}"`);
     expect(prompt).toContain('CURRENT TAG (may be improved): Escalation risk');
     expect(prompt).toContain('<<<\na b\n\nc\n>>>');
+  });
+});
+
+describe('highlight budget and density', () => {
+  it('defaults to about 12% of the card, between 20 and 80 words', () => {
+    const words = (n: number) => [Array.from({ length: n }, () => 'w').join(' ')];
+    expect(defaultHighlightTarget(words(100))).toBe(20);
+    expect(defaultHighlightTarget(words(400))).toBe(50);
+    expect(defaultHighlightTarget(words(2000))).toBe(80);
+    expect(buildCutPrompt({ tag: '', cite: '', paragraphs: words(400) })).toContain('HIGHLIGHT about 50 words');
+  });
+
+  it('measures highlight share and long block highlights', () => {
+    const para = ['one two three four five six seven eight nine ten eleven twelve'];
+    const m = matchCutReply(para, { tag: null, underline: [para[0]!], emphasis: [], highlight: ['one two three four five six seven eight nine ten'] });
+    expect(m.underlinedWords).toBe(12);
+    expect(m.highlightedWords).toBe(10);
+    expect(m.longHighlights).toBe(1);
   });
 });
 

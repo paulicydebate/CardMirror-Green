@@ -55,17 +55,19 @@ export function cleanParagraph(text: string): string {
 
 export function buildCutPrompt(input: PromptInput): string {
   const paras = input.paragraphs.map(cleanParagraph).filter(Boolean);
-  const target = input.targetWords && input.targetWords > 0 ? Math.round(input.targetWords) : null;
+  const target = input.targetWords && input.targetWords > 0 ? Math.round(input.targetWords) : defaultHighlightTarget(paras);
   const purpose = input.purpose?.trim();
   const lines: string[] = [
     'You are cutting a piece of debate evidence (a "card") in the Verbatim style used in NFA-LD, CEDA/NDT and high-school policy debate.',
     '',
     'TASK',
     purpose ? `The card should prove: ${purpose}` : 'Decide the strongest honest claim this evidence supports.',
-    '- UNDERLINE the author\'s claims and warrants that matter for that argument, plus enough surrounding text for context.',
-    '- HIGHLIGHT a subset of the underlined text. Read on its own, in order, the highlighted text must make sense and make the argument. This is what the debater reads aloud.' +
-      (target ? ` Aim for about ${target} highlighted words.` : ''),
-    '- EMPHASIS (boxed text): at most a few of the most important words or short phrases, all inside underlined text.',
+    '- UNDERLINE the author\'s claims and warrants that matter for that argument, plus enough surrounding text for context. Skip background, examples and asides that do not help the argument.',
+    `- HIGHLIGHT about ${target} words in total (never more than ${Math.round(target * 1.25)}). This is what the debater reads aloud in a timed speech, so it must be lean.`,
+    '- Highlight SELECTIVELY, word by word, not whole sentences or clauses. Pick the nouns, verbs and numbers that carry the claim and warrant; leave out articles, filler, hedges, examples, attributions and transitions. Most highlight quotes are 1 to 4 words; a run longer than 6 words is almost always too much.',
+    '- Read on their own, in order, the highlighted words must form grammatical, natural-sounding sentences that make the argument.',
+    '- Good: in "Rising sea levels will, according to most of the models we reviewed, displace more than 200 million people by the end of the century", highlight "Rising sea levels will", "displace", "200 million people" so it reads "Rising sea levels will displace 200 million people". Bad: highlighting the whole sentence or every clause.',
+    '- EMPHASIS (boxed text): at most 3 to 5 of the most important words or short phrases in the whole card, inside underlined text.',
     '- TAG: one sentence stating the claim the highlighted text actually proves. Do not overclaim.',
     '- Never make the author say something they do not mean. Do not highlight around a "not" or a qualifier in a way that flips or inflates the meaning.',
     '',
@@ -94,6 +96,13 @@ export function buildCutPrompt(input: PromptInput): string {
   if (input.cite.trim()) lines.push('CITATION (do not quote from it): ' + cleanParagraph(input.cite), '');
   lines.push('CARD TEXT (quote only from here)', '<<<', paras.join('\n\n'), '>>>');
   return lines.join('\n');
+}
+
+/** Highlight budget when the user gives none: about 12% of the card's words,
+ *  kept between 20 and 80 (a typical well-cut card reads in well under a minute). */
+export function defaultHighlightTarget(paragraphs: string[]): number {
+  const words = paragraphs.join(' ').split(/\s+/).filter(Boolean).length;
+  return Math.max(20, Math.min(80, Math.round((words * 0.12) / 5) * 5));
 }
 
 // ─── Reply parsing ───────────────────────────────────────────────────
@@ -224,6 +233,10 @@ export interface MatchReport {
   autoUnderlined: number;
   counts: Record<CutLayer, number>;
   highlightedWords: number;
+  /** Words touched by underline or emphasis. */
+  underlinedWords: number;
+  /** Highlight quotes longer than 8 words (block highlighting). */
+  longHighlights: number;
 }
 
 interface Cursor { p: number; at: number }
@@ -301,6 +314,8 @@ export function matchCutReply(paragraphs: string[], reply: ChatCutReply): MatchR
     autoUnderlined: 0,
     counts: { u: 0, em: 0, hl: 0 },
     highlightedWords: 0,
+    underlinedWords: 0,
+    longHighlights: 0,
   };
   const layers: Array<[CutLayer, string[]]> = [['u', reply.underline], ['em', reply.emphasis], ['hl', reply.highlight]];
   for (const [layer, quotes] of layers) {
@@ -326,6 +341,7 @@ export function matchCutReply(paragraphs: string[], reply: ChatCutReply): MatchR
       if (hit.wrapped) report.outOfOrder.push({ layer, quote });
       const map = space[hit.p]!.map;
       report.spans.push({ layer, p: hit.p, start: map[hit.nStart]!, end: map[hit.nEnd - 1]! + 1 });
+      if (layer === 'hl' && q.split(' ').filter(Boolean).length > 8) report.longHighlights++;
       report.counts[layer]++;
       cursor = { p: hit.p, at: hit.nEnd };
     }
@@ -343,6 +359,8 @@ export function matchCutReply(paragraphs: string[], reply: ChatCutReply): MatchR
     }
     const hl = mergeRanges(report.spans.filter((s) => s.p === p && s.layer === 'hl').map((s) => [s.start, s.end]));
     report.highlightedWords += wordsIn(paragraphs[p]!, hl);
+    const ul = mergeRanges(report.spans.filter((s) => s.p === p && s.layer !== 'hl').map((s) => [s.start, s.end]));
+    report.underlinedWords += wordsIn(paragraphs[p]!, ul);
   }
   return report;
 }

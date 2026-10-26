@@ -92,6 +92,14 @@ describe('chat cut dialog', () => {
     expect(vi.mocked(showToast)).toHaveBeenCalled();
   });
 
+  it('warns about heavy and block highlighting', () => {
+    const text = Array.from({ length: 30 }, (_, i) => 'word' + i).join(' ');
+    const r = matchCutReply([text], { tag: null, underline: [text], emphasis: [], highlight: [text] });
+    const d = describeReport(r);
+    expect(d.problems.join(' ')).toContain('Heavy highlighting: 100%');
+    expect(d.problems.join(' ')).toContain('1 highlight quote is longer than 8 words');
+  });
+
   it('describes notes for auto-underlined and out-of-order quotes', () => {
     const r = matchCutReply(['a b c d'], { tag: null, underline: [], emphasis: [], highlight: ['c d', 'a b'] });
     const d = describeReport(r);

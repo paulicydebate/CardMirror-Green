@@ -57,6 +57,13 @@ export function describeReport(report: MatchReport): { summary: string; problems
       ? `Skipped ${LAYER_NAME[r.layer]} quote with no words: “${shorten(r.quote)}”`
       : `Not in the card, skipped (${LAYER_NAME[r.layer]}): “${shorten(r.quote)}”`);
   const notes: string[] = [];
+  const share = report.underlinedWords > 0 ? report.highlightedWords / report.underlinedWords : 0;
+  if (report.highlightedWords >= 15 && share > 0.5) {
+    problems.push(`Heavy highlighting: ${Math.round(share * 100)}% of the underlined words are highlighted. Consider asking the AI to highlight fewer, shorter word runs.`);
+  }
+  if (report.longHighlights > 0) {
+    problems.push(`${report.longHighlights} highlight quote${report.longHighlights === 1 ? ' is' : 's are'} longer than 8 words (block highlighting).`);
+  }
   if (report.autoUnderlined) notes.push(`${report.autoUnderlined} highlighted passage${report.autoUnderlined === 1 ? ' was' : 's were'} not underlined; they will be underlined too.`);
   if (report.outOfOrder.length) notes.push(`${report.outOfOrder.length} quote${report.outOfOrder.length === 1 ? ' was' : 's were'} out of reading order; the first match was used.`);
   if (report.caseInsensitive.length) notes.push(`${report.caseInsensitive.length} quote${report.caseInsensitive.length === 1 ? '' : 's'} matched only when ignoring capital letters.`);
@@ -145,11 +152,11 @@ class ChatCutDialog {
     this.target.type = 'number';
     this.target.min = '0';
     this.target.step = '5';
-    this.target.placeholder = 'e.g. 60';
+    this.target.placeholder = 'auto';
     this.target.value = loadTarget();
     this.target.setAttribute('aria-label', 'Highlighted words to aim for');
     const targetRow = el('label', 'pmd-ccut-row');
-    targetRow.append(el('span', undefined, 'Highlight about'), this.target, el('span', undefined, 'words (optional)'));
+    targetRow.append(el('span', undefined, 'Highlight about'), this.target, el('span', undefined, 'words (blank = automatic)'));
     const copyRow = el('div', 'pmd-ccut-row');
     copyRow.appendChild(btn('Copy prompt', () => void this.copyPrompt(), true));
     this.copyStatus = el('div', 'pmd-bulk-status');
