@@ -2,7 +2,7 @@
 
 For a fresh chat or another LLM, start with HANDOFF.md, then CARDMIRROR_GREEN.md, ROADMAP.md and CARD_INGEST_V1.md. These files replace any assumption that the prior chat or desktop is available.
 
-- Repository: paulicydebate/cardmirror. Work only on feature/full-card-api.
+- Repository: paulicydebate/CardMirror-Green. Work only on feature/full-card-api.
 - Keep PR #1 draft. Do not merge it or modify main without a new explicit user request.
 - User tests on Windows x64; their MacBook Pro is M5 Apple Silicon (macOS ARM64).
 - Fork name: CardMirror Green. Preserve its green folder icon and isolated app ID, executable, user-data folder, update policy and bridge identity.

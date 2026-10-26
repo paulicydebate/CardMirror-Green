@@ -3231,7 +3231,7 @@ ipcMain.handle(
 
 /** Public GitHub Releases page — fallback link surfaced in update
  *  dialogs so users always have a manual-download path. */
-const RELEASES_URL = 'https://github.com/paulicydebate/cardmirror/releases';
+const RELEASES_URL = 'https://github.com/paulicydebate/CardMirror-Green/releases';
 
 /** The user manual (MANUAL.md), rendered on GitHub. Linked from the Help
  *  menu so the full guide is one click away. */

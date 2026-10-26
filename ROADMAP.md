@@ -1,6 +1,6 @@
 # CardMirror Green roadmap
 
-Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirmed in this project chat. Repository: paulicydebate/cardmirror, branch feature/full-card-api. PR #1 stays draft and main stays unchanged.
+Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirmed in this project chat. Repository: paulicydebate/CardMirror-Green, branch feature/full-card-api. PR #1 stays draft and main stays unchanged.
 
 ## Completed
 

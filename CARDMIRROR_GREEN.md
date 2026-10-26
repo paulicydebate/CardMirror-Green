@@ -1,6 +1,6 @@
 # CardMirror Green
 
-Personal fork: https://github.com/paulicydebate/cardmirror
+Personal fork: https://github.com/paulicydebate/CardMirror-Green
 Active branch: `feature/full-card-api`. PR #1 remains draft; do not merge or modify main.
 
 ## Two computers
@@ -12,7 +12,7 @@ If an earlier preview replaced upstream CardMirror, installing Green does not re
 Source code is shared through GitHub. For a local development checkout on either machine:
 
 ```sh
-git clone --branch feature/full-card-api https://github.com/paulicydebate/cardmirror.git
+git clone --branch feature/full-card-api https://github.com/paulicydebate/CardMirror-Green.git
 cd cardmirror
 npm ci
 npm --prefix apps/desktop ci

@@ -4,9 +4,9 @@ This document is the starting point for a new LLM or developer. The previous cha
 
 ## Repository and non-negotiable scope
 
-- Repository: https://github.com/paulicydebate/cardmirror
+- Repository: https://github.com/paulicydebate/CardMirror-Green
 - Active branch: `feature/full-card-api`
-- Draft PR: https://github.com/paulicydebate/cardmirror/pull/1
+- Draft PR: https://github.com/paulicydebate/CardMirror-Green/pull/1
 - Keep PR #1 draft. Do not merge it, modify main, force-push, or discard local work without a new explicit user instruction.
 - The fork is CardMirror Green. Preserve its green folder icon, separate installer/app ID, executable, user-data directory and bridge identity.
 - User's desktop is Windows x64. Their laptop is an M5 Apple Silicon MacBook Pro; use macOS ARM64 builds.
@@ -20,16 +20,16 @@ Read in this order: [AGENTS.md](AGENTS.md), this handoff, [CARDMIRROR_GREEN.md](
 Latest verified implementation commit: `e2bb9967d8fa053b4ed026c541f77992d0b545ba`. A later documentation-only handoff commit may be the branch head; inspect the actual head rather than resetting to this implementation commit.
 
 All checks for that implementation commit succeeded:
-- [Desktop previews](https://github.com/paulicydebate/cardmirror/actions/runs/40237622996)
-- [Three-platform CI](https://github.com/paulicydebate/cardmirror/actions/runs/40237626185)
-- [Feature-branch checks](https://github.com/paulicydebate/cardmirror/actions/runs/40237622994)
-- [PR checks](https://github.com/paulicydebate/cardmirror/actions/runs/40237626166)
+- [Desktop previews](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40237622996)
+- [Three-platform CI](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40237626185)
+- [Feature-branch checks](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40237622994)
+- [PR checks](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40237626166)
 
 The desktop preview jobs ran the configured full suites: Windows 4,201 passed / 47 skipped, macOS 4,210 passed / 38 skipped. Platform/CI-dependent skips are expected; original user documents are not CI fixtures. Typecheck, renderer/main/service builds and packaged resource/architecture checks passed. The Mac app signature check passed; the build is ad-hoc signed, not notarized. These are build/functional checks, not malware clearance.
 
 Verified preview artifacts (90-day retention; they are NOT permanent release assets):
-- [Windows x64](https://github.com/paulicydebate/cardmirror/actions/runs/40237622996/artifacts/12615633099)
-- [macOS ARM64](https://github.com/paulicydebate/cardmirror/actions/runs/40237622996/artifacts/12615133555)
+- [Windows x64](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40237622996/artifacts/12615633099)
+- [macOS ARM64](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40237622996/artifacts/12615133555)
 
 The user already smoke-tested an earlier Green Windows build: green branding, opening DOCX/CMIR, editing, saving, reopening, formatting, DOCX export and card copying worked. The M5 Mac still needs a user smoke test. The new batch exporter is a repository CLI/library; it has not been added as an app menu or remote HTTP endpoint.
 
@@ -103,7 +103,7 @@ Implemented on top of version 1 without changing it; full details in [OPENCASELI
 Use Node 22 (matching CI). In a new checkout:
 
 ```sh
-git clone --branch feature/full-card-api https://github.com/paulicydebate/cardmirror.git
+git clone --branch feature/full-card-api https://github.com/paulicydebate/CardMirror-Green.git
 cd cardmirror
 npm ci
 npm --prefix apps/desktop ci
@@ -183,4 +183,4 @@ Do not build a search UI, hosted database, fuzzy matching or automatic profile s
 
 ## Prompt the user can give a new LLM
 
-Continue CardMirror Green at paulicydebate/cardmirror on branch feature/full-card-api. Read HANDOFF.md, AGENTS.md, CARDMIRROR_GREEN.md, ROADMAP.md and CARD_INGEST_V1.md. The v1 local exporter and the OpenCaselist adapter (mock-tested) are complete; the next task is a limited real OpenCaselist run, then the in-app panel, as described in HANDOFF.md. Keep PR #1 draft and leave main unchanged. Do not assume access to the previous chat or machine.
+Continue CardMirror Green at paulicydebate/CardMirror-Green on branch feature/full-card-api. Read HANDOFF.md, AGENTS.md, CARDMIRROR_GREEN.md, ROADMAP.md and CARD_INGEST_V1.md. The v1 local exporter and the OpenCaselist adapter (mock-tested) are complete; the next task is a limited real OpenCaselist run, then the in-app panel, as described in HANDOFF.md. Keep PR #1 draft and leave main unchanged. Do not assume access to the previous chat or machine.
