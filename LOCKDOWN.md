@@ -1,4 +1,4 @@
-# Lockdown Mode and typing log: viability and plan
+# Prep Mode, Round Mode (lockdown) and typing log: viability and plan
 
 Status (2026-10-26): assessed, not built. Requested by the user's colleagues for NPDA rounds, where copy-paste is banned during prep.
 
@@ -92,9 +92,31 @@ When lockdown starts, every window leaves its co-edit sessions (`src/editor/coll
 3. **Border: yellow.**
 4. **Keyboard macros and autocorrect expansions: logged, not blocked.** Exempt them from the large-insert block with an allow meta and record their text.
 
+## Two modes (user addendum, 2026-10-26)
+
+One session moves through two modes, logged as one chain with a timestamp at every change.
+
+| | Prep Mode (prep starts) | Round Mode (round starts, the true lockdown) |
+|---|---|---|
+| Border | Yellow | Red, so the two can be told apart (to confirm) |
+| Copy, paste, drag, large inserts | Blocked (macros and autocorrect logged) | Blocked |
+| Co-editing | Allowed | Every session ended; no new ones |
+| Typing log | On | On |
+| Opening files | To confirm (proposal: allowed but logged) | Blocked; blank windows and new docs allowed |
+| On entering | — | Closes every document **not created during Prep Mode** (save prompt first) |
+
+- **Track what Prep Mode created.** Prep Mode tags each document created new during prep (blank doc, new flow, new window) with an id in main's session state. That tag survives Save and Save As. On Round Mode, any open document without the tag is closed, including files opened during prep.
+- **Ending.** Ending either mode records the time. Round Mode can also be started directly, in which case only blank documents stay open.
+- **Co-editing during Prep Mode:** a partner who is not in Prep Mode could paste, and their text would arrive as a remote change. Proposal:
+  - The co-edit session shares each member's mode.
+  - Large remote insertions are logged with the partner's name.
+  - The host can require every member to be in Prep Mode.
+
 ## Still open
 
-- **Documents already open when lockdown starts.** Proposal: lockdown closes them (after a save prompt) or refuses to start until only blank or new documents are open, since otherwise prepped files stay readable. Confirm with the user.
+- Round Mode border color (red proposed).
+- Whether files may be opened during Prep Mode.
+- Whether co-edit partners must also be in Prep Mode.
 
 ## Suggested build order
 
