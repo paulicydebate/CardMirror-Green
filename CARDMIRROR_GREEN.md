@@ -75,6 +75,11 @@ Home → **New flow** (or command bar → New Flow). Sheets per position, one co
 - Three-pane mode: **Pop out** a pane (the arrow button on its title bar, or the command "Pop Out Pane to New Window") to move its document into its own window, e.g. for a second monitor. Unsaved changes travel along; the new window opens as a normal single-document window (three-pane is one window only, so it boots with `?popout=1`). Not available for a document in a live co-editing session. Tested in the desktop app.
 - Three-pane mode: drag the divider between panes to resize them; double-click a divider to even them out. Widths are remembered per computer. Not available while a pane is expanded or in the paged wide layout with three panes.
 
+## Green accent (2026-10-26)
+
+- The default accent (buttons, selected items, navigation level numbers, focus rings) is olive-to-bright green instead of upstream blue: light theme `#4f7f1a` (hover `#3f6814`, focus `#6aab2e`), dark theme `#5c9e2d` (hover `#7cb342`, focus `#8bc34a`). White text on the light accent is 4.8:1; the dark accent on the dark background is 5.1:1. Set in `src/editor/style.css`.
+- The colorblind-friendly preset keeps its blue. Each user can still pick their own accent in Settings → Accessibility → Color overrides.
+
 ## Continue with another LLM
 
 Start with [HANDOFF.md](HANDOFF.md). It records the verified implementation commit, CI evidence, setup commands, architecture, contract invariants, private-data limitations, and the next OpenCaselist-adapter task. [ROADMAP.md](ROADMAP.md) separates completed work, planned work and optional future ideas. The next LLM does not need the previous chat or access to the original desktop.

@@ -660,10 +660,12 @@ button {
   --pmd-c-button-press-soft-border: rgba(0, 0, 0, 0.2);
 
   /* Accent (primary action / brand) */
-  --pmd-c-accent: #2563eb;
-  --pmd-c-accent-hover: #1d4ed8;
-  --pmd-c-accent-soft: rgba(37, 99, 235, 0.12);
-  --pmd-c-focus: #4a90e2;              /* focus rings on text inputs */
+  /* CardMirror Green: accent between olive and bright green (white text on
+     it meets 4.5:1). Upstream used blue #2563eb / #1d4ed8. */
+  --pmd-c-accent: #4f7f1a;
+  --pmd-c-accent-hover: #3f6814;
+  --pmd-c-accent-soft: rgba(79, 127, 26, 0.12);
+  --pmd-c-focus: #6aab2e;              /* focus rings on text inputs */
 
   /* Hyperlink color inside the editor surface. Light-mode value
      matches Word's canonical hyperlink blue so an imported doc
@@ -683,8 +685,8 @@ button {
   --pmd-c-warning-alt: #b85a00;        /* alt amber used in shrink-protections */
   --pmd-c-warning-bg: #fff4e0;         /* pale warning row bg */
   --pmd-c-warning-border: #d4a14a;     /* warning row border */
-  --pmd-c-info-bg: #f0f4fa;            /* pale info / accent-tint bg */
-  --pmd-c-info-bg-alt: #eef2f7;        /* key-capture row bg */
+  --pmd-c-info-bg: #f1f6ea;            /* pale info / accent-tint bg */
+  --pmd-c-info-bg-alt: #eef3e8;        /* key-capture row bg */
   --pmd-c-danger: #c00;                /* close-button hover */
 
   /* Comments column accents (purple — distinct from doc accent blue). */
@@ -903,10 +905,10 @@ button {
   --pmd-c-button-active: rgba(255, 255, 255, 0.12);
 
   /* Accent — brighter blue so it reads against dark surfaces. */
-  --pmd-c-accent: #5a8fff;
-  --pmd-c-accent-hover: #7aa5ff;
-  --pmd-c-accent-soft: rgba(90, 143, 255, 0.18);
-  --pmd-c-focus: #7aa5ff;
+  --pmd-c-accent: #5c9e2d;
+  --pmd-c-accent-hover: #7cb342;
+  --pmd-c-accent-soft: rgba(92, 158, 45, 0.2);
+  --pmd-c-focus: #8bc34a;
 
   /* Status — brighter saturated tones; alt + bg variants flip
      into dark territory so they read as tinted dark surfaces. */
@@ -921,8 +923,8 @@ button {
   --pmd-c-warning-alt: #f59e0b;
   --pmd-c-warning-bg: #3a2a10;
   --pmd-c-warning-border: #f59e0b;
-  --pmd-c-info-bg: #1f2a3a;
-  --pmd-c-info-bg-alt: #1a2230;
+  --pmd-c-info-bg: #232d1c;
+  --pmd-c-info-bg-alt: #1e2619;
   --pmd-c-danger: #ef4444;
 
   /* Comments column accents (purple). Slightly brighter for
