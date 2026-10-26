@@ -33,7 +33,7 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 
 ## Next
 
-1. **Prep / Round validation.** Implementation is connected. Verify installer CI and, only with explicit permission before desktop testing, check real two-install prep collaboration and the latest UI refinements. macOS still needs user smoke testing. See [LOCKDOWN.md](LOCKDOWN.md) and [CARDMIRROR_GREEN.md](CARDMIRROR_GREEN.md).
+1. **Prep / Round validation.** Implementation is connected. The explicitly approved two-instance Windows check with a synthetic local relay passed. macOS user smoke testing and optional cross-machine/real-relay checks remain; get a new explicit approval before any further desktop test. See [LOCKDOWN.md](LOCKDOWN.md) and [CARDMIRROR_GREEN.md](CARDMIRROR_GREEN.md).
 
 1. **Chat cutting (on hold by user choice, 2026-10-26).** See CHAT_CUT.md for the state at pause.
 1. **Chat cutting: user check.** Try "Cut Card with Chat AI" with Grok on a few real cards ([CHAT_CUT.md](CHAT_CUT.md)); tune the prompt from what Grok gets wrong.

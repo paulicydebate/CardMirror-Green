@@ -17,9 +17,15 @@ This document is the starting point for a new LLM or developer. The previous cha
 
 Read in this order: [AGENTS.md](AGENTS.md), this handoff, [CARDMIRROR_GREEN.md](CARDMIRROR_GREEN.md), [ROADMAP.md](ROADMAP.md), and [CARD_INGEST_V1.md](CARD_INGEST_V1.md).
 
-## Verified baseline
+## Latest verified Prep / Round milestone
 
-Latest verified implementation commit: `e2bb9967d8fa053b4ed026c541f77992d0b545ba`. A later documentation-only handoff commit may be the branch head; inspect the actual head rather than resetting to this implementation commit.
+Implementation commit: `820ecab345ca698b23d7a205ba8c0e6d4fb82604`. [Desktop builds](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40418447105), [three-platform CI](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40418453370), [feature checks](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40418447195) and [PR checks](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40418453304) succeeded. Windows full suite: 4,337 passed / 47 skipped. Mac full suite: 4,346 passed / 38 skipped. Packaged resources and x64/ARM64 architectures passed verification.
+
+Install manually from the 90-day artifacts: [Windows x64](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40418447105/artifacts/12696761562), [macOS ARM64](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40418447105/artifacts/12697381664). The explicitly approved two-instance Windows/local-relay test passed; see CARDMIRROR_GREEN.md. Both isolated apps and the temporary server were closed; nothing was installed into the user's normal environment. A later docs-only head may record this evidence; the installer implementation is the commit stated here. Any new desktop test still requires a new explicit approval.
+
+## Historical batch-export baseline
+
+Verified batch-export implementation commit: `e2bb9967d8fa053b4ed026c541f77992d0b545ba`. This is historical; use the current head and the newer Prep / Round milestone above, never reset to this older commit.
 
 All checks for that implementation commit succeeded:
 - [Desktop previews](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40237622996)
@@ -163,7 +169,7 @@ Done and in the user's hands:
 - Green default accent.
 - Chat cutting is built but **on hold** at the user's request.
 
-**Prep / Round implementation is now connected and usable in the desktop source build.** Read CARDMIRROR_GREEN.md, "Usable Prep / Round Modes", for the current behavior and completed validation. This supersedes the inactive milestone notes below. The remaining work is installer CI verification, an optional final UI check only after explicit permission, real two-install prep collaboration validation (also permission required), and macOS user smoke testing. Do not restart implementation from scratch. LOCKDOWN.md holds the design; summary:
+**Prep / Round implementation is now connected and usable in the desktop source build.** Read CARDMIRROR_GREEN.md, "Usable Prep / Round Modes", for behavior and validation. The explicitly approved final two-instance Windows check passed on code commit `820ecab345ca698b23d7a205ba8c0e6d4fb82604`, using a synthetic local relay; both apps and the dev server were closed. This supersedes the inactive milestone notes below. Remaining validation is macOS user smoke testing and optional cross-machine/real-relay use. Any new desktop test needs a new approval. Do not restart implementation from scratch. LOCKDOWN.md holds the design; summary:
 
 Historical first milestone (superseded by the usable implementation above): Codex added `apps/desktop/src/prep-session.ts` and `tests/desktop/prep-session.test.ts` with transitions, eligibility, a durable chain, recovery and verification. At that milestone the module was intentionally disconnected from IPC and UI. It is now connected; do not treat this historical note as the current status.
 
