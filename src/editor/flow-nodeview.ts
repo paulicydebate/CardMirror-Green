@@ -312,17 +312,35 @@ export class FlowWorkbookView implements NodeView {
 
   private commit(book: FlowWorkbook): void {
     const data = serializeFlow(book);
-    recordLocalEdit(this.history, this.book, book, Date.now());
-    this.book = book;
     if (data === this.lastData) return;
     const pos = this.getPos();
     if (pos === undefined) return;
-    this.remember(this.lastData);
-    this.lastData = data;
-    this.remember(data);
     const node = this.view.state.doc.nodeAt(pos);
     if (!node || node.type.name !== 'flow_workbook') return;
+    const before = this.book;
+    const previousData = this.lastData;
+    // Optimistic state keeps a successful local dispatch from being mistaken
+    // for a partner edit by update(). A filterTransaction can refuse it (Prep
+    // protection, read mode, etc.), in which case restore the authoritative
+    // document immediately. Otherwise rejected text survives in the textarea
+    // and is silently bundled into the next legitimate keystroke.
+    this.book = book;
+    this.lastData = data;
     this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, data }));
+    const accepted = this.view.state.doc.nodeAt(pos);
+    if (accepted?.type.name !== 'flow_workbook') return;
+    const acceptedData = String(accepted.attrs['data'] ?? '');
+    if (acceptedData !== data) {
+      this.lastData = acceptedData;
+      this.book = this.parse(acceptedData);
+      if (!this.book.sheets.some(s => s.id === this.sheetId)) this.sheetId = this.book.sheets[0]!.id;
+      if (this.expandedCol !== null) this.sections = columnToSections(this.sheet, this.expandedCol);
+      this.render(this.currentFocus() ?? undefined);
+      return;
+    }
+    recordLocalEdit(this.history, before, book, Date.now());
+    this.remember(previousData);
+    this.remember(data);
   }
 
   private cellOf(row: number, col: ColKey): FlowCell {

@@ -92,6 +92,18 @@ Implementation has started, but **Prep / Round Mode is not available in the app 
 
 This is infrastructure only, not a lockdown-capable installer. Continue with `LOCKDOWN.md`'s final design; chat cutting remains on hold.
 
+## Prep document guards (Codex, 2026-10-26)
+
+The next layer is implemented in `src/editor/prep-document-guard.ts` and included in the shared editor plugin stack. **It stays inert until the future session controller supplies a policy; there are still no Prep / Round controls or active protections in the shipped app.**
+
+- Per-editor capture listeners block copy/cut/paste/drag/drop and clipboard-related `beforeinput` events before ProseMirror or flow handlers can consume them. Each listener checks its own root and owning session uid, so unrelated panes and UI fields remain unrestricted. Destroying a view removes its listeners.
+- The transaction guard caps additions at 40 characters across all steps and flow cells, including same-size text replacements and the flow Prep column. It refuses even short paste/drop/cut transactions carrying the native UI-event tag. Pure formatting stays allowed. Flow fields are compared by sheet/row identity; unchanged flow attributes are skipped and parsed fields are cached by immutable node identity.
+- Keyboard macros and the shared autocorrect engine tag conversions/reverts for an explicit allowed-and-audited path. Undo/redo restores are allowed and large restores flagged. Already-merged remote edits must be admitted to avoid CRDT divergence; their large inserts are flagged. The future controller still needs to gate prep collaboration membership, attach partner names, and disconnect collaboration on log failures.
+- Accepted changes are audited during plugin state application, not speculatively from the filter. A later plugin rejecting a transaction therefore does not produce a false accepted-change event. These events describe committed text changes, not a complete raw-keystroke log; raw input/composition, focus and lifecycle recording still need the controller.
+- Fixed the flow NodeView's optimistic edit path: rejected edits now restore the visible textarea and local workbook from the authoritative editor state. Rejected content cannot leak into a later allowed edit, and rejected edits do not enter the local co-edit merge history. Covered in grid and column-as-document views.
+- Validation: 27 new guard tests, plus existing macro/autocorrect/flow/real-Loro co-edit suites: **77 tests pass** on local Windows/Node 24.21.0. Root typecheck and production renderer/PWA build pass (existing chunk-size/dynamic-import warnings remain).
+- Next: IPC/controller and mode commands; verify that new/open/recovered/switch-mode/pop-out paths always bind the guard to the correct stable document uid before enabling it (some single-doc paths currently assign their new uid after mounting). Add main-process clipboard and external-route refusals, Round file-open gates and save/close coordination, prep-aware collaboration, log batching/viewer/export, and packaged-app two-window/three-pane checks. The renderer policy setter is an internal integration API, not a UI toggle. This layer alone is not a tournament-ready protection mode.
+
 ## Continue with another LLM
 
 Start with [HANDOFF.md](HANDOFF.md). It records the verified implementation commit, CI evidence, setup commands, architecture, contract invariants, private-data limitations, and the next OpenCaselist-adapter task. [ROADMAP.md](ROADMAP.md) separates completed work, planned work and optional future ideas. The next LLM does not need the previous chat or access to the original desktop.

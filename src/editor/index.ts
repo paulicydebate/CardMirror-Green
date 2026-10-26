@@ -8,6 +8,7 @@
  */
 
 import { EditorState, Plugin, Selection, TextSelection, type Command } from 'prosemirror-state';
+import { prepDocumentGuard } from './prep-document-guard.js';
 import { serializeRangesForClipboard, serializeNodesForClipboard } from './clipboard-slice.js';
 import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
@@ -5741,6 +5742,7 @@ installCutInPlaceContext({
 
 export function buildEditorPlugins(targetUid?: string | null): Plugin[] {
   const plugins: Plugin[] = [
+    prepDocumentGuard(targetUid),
     // First so its `editable` / read-mode tap-marker props win on the
     // mobile shell; a no-op everywhere else (the active flag is set
     // once at boot, before any view mounts).

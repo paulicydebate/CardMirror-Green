@@ -32,7 +32,7 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 
 ## Next
 
-1. **Prep / Round Mode and typing log (in progress).** Session/log foundation implemented and focused-tested; no app controls or protections enabled yet. Connect the remaining enforcement and UI described in [LOCKDOWN.md](LOCKDOWN.md) and [CARDMIRROR_GREEN.md](CARDMIRROR_GREEN.md).
+1. **Prep / Round Mode and typing log (in progress).** Session/log foundation and scoped renderer clipboard/transaction/flow guards implemented and tested; no app controls or protections enabled yet. Connect the controller, main-process routes, collaboration gates and UI described in [LOCKDOWN.md](LOCKDOWN.md) and [CARDMIRROR_GREEN.md](CARDMIRROR_GREEN.md).
 
 1. **Chat cutting (on hold by user choice, 2026-10-26).** See CHAT_CUT.md for the state at pause.
 1. **Chat cutting: user check.** Try "Cut Card with Chat AI" with Grok on a few real cards ([CHAT_CUT.md](CHAT_CUT.md)); tune the prompt from what Grok gets wrong.

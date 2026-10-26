@@ -34,6 +34,7 @@
  */
 
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
+import { PREP_EXPANSION_META } from './prep-document-guard.js';
 import type { EditorState } from 'prosemirror-state';
 import type { Node as PMNode } from 'prosemirror-model';
 
@@ -141,7 +142,7 @@ export function makeAutocorrectPlugin(
           let m = rule.match(view.state, from, to, text);
           if (!m) continue;
           for (const decorate of decorators) m = decorate(view.state, m, to, text);
-          const tr = view.state.tr.insertText(m.insert, m.replaceFrom, to);
+          const tr = view.state.tr.insertText(m.insert, m.replaceFrom, to).setMeta(PREP_EXPANSION_META, 'autocorrect');
           const end = m.replaceFrom + m.insert.length;
           tr.setSelection(TextSelection.create(tr.doc, end));
           tr.setMeta(key, {
@@ -167,7 +168,7 @@ export function makeAutocorrectPlugin(
         if (!sel.empty || sel.from !== to) return false;
         // …and the document still holds exactly what was inserted.
         if (view.state.doc.textBetween(from, to) !== inserted) return false;
-        const tr = view.state.tr.insertText(revertTo, from, to);
+        const tr = view.state.tr.insertText(revertTo, from, to).setMeta(PREP_EXPANSION_META, 'autocorrect');
         tr.setSelection(TextSelection.create(tr.doc, from + revertTo.length));
         view.dispatch(tr.scrollIntoView());
         return true;
