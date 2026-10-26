@@ -253,6 +253,9 @@ interface InitialDocPayload {
    *  doc as the speech doc after mounting. Optional / absent for
    *  normal Open + New spawns. */
   markAsSpeech?: boolean;
+  /** Pane pop-out: load the window with `?popout=1` so it boots as a
+   *  single-document window even while three-pane mode is on. */
+  popout?: boolean;
   /** Mode-switch reopen of a doc with unsaved changes: the spawned
    *  window mounts it dirty instead of the default clean. Passed
    *  through opaquely. */
@@ -562,8 +565,9 @@ function createWindow(initialDoc?: InitialDocPayload): BrowserWindow {
     firstWindowId = win.id;
   }
 
+  const popout = initialDoc?.popout === true;
   if (!app.isPackaged) {
-    void win.loadURL(DEV_SERVER_URL);
+    void win.loadURL(popout ? `${DEV_SERVER_URL}/?popout=1` : DEV_SERVER_URL);
     win.webContents.openDevTools({ mode: 'detach' });
   } else {
     // electron-builder packages the renderer's vite-build output
@@ -574,6 +578,7 @@ function createWindow(initialDoc?: InitialDocPayload): BrowserWindow {
     // packaged builds.
     void win.loadFile(
       path.join(process.resourcesPath, 'renderer', 'index.html'),
+      popout ? { query: { popout: '1' } } : undefined,
     );
   }
 

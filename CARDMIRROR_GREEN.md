@@ -72,6 +72,7 @@ Home → **New flow** (or command bar → New Flow). Sheets per position, one co
 
 - Co-editing a flow no longer interrupts the other person or loses concurrent typing (see FLOW.md, Co-editing).
 - Flow cells support highlighting (Ctrl/Cmd+Shift+H) and a Prep column for thumpers (Ctrl/Cmd+Shift+P).
+- Three-pane mode: **Pop out** a pane (the arrow button on its title bar, or the command "Pop Out Pane to New Window") to move its document into its own window, e.g. for a second monitor. Unsaved changes travel along; the new window opens as a normal single-document window (three-pane is one window only, so it boots with `?popout=1`). Not available for a document in a live co-editing session. Tested in the desktop app.
 - Three-pane mode: drag the divider between panes to resize them; double-click a divider to even them out. Widths are remembered per computer. Not available while a pane is expanded or in the paged wide layout with three panes.
 
 ## Continue with another LLM

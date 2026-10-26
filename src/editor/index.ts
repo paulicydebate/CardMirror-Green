@@ -1803,6 +1803,13 @@ const ribbonContext: RibbonContext = {
   newFlow: () => {
     void openNewFlow();
   },
+  popOutPane: () => {
+    if (!multiDocActive) {
+      showToast('Pop out works in three-pane mode: it moves a pane into its own window.');
+      return;
+    }
+    void import('./multi-pane-shell.js').then((m) => m.popOutFocusedPane());
+  },
   reopenWorkspace: () => {
     if (!getElectronHost()) {
       showToast('Reopening a workspace requires the desktop edition.');
@@ -4643,6 +4650,8 @@ const VIEWLESS_RIBBON_COMMANDS = new Set<AnyCommandId>([
   'openOpenCaselist',
   // New spreadsheet flow — opens a new document like File → Open.
   'newFlow',
+  // Three-pane: move the focused pane into its own window.
+  'popOutPane',
   // Multi-pane workspace commands — fire on the shell, not a
   // doc. View-less so they work even when no slot has a doc.
   'focusSlot1',
@@ -4698,6 +4707,7 @@ function runViewlessRibbon(id: AnyCommandId): void {
     case 'manageQuickCards': ribbonContext.manageQuickCards(); return;
     case 'openOpenCaselist': ribbonContext.openOpenCaselist(); return;
     case 'newFlow': ribbonContext.newFlow(); return;
+    case 'popOutPane': ribbonContext.popOutPane(); return;
     case 'toggleVoice': ribbonContext.toggleVoice(); return;
     case 'calibrateVoice': ribbonContext.calibrateVoice(); return;
     case 'startFlowHost': ribbonContext.startFlowHost(); return;
@@ -10075,7 +10085,10 @@ if (BOOT_MOBILE_ENV.hostKind === 'browser') {
   );
 }
 if (BOOT_MOBILE) setMobileShellActive(true);
-const BOOT_MULTI_DOC_WORKSPACE = !BOOT_MOBILE && settings.get('multiDocWorkspace');
+/** A pane popped out of three-pane mode (CardMirror Green) runs as a normal
+ *  single-document window: three-pane is one window only. */
+const BOOT_POPOUT_WINDOW = typeof location !== 'undefined' && new URLSearchParams(location.search).has('popout');
+const BOOT_MULTI_DOC_WORKSPACE = !BOOT_MOBILE && !BOOT_POPOUT_WINDOW && settings.get('multiDocWorkspace');
 // Set when this window bounced itself as a redundant three-pane duplicate
 // (singleton enforcement). A bounced window that lingers (couldn't self-close)
 // must stop claiming to be a workspace, so it never blocks a future window.

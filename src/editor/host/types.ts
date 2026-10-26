@@ -371,6 +371,10 @@ export interface SpawnWindowPayload {
    *  the New Speech Document flow so the freshly-spawned window
    *  becomes the routing target for subsequent send-to-speech. */
   markAsSpeech?: boolean;
+  /** Pane pop-out (CardMirror Green): the new window opens as a normal
+   *  single-document window even when three-pane mode is on (three-pane is
+   *  one window only), so the doc can go on a second monitor. */
+  popout?: boolean;
   /** When true, the spawned window mounts the doc DIRTY instead of
    *  the default clean. Used by the mode-switch reopen for docs
    *  that had unsaved changes — the payload bytes hold edits that

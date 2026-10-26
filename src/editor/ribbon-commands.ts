@@ -4632,6 +4632,7 @@ export type RibbonCommandId =
   | 'reopenWorkspace'
   | 'openOpenCaselist'
   | 'newFlow'
+  | 'popOutPane'
   | 'arrangeWindows'
   | 'toggleCommentsVisible'
   | 'addCommentToSelection'
@@ -4919,6 +4920,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'reopenWorkspace',
   'openOpenCaselist',
   'newFlow',
+  'popOutPane',
   'arrangeWindows',
   'toggleCommentsVisible',
   'addCommentToSelection',
@@ -5151,6 +5153,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   reopenWorkspace: 'Reopen Last Workspace',
   openOpenCaselist: 'Browse OpenCaselist',
   newFlow: 'New Flow (Spreadsheet)',
+  popOutPane: 'Pop Out Pane to New Window',
   arrangeWindows: 'Arrange Windows',
   toggleCommentsVisible: 'Show / Hide Comments',
   addCommentToSelection: 'Add Comment to Selection',
@@ -5384,6 +5387,7 @@ export const RIBBON_COMMAND_ALIASES: Partial<Record<RibbonCommandId, readonly st
   toggleReaderView: ['reading view', 'reader view', 'paginated view', 'read view', 'book view', 'columns'],
   openContainingFolder: ['reveal in finder', 'show in folder', 'show in explorer', 'reveal file', 'file location', 'containing folder'],
   saveWorkspace: ['save session', 'save open documents', 'remember open documents', 'save tabs'],
+  popOutPane: ['pop out', 'popout', 'detach pane', 'second monitor', 'new window', 'move to window', 'undock'],
   newFlow: ['flow', 'flowing', 'spreadsheet', 'new flow', 'flow sheet', 'excel flow', 'parli flow', 'npda'],
   openOpenCaselist: ['caselist', 'open caselist', 'opencaselist', 'disclosure', 'wiki', 'open source', 'scout', 'tabroom'],
   reopenWorkspace: ['restore session', 'reopen session', 'open previous session', 'reopen last session', 'restore workspace', 'reopen documents', 'reopen tabs'],
@@ -5592,6 +5596,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   reopenWorkspace: '',
   openOpenCaselist: '',
   newFlow: '',
+  popOutPane: '',
   arrangeWindows: '',
   toggleCommentsVisible: '',
   addCommentToSelection: '',
@@ -5887,6 +5892,8 @@ export interface RibbonContext {
   openOpenCaselist: () => void;
   /** Open a new spreadsheet flow document. */
   newFlow: () => void;
+  /** Three-pane: move the focused pane's doc into its own window. */
+  popOutPane: () => void;
   /** Arrange Windows: speech doc on one side, everything else on the
    *  other (three-pane: into slots). Desktop only. */
   arrangeWindows: () => void;
@@ -6126,6 +6133,7 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   reopenWorkspace: () => {},
   openOpenCaselist: () => {},
   newFlow: () => {},
+  popOutPane: () => {},
   arrangeWindows: () => {},
   openShortcutsReference: () => {},
   toggleCommentsVisible: () => {},
@@ -6434,6 +6442,12 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
       return (_state, dispatch) => {
         if (!dispatch) return true;
         ctx.newFlow();
+        return true;
+      };
+    case 'popOutPane':
+      return (_state, dispatch) => {
+        if (!dispatch) return true;
+        ctx.popOutPane();
         return true;
       };
     case 'arrangeWindows':

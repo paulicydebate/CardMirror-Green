@@ -750,6 +750,17 @@ class Slot {
       this.shell.toggleExpanded(this);
     });
     chip.appendChild(this.chipExpandBtn);
+    const popOutBtn = document.createElement('button');
+    popOutBtn.type = 'button';
+    popOutBtn.className = 'pmd-pane-chip-popout';
+    popOutBtn.title = 'Pop out into its own window (e.g. for a second monitor)';
+    setIcon(popOutBtn, 'upload');
+    popOutBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    popOutBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void this.popOutVisible();
+    });
+    chip.appendChild(popOutBtn);
     this.chipHideBtn = document.createElement('button');
     this.chipHideBtn.type = 'button';
     this.chipHideBtn.className = 'pmd-pane-chip-hide';
@@ -1036,10 +1047,56 @@ class Slot {
     return record;
   }
 
+  /** Move the visible doc into its own window (CardMirror Green), e.g. to
+   *  put it on a second monitor. Its current contents travel along —
+   *  unsaved changes included, so the new window still asks before closing
+   *  — and it opens as a normal single-document window. Not available for a
+   *  doc in a live co-editing session. */
+  async popOutVisible(): Promise<void> {
+    const rec = this.visible;
+    if (!rec) return;
+    const host = getHost();
+    if (!host.canSpawnWindow) {
+      showToast('Pop out needs the desktop app.');
+      return;
+    }
+    if (collabCopresenceFor(rec.uid) != null) {
+      showToast('This document is in a co-editing session, so it can\u2019t move to another window.');
+      return;
+    }
+    const state = rec.view.state;
+    const bytes = await serializeNativeAsync(state.doc, {
+      threads: Array.from(getCommentsState(state).threads.values()),
+      ...(rec.docId ? { docId: rec.docId } : {}),
+    });
+    const wasSpeech = getSpeechDocResolver().isSpeechByUid(rec.uid);
+    // Hand the file over: release this window's claim first so the new
+    // window can take it.
+    syncDocPathClaim(rec.handle, null);
+    try {
+      await host.spawnWindow({
+        filename: rec.filename,
+        bytes,
+        handle: typeof rec.handle === 'string' ? rec.handle : null,
+        format: rec.format,
+        uid: rec.uid,
+        markDirty: rec.dirty,
+        ...(wasSpeech ? { markAsSpeech: true } : {}),
+        popout: true,
+      });
+    } catch (err) {
+      syncDocPathClaim(null, rec.handle);
+      void alertDialog(`Couldn't open a new window: ${err instanceof Error ? err.message : err}`);
+      return;
+    }
+    // Only now take it out of this pane (no save prompt: nothing is lost).
+    if (this.visible === rec) await this.closeVisible({ popOut: true });
+  }
+
   /** Close the currently-visible doc. Reveals the next stack member
    *  (or empties the slot). Prompts for save / discard / cancel if
    *  the doc has unsaved changes; clean docs close immediately. */
-  async closeVisible(opts?: { modeSwitch?: boolean }): Promise<boolean> {
+  async closeVisible(opts?: { modeSwitch?: boolean; popOut?: boolean }): Promise<boolean> {
     try {
       return await this.closeVisibleInner(opts);
     } catch (err) {
@@ -1054,7 +1111,7 @@ class Slot {
     }
   }
 
-  private async closeVisibleInner(opts?: { modeSwitch?: boolean }): Promise<boolean> {
+  private async closeVisibleInner(opts?: { modeSwitch?: boolean; popOut?: boolean }): Promise<boolean> {
     const idx = this.visibleIndex;
     if (idx < 0) return false;
     const closing = this.stack[idx]!;
@@ -1062,7 +1119,7 @@ class Slot {
     // toggle is a full reload that persists every session (resumable, and the
     // kept doc auto-resumes), so prompting per co-edited pane would be noise —
     // but a DIRTY non-focused doc still gets its normal save prompt below.
-    const coedited = !opts?.modeSwitch && collabCopresenceFor(closing.uid) != null;
+    const coedited = !opts?.modeSwitch && !opts?.popOut && collabCopresenceFor(closing.uid) != null;
     // Focus this pane so the confirm dialogs + save commands (which route via
     // `activeFile()`) target THIS doc, not whichever pane happened to be focused
     // when the user clicked ×.
@@ -1084,7 +1141,7 @@ class Slot {
       // prompt. 'run-normal' → the session was ended/left; still offer to save
       // the local file if it's dirty.
       if (co === 'run-normal' && closing.dirty && !(await runDirtyPrompt())) return false;
-    } else if (closing.dirty && !(await runDirtyPrompt())) {
+    } else if (!opts?.popOut && closing.dirty && !(await runDirtyPrompt())) {
       return false;
     }
     this.detachVisible();
@@ -1103,7 +1160,9 @@ class Slot {
     // Explicit close → drop the journal. Recovery is for crashes,
     // not "I changed my mind." If the user wanted to keep this
     // doc, they should have saved.
-    void clearJournalForRecord(closing);
+    // A popped-out doc keeps its journal (same uid) — the new window
+    // carries on writing it, so unsaved work stays crash-safe.
+    if (!opts?.popOut) void clearJournalForRecord(closing);
     // Clear speech-doc designation if the closing doc was it —
     // matches Verbatim's `AutoClose` which clears
     // `Globals.ActiveSpeechDoc` when the speech doc is closed.
@@ -1114,7 +1173,8 @@ class Slot {
     speechResolver.unregisterView(closing.uid);
     // Release the cross-window path claim before destroying the
     // view — re-opening this file in any window should succeed.
-    syncDocPathClaim(closing.handle, null);
+    // (A pop-out released it before spawning, so the new window owns it.)
+    if (!opts?.popOut) syncDocPathClaim(closing.handle, null);
     closing.view.destroy();
     closing.dragSurface.detach();
     closing.navPanel.destroy();
@@ -1931,6 +1991,16 @@ class MultiPaneShell {
       }
     }
     if (any) this.applyExpandedState();
+  }
+
+  /** Pop out the focused slot's doc (the `popOutPane` command). */
+  async popOutFocused(): Promise<void> {
+    const slot = this.focusedSlot;
+    if (!slot?.visible) {
+      showToast('Click into a pane first, then pop it out.');
+      return;
+    }
+    await slot.popOutVisible();
   }
 
   /** Hide the focused slot. Used by the `hideSlot` ribbon command. */
@@ -3770,6 +3840,14 @@ export function revealAllSlots(): void {
 
 /** Cycle the focused slot's visible doc forward (+1) / back (-1). No-op when
  *  the shell isn't active. Used by the `cycleDocNext` / `cycleDocPrev` commands. */
+/** Pop the focused pane's doc out into its own window. Returns false when
+ *  three-pane mode isn't active. */
+export function popOutFocusedPane(): boolean {
+  if (!shell) return false;
+  void shell.popOutFocused();
+  return true;
+}
+
 export function cycleFocusedSlotDoc(direction: 1 | -1): void {
   if (!shell) return;
   shell.cycleFocusedSlotDoc(direction);
