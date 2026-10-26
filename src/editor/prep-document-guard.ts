@@ -7,6 +7,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import { isHistoryTransaction } from 'prosemirror-history';
 import { isSyncOrigin } from './sync-origin.js';
 import { parseFlow } from '../flow/flow-model.js';
+import { registerPrepView, prepRuntime } from './prep-runtime.js';
 
 export const PREP_EXPANSION_META = 'prepExpansion';
 export const PREP_INSERT_LIMIT = 40;
@@ -157,6 +158,7 @@ export function prepDocumentGuard(uid: string | null | undefined, policy: () => 
       },
     },
     view(view) {
+      const unregister = uid ? registerPrepView(uid, view) : () => {};
       // Window capture precedes target/NodeView handlers and ProseMirror's
       // handlers. Each instance only handles its own root, so another pane's
       // strategy doc and unrelated UI fields stay unrestricted.
@@ -166,7 +168,11 @@ export function prepDocumentGuard(uid: string | null | undefined, policy: () => 
         if (!p || !event.composedPath().includes(view.dom)) return;
         if (event.type === 'beforeinput') {
           const input = event as InputEvent;
-          if (!blockedInputTypes.has(input.inputType) && !p.loggingFailed()) return;
+          if (!blockedInputTypes.has(input.inputType) && !p.loggingFailed()) {
+            prepRuntime.record('input', uid!, { phase: 'beforeinput', inputType: input.inputType, text: input.data,
+              composing: input.isComposing, clientTime: new Date().toISOString() });
+            return;
+          }
         }
         event.preventDefault();
         event.stopImmediatePropagation();
@@ -175,7 +181,7 @@ export function prepDocumentGuard(uid: string | null | undefined, policy: () => 
       };
       const types = ['copy', 'cut', 'paste', 'dragstart', 'dragover', 'drop', 'beforeinput'];
       for (const type of types) win?.addEventListener(type, capture, true);
-      return { destroy() { for (const type of types) win?.removeEventListener(type, capture, true); } };
+      return { destroy() { unregister(); for (const type of types) win?.removeEventListener(type, capture, true); } };
     },
   });
 }

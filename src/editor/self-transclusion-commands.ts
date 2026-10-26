@@ -1,3 +1,4 @@
+import { prepTransferBlocked } from './prep-runtime.js';
 /**
  * Intra-document live window ("self-transclusion") — view-operating commands.
  *
@@ -74,6 +75,7 @@ export const enterBelowSelfRef: Command = (state, dispatch) => {
 /** Insert a `self_ref` at the cursor mirroring the section under `headingId`.
  *  Read-only projection — no content is copied into the doc. */
 export function insertSelfRef(view: EditorView, headingId: string): boolean {
+  if (prepTransferBlocked(view.dom.dataset['prepUid'] ?? null, 'insert-live-view')) return false;
   const entry = collectHeadings(view.state.doc, { skipCite: true }).find((h) => h.id === headingId);
   if (!entry) return false;
   const label = `↳ ${entry.text?.trim() || 'Section'}`;
@@ -190,6 +192,7 @@ export function openInsertSelfRef(view: EditorView): void {
  *  `headingId`. Unlike a live view, this bakes the content in and is
  *  refreshable. */
 export function insertInDocCopy(view: EditorView, headingId: string): boolean {
+  if (prepTransferBlocked(view.dom.dataset['prepUid'] ?? null, 'insert-in-doc-copy')) return false;
   const outcome = buildInDocCopyAttrs(view.state.doc, headingId);
   if (!outcome.ok || !outcome.attrs) {
     showToast(buildZoneErrorMessage(outcome.reason));

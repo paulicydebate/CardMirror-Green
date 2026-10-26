@@ -67,7 +67,7 @@ export function parseRoomInvite(item: Pick<InboxItem, 'type' | 'sliceJson'>): Ro
   // every movable-room invite to a generic "Item" row with no Join
   // button (live find, 2026-08-14) — the minReceiverVersion floor on
   // the envelope, not this parse, is what keeps old builds out.
-  if (typeof shareCode !== 'string' || !/^(?:cmshare[12]|cmview1)\./.test(shareCode)) return null;
+  if (typeof shareCode !== 'string' || !/^(?:cmshare[123]|cmview[12])\./.test(shareCode)) return null;
   const title = (p as Record<string, unknown>)['title'];
   return { shareCode, title: typeof title === 'string' ? title : '' };
 }

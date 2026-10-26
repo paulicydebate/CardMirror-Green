@@ -1,3 +1,4 @@
+import { prepHandle } from "../prep-desktop.js";
 /**
  * Voice IPC wiring (voice v2). One recognition session at a time, owned
  * by the window that started it; that window receives `voice:event` /
@@ -221,7 +222,7 @@ async function downloadModel(sender: Electron.WebContents): Promise<{ ok: boolea
 export function registerVoiceIpc(): void {
   cleanupLegacyVoiceAssets();
 
-  ipcMain.handle('host:voice-start', async (event, opts: VoiceStartOptions = {}): Promise<VoiceStartResult> => {
+  prepHandle('host:voice-start', async (event, opts: VoiceStartOptions = {}): Promise<VoiceStartResult> => {
     const sender = event.sender;
     if (worker && ownerWebContentsId !== sender.id) return { ok: false, error: 'voice-in-use' };
     // macOS: getUserMedia can "succeed" with a silent track until the
@@ -309,7 +310,7 @@ export function registerVoiceIpc(): void {
     return started;
   });
 
-  ipcMain.handle('host:voice-stop', async (event) => {
+  prepHandle('host:voice-stop', async (event) => {
     if (ownerWebContentsId === event.sender.id) stopSession();
   });
 
@@ -324,33 +325,33 @@ export function registerVoiceIpc(): void {
     }
   });
 
-  ipcMain.handle('host:voice-dictation', async (event, on: boolean, opts?: { autoEndAfterMs?: number }) => {
+  prepHandle('host:voice-dictation', async (event, on: boolean, opts?: { autoEndAfterMs?: number }) => {
     if (ownerWebContentsId !== event.sender.id || !worker) return;
     const autoEndAfterMs = typeof opts?.autoEndAfterMs === 'number' && opts.autoEndAfterMs > 0 ? opts.autoEndAfterMs : undefined;
     worker.send({ type: 'dictation', on: !!on, ...(autoEndAfterMs ? { autoEndAfterMs } : {}) } satisfies WorkerInbound);
   });
 
-  ipcMain.handle('host:voice-profile', async (event, profile: VoiceProfile | null) => {
+  prepHandle('host:voice-profile', async (event, profile: VoiceProfile | null) => {
     if (ownerWebContentsId !== event.sender.id || !worker) return;
     worker.send({ type: 'profile', profile: profile ?? null } satisfies WorkerInbound);
   });
 
-  ipcMain.handle('host:voice-calibrating', async (event, on: boolean) => {
+  prepHandle('host:voice-calibrating', async (event, on: boolean) => {
     if (ownerWebContentsId !== event.sender.id || !worker) return;
     worker.send({ type: 'calibrating', on: !!on } satisfies WorkerInbound);
   });
 
-  ipcMain.handle('host:voice-model-info', async () => ({
+  prepHandle('host:voice-model-info', async () => ({
     present: voiceReady(),
     downloading: downloadInFlight,
     sizeMB: pendingDownloadMB(),
   }));
 
-  ipcMain.handle('host:voice-download-model', async (event) =>
+  prepHandle('host:voice-download-model', async (event) =>
     LITE_BUILD ? { ok: false, error: 'Model downloads are disabled in CardMirror Lite.' } : downloadModel(event.sender),
   );
 
-  ipcMain.handle('host:voice-delete-model', async () => {
+  prepHandle('host:voice-delete-model', async () => {
     if (downloadInFlight) return { ok: false, error: 'A download is in progress.' };
     try {
       fs.rmSync(modelDir(), { recursive: true, force: true });
@@ -364,7 +365,7 @@ export function registerVoiceIpc(): void {
 
   // Native clipboard ops for the voice dispatcher — the same paths as
   // Mod-C/X/V, so ProseMirror slice semantics are inherited.
-  ipcMain.handle('host:voice-clipboard', async (event, op: 'copy' | 'cut' | 'paste') => {
+  prepHandle('host:voice-clipboard', async (event, op: 'copy' | 'cut' | 'paste') => {
     if (op === 'copy') event.sender.copy();
     else if (op === 'cut') event.sender.cut();
     else if (op === 'paste') event.sender.paste();

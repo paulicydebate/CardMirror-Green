@@ -1,5 +1,5 @@
-/** Main-process foundation for Prep / Round Mode. Deliberately not exposed to
- * renderers until document, clipboard and collaboration enforcement is wired.
+/** Main-process session owner for Prep / Round Mode. Renderer access goes
+ * through prep-desktop's coordinated IPC and native operation boundaries.
  * One owner per userData directory; all operations are synchronous/serialized.
  * The durable log is authoritative; state.json is only an active-log pointer.
  */
@@ -17,6 +17,8 @@ export interface PrepSessionState {
   /** Stable session identities: Save / Save As must not replace these. */
   newDocIds: string[];
   prepDocIds: string[];
+  /** Persistent file identities keep protection when a saved prep doc reopens. */
+  persistentDocIds?: Record<string, string>;
 }
 export interface PrepLogEntry {
   seq: number;
@@ -78,7 +80,7 @@ export function verifyPrepLog(text: string, expectedFinalHash?: string): PrepLog
   return { entries, finalHash: prev, sealCode: sealCode(prev) };
 }
 
-const INTERNAL_EVENTS = new Set(['prep-start', 'round-start', 'session-end', 'document-created', 'prep-document-marked', 'app-restart']);
+const INTERNAL_EVENTS = new Set(['prep-start', 'round-start', 'session-end', 'document-created', 'prep-document-marked', 'prep-identity-bound', 'prep-document-reopened', 'app-restart']);
 
 export class PrepSession {
   private state: PrepSessionState | null = null;
@@ -108,7 +110,7 @@ export class PrepSession {
   snapshot(): PrepSessionState | null {
     return this.state ? JSON.parse(JSON.stringify(this.state)) as PrepSessionState : null;
   }
-  /** The eventual controller must stop edits when this becomes true. */
+  /** The controller must stop edits when this becomes true. */
   get loggingFailed(): boolean { return this.failed; }
   private logPath(id: string): string { return join(this.dir, `${id}.jsonl`); }
   private requireActive(): PrepSessionState {
@@ -142,10 +144,26 @@ export class PrepSession {
     switch (entry.kind) {
       case 'document-created':
         if (!id || state.newDocIds.includes(id)) throw new Error('Invalid document identity.');
-        state.newDocIds.push(id); break;
+        state.newDocIds.push(id);
+        // Blank documents created during Round inherit protection; otherwise
+        // a new blank window would provide a paste bypass for the round.
+        if (state.mode === 'round') state.prepDocIds.push(id);
+        break;
       case 'prep-document-marked':
         if (!id || state.mode !== 'prep' || !state.newDocIds.includes(id) || state.prepDocIds.includes(id)) throw new Error('Invalid prep document.');
         state.prepDocIds.push(id); break;
+      case 'prep-identity-bound': {
+        const persistentId = (entry.data as { persistentId?: string })?.persistentId;
+        if (!id || !state.prepDocIds.includes(id) || typeof persistentId !== 'string' || !persistentId) throw new Error('Invalid prep file identity.');
+        state.persistentDocIds ??= {};
+        if (!Object.hasOwn(state.persistentDocIds, persistentId)) Object.defineProperty(state.persistentDocIds, persistentId, { value: id, enumerable: true, writable: true, configurable: true });
+        break;
+      }
+      case 'prep-document-reopened': {
+        const persistentId = (entry.data as { persistentId?: string })?.persistentId;
+        if (!id || !persistentId || !Object.hasOwn(state.persistentDocIds ?? {}, persistentId) || state.prepDocIds.includes(id)) throw new Error('Invalid prep document reopen.');
+        state.prepDocIds.push(id); break;
+      }
       case 'round-start':
         if (state.mode !== 'prep') throw new Error('Invalid mode transition.');
         state.mode = 'round'; state.roundStartedAt = entry.time; break;
@@ -181,6 +199,18 @@ export class PrepSession {
     const state = this.requireActive();
     if (state.mode !== 'prep' || !state.newDocIds.includes(id) || state.prepDocIds.includes(id)) throw new Error('Only new documents created during Prep Mode can be marked.');
     this.replay(this.append('prep-document-marked', null, window, id));
+  }
+  bindIdentity(id: string, persistentId: string, window: number): void {
+    const state = this.requireActive();
+    if (!state.prepDocIds.includes(id) || !persistentId || persistentId.length > 150) throw new Error('Invalid prep file identity.');
+    if (Object.hasOwn(state.persistentDocIds ?? {}, persistentId)) return;
+    this.replay(this.append('prep-identity-bound', { persistentId }, window, id));
+  }
+  restoreIdentity(id: string, persistentId: string, window: number): void {
+    const state = this.requireActive();
+    if (!id || !Object.hasOwn(state.persistentDocIds ?? {}, persistentId)) throw new Error('Unknown prep file identity.');
+    if (state.prepDocIds.includes(id)) return;
+    this.replay(this.append('prep-document-reopened', { persistentId }, window, id));
   }
   /** Caller must first obtain all-window save/close acknowledgements and end
    * collaboration. A canceled save must leave the session in Prep Mode. */

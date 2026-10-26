@@ -46,6 +46,24 @@ describe('blob sealing', () => {
   });
 });
 
+describe('Green prep share-code fence', () => {
+  it('uses a distinct format for prep edit/view codes and preserves the requirement', () => {
+    const room = 'ab'.repeat(16), key = generateRoomKeyBytes();
+    const code = encodeShareCode(room, key, '1.0.0', true);
+    expect(code).toMatch(/^cmshare3\./);
+    expect(decodeShareCode(code)).toMatchObject({ roomId: room, prep: true, view: false });
+    const view = viewCodeFromShareCode(code)!;
+    expect(view).toMatch(/^cmview2\./); expect(isViewCode(view)).toBe(true);
+    expect(decodeShareCode(view)).toMatchObject({ prep: true, view: true });
+    expect(decodeShareCode(code.split('.').slice(0, 3).join('.'))).toBeNull();
+    expect(decodeShareCode(view.split('.').slice(0, 3).join('.'))).toBeNull();
+  });
+  it('leaves ordinary share codes compatible with existing formats', () => {
+    const code = encodeShareCode('ab'.repeat(16), generateRoomKeyBytes(), '1.0.0');
+    expect(code).toMatch(/^cmshare2\./); expect(decodeShareCode(code)?.prep).toBeUndefined();
+  });
+});
+
 describe('share codes', () => {
   it('round-trips roomId + key', () => {
     const keyBytes = generateRoomKeyBytes();

@@ -3542,3 +3542,16 @@ documented in the repository README and reference docs.
 - **`.cmir` / `.docx`** — CardMirror's native format / the Word format
   for sharing.
 - **Mod** — Ctrl on Windows/Linux, ⌘ on macOS.
+## CardMirror Green: Prep and Round Modes
+
+These modes are available in the Green desktop fork. Use the **Prep / Round** bar near the bottom of the window, or find the same commands in the command palette.
+
+1. Choose **Start Prep**. Confirm that typing in prep documents will be logged locally. Existing documents, such as a shared coaches' strategy document, remain unrestricted.
+2. Choose **New prep doc** or **New prep flow** before entering arguments. Prep documents have a yellow outline. They block copy, cut, paste, dragging text in or out, and content-transfer features. Keyboard macros and autocorrect remain available and are logged. **Mark as prep** works only on a new, still-blank document created during this Prep session. A document cannot be unmarked while the session is active.
+3. To co-edit a prep document, use a Green prep session code. Every participant must use a compatible Green desktop build and start Prep Mode before joining. Ordinary strategy-document collaboration stays unchanged during Prep.
+4. Choose **Start Round** when ready. Every window ends collaboration and prompts to save non-prep documents before closing them. Canceling a save keeps Prep Mode active, although documents already closed remain closed. Round shows a red border in every editor window and blocks opening existing files. Saving work and creating blank documents remain available; new Round documents inherit the typing restrictions.
+5. Choose **End session** and confirm. The end screen shows Prep, Round and end times, plus a seal code. Have the judge or opponent record that code independently. **Logs** verifies the saved chain, shows typing and focus statistics, lets you filter events, and offers Export.
+
+Saved prep documents retain protection when reopened during the same session. Restarting the app resumes the mode and automatically restores protected unsaved drafts. Keep the session open while working; normal window close and End flush the log, while a crash can lose the last unflushed input batch (normally up to 500 ms).
+
+The log contains prep-document text and stays on the computer unless exported. It records activity inside CardMirror, not activity on other devices or everything another app can do. A hash chain and independently recorded seal can expose later changes; they do not make a user-controlled computer tamper-proof.

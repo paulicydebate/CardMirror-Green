@@ -1,3 +1,5 @@
+import { prepCreated, prepOpened, prepClosed, prepInventoryChanged, prepOpenAllowed, prepRestoreIdentity } from './prep-controller.js';
+import { prepDoc, prepRuntime } from './prep-runtime.js';
 /**
  * Multi-pane workspace shell.
  *
@@ -175,9 +177,10 @@ import { awaitWithSaveWatchdog } from './save-watchdog.js';
 type SlotId = 'slot1' | 'slot2' | 'slot3';
 const SLOT_IDS: SlotId[] = ['slot1', 'slot2', 'slot3'];
 
-let nextDocUid = 1;
 function newDocUid(): string {
-  return `doc-${nextDocUid++}`;
+  // Session ids must not collide with a protected document from a previous
+  // process after Prep / Round recovery (the old counter restarted at doc-1).
+  return `pane-${crypto.randomUUID()}`;
 }
 
 /** Sync the cross-window open-path claim when a record's handle
@@ -1572,6 +1575,23 @@ let shellLastNumberingSig = numberingDisplaySig();
 
 class MultiPaneShell {
   private slots: Record<SlotId, Slot>;
+  prepDocuments(): Array<{ uid: string; name: string }> {
+    return Object.values(this.slots).flatMap(slot => slot.stack.map(rec => ({ uid: rec.uid, name: rec.filename })));
+  }
+  async createPrepDocument(doc?: PMNode): Promise<string | null> {
+    const target = await this.promptForSlot('New prep document'); if (!target) return null;
+    const slot = this.slots[target];
+    const record = buildDocRecord(doc ? 'Prep flow' : 'Prep document', doc ?? makeBlankDoc(), slot, { handle: null, format: null });
+    slot.push(record); record.view.focus(); prepInventoryChanged(); return record.uid;
+  }
+  async closeNonPrep(): Promise<boolean> {
+    for (const slot of Object.values(this.slots)) for (const rec of [...slot.stack]) {
+      if (prepDoc(rec.uid)) continue;
+      slot.showRecord(rec); this.focusSlot(slot);
+      if (!(await slot.closeVisible())) return false;
+    }
+    prepInventoryChanged(); return true;
+  }
   private shellEl: HTMLElement;
   private navRailEl: HTMLElement;
   private rowEl: HTMLElement;
@@ -3387,6 +3407,7 @@ class MultiPaneShell {
   /** Create an empty doc; prompt for slot. Used by the ribbon's
    *  "New doc" button. */
   async createNewDoc(): Promise<void> {
+    if (prepRuntime.status.transitioning) return;
     const target = await this.promptForSlot('Untitled');
     if (!target) return;
     const doc = makeBlankDoc();
@@ -3397,6 +3418,7 @@ class MultiPaneShell {
     });
     slot.push(record);
     this.maybeAutoMarkSpeech(record, target);
+    void prepCreated(record.uid).catch(e => showToast(String(e)));
     // Caret into the empty paragraph + focus, so typing (or arming a
     // style for typing) works immediately with no extra click. Every
     // other slot-populating path focuses too — UNLESS the target pane
@@ -3478,7 +3500,7 @@ class MultiPaneShell {
     if (!target) return;
     const format = settings.get('defaultSpeechDocFormat');
     const filename = formatSpeechFilename(trimmed, format);
-    const includePocket = settings.get('includeSpeechDocPocket');
+    const includePocket = !prepRuntime.status.session && settings.get('includeSpeechDocPocket');
     // With pocket: Pocket heading carrying the filename (sans
     // extension) + trailing paragraph — Verbatim parity, the F4
     // row reads e.g. "Speech 2AC 5-15 12-30AM". Without: a fully
@@ -3498,6 +3520,7 @@ class MultiPaneShell {
     });
     slot.push(record);
     // `slot.push` focused the new view. Cursor placement:
+    void prepCreated(record.uid).catch(e => showToast(String(e)));
     //   - With pocket: drop into the trailing paragraph so the
     //     first ` press inserts BELOW the pocket rather than
     //     inside it. Position math: pocket node occupies
@@ -3939,6 +3962,7 @@ function buildDocRecord(
   // A session's collab binding attaches ONLY to its owning uid, so a pane opened
   // during someone else's session stays independent (no document fusion).
   const uid = opts.uid ?? newDocUid();
+  void prepRestoreIdentity(uid, opts.docId);
   const state = EditorState.create({
     doc,
     schema,
@@ -4224,6 +4248,7 @@ export function mountMultiPaneShell(): void {
   shell = new MultiPaneShell();
   setMultiDocReloadFromDisk((handle) => shell!.reloadFromDisk(handle));
   enableMultiDocMode({
+    prep: { documents: () => shell!.prepDocuments(), create: doc => shell!.createPrepDocument(doc), closeNonPrep: () => shell!.closeNonPrep() },
     onFileOpen: (file) => shell!.onFileOpen(file),
     onFilesOpen: (files) => shell!.onFilesOpen(files),
     showInContext: (req) => shell!.showInContext(req),

@@ -83,6 +83,14 @@ describe('ended-room join strictness (410)', () => {
 });
 
 describe('collab session end-to-end', () => {
+  it('publishes the prep flag in the encrypted seed and fences older clients with a Green code', async () => {
+    const { session: host, shareCode } = await CollabSession.host({ pmDoc: simpleDoc('typed prep'), client, prep: true, ...FAST });
+    const decoded = decodeShareCode(shareCode)!;
+    expect(decoded.prep).toBe(true);
+    const joiner = await CollabSession.join({ ...decoded, client, ...FAST });
+    expect(joiner.loroDoc.getMap('meta').get('cardmirrorGreenPrep')).toBe(true);
+    await joiner.stop(); await host.stop();
+  });
   it('propagates the seed to a joiner', async () => {
     const seed = mixedDoc();
     const { host, hostView, joiner, joinView } = await hostAndJoin(seed);

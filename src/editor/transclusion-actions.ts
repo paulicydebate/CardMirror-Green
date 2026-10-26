@@ -1,3 +1,4 @@
+import { prepTransferBlocked } from './prep-runtime.js';
 /**
  * View-operating transclusion actions: refresh, detach, insert. Shared by the
  * NodeView header buttons and the ribbon commands. Refresh is async (it reads
@@ -374,6 +375,7 @@ export function insertZoneAtSelection(
   attrs: Partial<TransclusionAttrs>,
   content?: Fragment,
 ): boolean {
+  if (prepTransferBlocked(view.dom.dataset['prepUid'] ?? null, 'insert-transclusion')) return false;
   const node = createTransclusionNode(view.state.schema, attrs, content);
   const { $from } = view.state.selection;
   const pos = $from.depth > 0 ? $from.after(1) : $from.pos;

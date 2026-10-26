@@ -1,6 +1,6 @@
 # Prep docs, Prep Mode, Round Mode (lockdown) and typing log: viability and plan
 
-Status (2026-10-26): implementation started. The session/log foundation and renderer document guards are implemented and tested, but no session controller connects them yet; protections and user controls are not available in the app. See CARDMIRROR_GREEN.md, "Prep / Round foundation" and "Prep document guards". Requested by the user's colleagues for NPDA rounds, where copy-paste is banned during prep.
+Status (2026-10-26): the usable desktop implementation is connected. See CARDMIRROR_GREEN.md, "Usable Prep / Round Modes", for behavior and validation. **Ask the user for explicit permission before launching desktop/UI tests; use isolated profiles and synthetic documents. Never clear the user's normal profile.** Requested by the user's colleagues for NPDA rounds, where copy-paste is banned during prep.
 
 ## Requests
 
@@ -145,3 +145,5 @@ So protection is **per document**, not per window.
 5. Log writer with hash chain, then focus events, then the viewer and seal code.
 
 Test with Playwright `_electron`: try paste, drag, send-to-speech and external insert while locked across two windows and three-pane mode, then check the log chain.
+
+Permission is required before that desktop test. In development, `CARDMIRROR_DEV_PROFILE` selects a separate scratch profile; packaged builds ignore it. Do not delete or reuse the user's personal profile. New blank documents created in Round inherit protection so they cannot provide a paste bypass. Manual marking requires a genuinely new document that is still blank; use New Prep Document before typing. Full Save / Save As preserve a prep document's persistent identity, and reopening it in the same session inherits protection. Protected drafts recover automatically after restart.

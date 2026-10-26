@@ -90,6 +90,18 @@ interface PairingInboxItemIpc {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  prep: {
+    ready: () => ipcRenderer.invoke('prep:ready'),
+    action: (action: string, uid?: unknown) => ipcRenderer.invoke('prep:action', action, uid),
+    inventory: (docs: string[], focused: string | null) => ipcRenderer.send('prep:inventory', { docs, focused }),
+    events: (events: unknown[]) => ipcRenderer.invoke('prep:events', events),
+    logs: () => ipcRenderer.invoke('prep:logs'),
+    readLog: (id: string) => ipcRenderer.invoke('prep:read-log', id),
+    exportLog: (id: string) => ipcRenderer.invoke('prep:export-log', id),
+    prepared: (requestId: string, ok: boolean) => ipcRenderer.send('prep:prepared', { requestId, ok }),
+    onState: (fn: (state: unknown) => void) => { const listener = (_e: unknown, state: unknown) => fn(state); ipcRenderer.on('prep:state', listener); return () => ipcRenderer.removeListener('prep:state', listener); },
+    onPrepare: (fn: (request: { requestId: string; action: 'round' | 'end' }) => void) => { const listener = (_e: unknown, req: { requestId: string; action: 'round' | 'end' }) => fn(req); ipcRenderer.on('prep:prepare', listener); return () => ipcRenderer.removeListener('prep:prepare', listener); },
+  },
   /** Absolute filesystem path of a dropped/selected `File`. Electron 32+
    *  removed the `File.path` property, so drag-to-open resolves it through
    *  `webUtils.getPathForFile` here in the preload. Returns '' if the file has

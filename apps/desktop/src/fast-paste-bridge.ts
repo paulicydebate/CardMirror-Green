@@ -1,3 +1,4 @@
+import { prepExternalAllowed } from './prep-desktop.js';
 /**
  * Fast Debate Paste integration — main-process HTTP server.
  *
@@ -290,6 +291,7 @@ function windowForInsert(payload: InsertPayload): BrowserWindow | null {
 }
 
 function dispatchToRenderer(payload: InsertPayload, win: BrowserWindow | null): Promise<RendererAck> {
+  if (win && !prepExternalAllowed(win.webContents.id, targetUidOf(payload))) return Promise.resolve({ ok: false, error: 'prep-document', requestId: '' });
   return new Promise((resolve) => {
     if (!win) {
       resolve({ requestId: '', ok: false, error: 'no-target-doc' });

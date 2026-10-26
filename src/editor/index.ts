@@ -9,6 +9,8 @@
 
 import { EditorState, Plugin, Selection, TextSelection, type Command } from 'prosemirror-state';
 import { prepDocumentGuard } from './prep-document-guard.js';
+import { initPrepController, prepCreated, prepMarkCreated, prepCreateBlank, prepRestoreIdentity, prepFlush, prepOpened, prepInventoryChanged, prepOpenAllowed, runPrepCommand } from './prep-controller.js';
+import { prepDoc, prepRound, prepRuntime } from './prep-runtime.js';
 import { serializeRangesForClipboard, serializeNodesForClipboard } from './clipboard-slice.js';
 import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
@@ -831,7 +833,7 @@ async function runNewSpeechDocumentSingleDoc(): Promise<void> {
   // Pocket heading is the filename minus its extension when the
   // user has opted in; otherwise start fully blank. Off case lets
   // users title their speeches inline rather than via the chip.
-  const docNode = settings.get('includeSpeechDocPocket')
+  const docNode = !prepRuntime.status.session && settings.get('includeSpeechDocPocket')
     ? makeSpeechBlankDoc(initialFilename.replace(/\.(cmir|docx)$/i, ''))
     : makeBlankNewDoc();
 
@@ -893,6 +895,7 @@ async function runNewSpeechDocumentSingleDoc(): Promise<void> {
   const uid = newSessionDocUid();
   try {
     await host.spawnWindow({
+      prepBlank: !!prepRuntime.status.session,
       filename,
       bytes: docBytes,
       handle,
@@ -1111,6 +1114,7 @@ let multiDocSetFilenameForUid: ((uid: string, name: string) => void) | null = nu
 /** App-quit path: the shell prompts to save every unsaved pane, returning false
  *  if the user cancels (abort the quit). null in single-doc mode. */
 let multiDocPromptSaveAllForQuit: (() => Promise<boolean>) | null = null;
+let multiDocPrep: { documents(): Array<{ uid: string; name: string }>; create(doc?: PMNode): Promise<string | null>; closeNonPrep(): Promise<boolean> } | null = null;
 
 /** Full focused-file plumbing for the Save / Save-As flow — reads
  *  the filename plus the on-disk handle and on-disk format. */
@@ -1193,6 +1197,7 @@ let multiDocOnRecoveredDoc:
  *  to install the overrides that redirect the single-doc open /
  *  mountView paths into per-pane routing. */
 export function enableMultiDocMode(opts: {
+  prep?: NonNullable<typeof multiDocPrep>;
   onFileOpen: (opened: OpenedFile) => Promise<void> | void;
   onFilesOpen?: (opened: OpenedFile[]) => Promise<void> | void;
   showInContext?: (req: ShowInContextRequest) => Promise<void> | void;
@@ -1270,6 +1275,7 @@ export function enableMultiDocMode(opts: {
   arrangeForSpeech?: (side: 'left' | 'right', speechPct: number) => boolean;
 }): void {
   multiDocActive = true;
+  multiDocPrep = opts.prep ?? null;
   multiDocOnFileOpen = opts.onFileOpen;
   multiDocOnFilesOpen = opts.onFilesOpen ?? null;
   multiDocShowInContext = opts.showInContext ?? null;
@@ -1804,6 +1810,13 @@ const ribbonContext: RibbonContext = {
   newFlow: () => {
     void openNewFlow();
   },
+  startPrep: () => void runPrepCommand('startPrep'),
+  newPrep: () => void runPrepCommand('newPrep'),
+  newPrepFlow: () => void runPrepCommand('newPrepFlow'),
+  markPrep: () => void runPrepCommand('markPrep'),
+  startRound: () => void runPrepCommand('startRound'),
+  endPrep: () => void runPrepCommand('endPrep'),
+  prepLogs: () => void runPrepCommand('prepLogs'),
   popOutPane: () => {
     if (!multiDocActive) {
       showToast('Pop out works in three-pane mode: it moves a pane into its own window.');
@@ -2476,6 +2489,7 @@ if (homeBtn) {
  *     Cancel → bail. Esc / overlay click also cancel.
  */
 async function onNewDocClicked(): Promise<void> {
+  if (prepRuntime.status.transitioning) return;
   if (multiDocActive && multiDocOnNewDoc) {
     void multiDocOnNewDoc();
     return;
@@ -2513,11 +2527,11 @@ async function onNewDocClicked(): Promise<void> {
   // content. New doc gets a fresh uid so future journals key
   // against the new session.
   void clearCurrentJournal();
+  currentDocUid = newSessionDocUid();
   mountView(makeNewDocBody());
   currentDocFilename = null;
   setCurrentDocHandle(null);
   currentDocFormat = null;
-  currentDocUid = newSessionDocUid();
   currentDocId = null; // new doc → minted on first save
   markCurrentDocClean();
   syncSingleDocSpeechRegistration();
@@ -2547,11 +2561,11 @@ async function replaceWithSessionDoc(): Promise<boolean> {
     }
   }
   void clearCurrentJournal();
+  currentDocUid = newSessionDocUid();
   mountView(makeNewDocBody());
   currentDocFilename = null;
   setCurrentDocHandle(null);
   currentDocFormat = null;
-  currentDocUid = newSessionDocUid();
   currentDocId = null; // unsaved session copy → docId minted on first save
   markCurrentDocClean();
   syncSingleDocSpeechRegistration();
@@ -4616,6 +4630,7 @@ document.addEventListener('keydown', suppressGuiSelectAll, true);
  *  view-ful by the time this fires, but multi-doc with no panes
  *  open hits this path. */
 const VIEWLESS_RIBBON_COMMANDS = new Set<AnyCommandId>([
+  'startPrep', 'newPrep', 'newPrepFlow', 'markPrep', 'startRound', 'endPrep', 'prepLogs',
   'newDocument',
   // Settings-only; no doc needed.
   'resetDefaultColors',
@@ -4687,6 +4702,9 @@ const VIEWLESS_RIBBON_COMMANDS = new Set<AnyCommandId>([
 ]);
 
 function runViewlessRibbon(id: AnyCommandId): void {
+  if (['startPrep', 'newPrep', 'newPrepFlow', 'markPrep', 'startRound', 'endPrep', 'prepLogs'].includes(id)) {
+    void runPrepCommand(id as Parameters<typeof runPrepCommand>[0]); return;
+  }
   switch (id) {
     case 'newDocument': ribbonContext.newDocument(); return;
     case 'openFile': ribbonContext.openFile(); return;
@@ -4791,6 +4809,7 @@ async function runMultiPane(
  *  element (single-doc); browse-only when there's no active view.
  *  `initialQuery` opens it with a prefix already typed (`w ` = Switch Window). */
 function openSearchPalette(initialQuery?: string): void {
+  if (prepRound()) { prepOpenAllowed(); return; }
   const paneEl =
     (view?.dom.closest('.pmd-pane') as HTMLElement | null) ?? editorEl ?? null;
   quickCardSearchUI.open({
@@ -5708,6 +5727,7 @@ function isMobileLayout(): boolean {
  *  New flow stay in lockstep. The starter is layout-specific so the
  *  guidance matches the UI the user is actually looking at. */
 function makeNewDocBody(): PMNode {
+  if (prepRuntime.status.session) return makeBlankNewDoc();
   if (!settings.get('showOnboardingStarter')) return makeBlankNewDoc();
   return isMobileLayout() ? makeMobileStarterDoc() : makeStarterDoc();
 }
@@ -6092,6 +6112,7 @@ installHoldToDictate({
 });
 
 function mountView(doc: PMNode, threads: Thread[] = []): void {
+  prepClosedToHome = false;
   if (view) {
     editorDragSurface.detach();
     view.destroy();
@@ -6883,6 +6904,7 @@ function saveFiltersForFormat(format: 'cmir' | 'docx'): { name: string; extensio
  *  multi-pane shell (which shows the "send to slot N" picker);
  *  single-doc mode mounts it as the current view. */
 async function runOpenFlow(): Promise<void> {
+  if (!prepOpenAllowed()) return;
   const host = getHost();
   // Multi-select (a setting, off by default) only where every pick has
   // somewhere to go: the three-pane workspace (one slot for the batch)
@@ -6918,6 +6940,7 @@ async function runOpenFlow(): Promise<void> {
  *  on each, then hand the survivors to the shell, which asks for one
  *  slot for the whole batch. */
 async function routeOpenedFilesToSlot(opened: OpenedFile[]): Promise<void> {
+  if (!prepOpenAllowed()) return;
   const files: OpenedFile[] = [];
   for (const file of opened) {
     const src = await resolveOpenedFile(file);
@@ -6946,6 +6969,7 @@ async function routeOpenedFilesToSlot(opened: OpenedFile[]): Promise<void> {
  *  dialog and the command-palette file search, so file search opens in
  *  a new window / the slot picker rather than replacing the current doc. */
 async function routeOpenedFile(opened: OpenedFile): Promise<void> {
+  if (!prepOpenAllowed()) return;
   // Decode a .cmir-journal into its wrapped doc (recovered, unsaved); a plain
   // .cmir/.docx passes through unchanged.
   const src = await resolveOpenedFile(opened);
@@ -7070,13 +7094,14 @@ function mountOpenedSingleDoc(args: {
   // Opening replaces the current doc; clear its journal and
   // mint a fresh uid for the new session.
   void clearCurrentJournal();
+  currentDocUid = newSessionDocUid();
+  void prepRestoreIdentity(currentDocUid, args.docId);
   mountView(args.docNode, args.docThreads);
   currentDocFilename = args.name;
   setCurrentDocHandle(args.handle ?? null);
   currentDocFormat = args.format;
   // Restore this file's remembered autosave toggle (off if unknown).
   settings.set('autosaveEnabled', isAutosaveOnForPath(args.handle));
-  currentDocUid = newSessionDocUid();
   adoptDocId(args.docId, args.name, args.handle ?? null, args.format);
   // A recovered journal / salvaged copy mounts dirty (no on-disk file
   // to be in sync with), so closing prompts to save; a normal open is
@@ -7230,13 +7255,14 @@ async function loadFileInPlace(file: {
     docId = result.docId;
   }
   void clearCurrentJournal();
+  currentDocUid = newSessionDocUid();
+  void prepRestoreIdentity(currentDocUid, docId);
   mountView(docNode, docThreads);
   currentDocFilename = file.filename;
   setCurrentDocHandle(file.handle);
   currentDocFormat = file.format;
   // Restore this file's remembered autosave toggle (off if unknown).
   settings.set('autosaveEnabled', isAutosaveOnForPath(file.handle));
-  currentDocUid = newSessionDocUid();
   adoptDocId(docId, file.filename, file.handle, file.format);
   if (file.recovered) markCurrentDocDirty();
   else markCurrentDocClean();
@@ -7409,6 +7435,7 @@ const homeCallbacks: HomeScreenCallbacks = {
  *  File → Open (new window / slot picker / in place) as an unsaved
  *  document: no handle, so Save asks where to put it. */
 function openOpenCaselistPanel(): void {
+  if (!prepOpenAllowed()) return;
   if (!getElectronHost()) {
     showToast('OpenCaselist requires the desktop edition.');
     return;
@@ -7432,6 +7459,7 @@ async function openNewFlow(): Promise<void> {
     schema.nodes['flow_workbook']!.create({ data: serializeFlow(newWorkbook(event)) }),
     schema.nodes['paragraph']!.create(),
   ]);
+  if (prepRuntime.status.session) { await prepCreateBlank(doc); return; }
   await routeOpenedFile({ name: `${FLOW_FORMATS[event]!.label.split(' ')[0]} flow.cmir`, bytes: serializeNative(doc), handle: null });
 }
 
@@ -7441,15 +7469,16 @@ async function openNewFlow(): Promise<void> {
  *  this is a clean blank, eligible to be replaced silently. */
 function mountFreshBlankDoc(): void {
   void clearCurrentJournal();
+  currentDocUid = newSessionDocUid();
   mountView(makeNewDocBody());
   currentDocFilename = null;
   setCurrentDocHandle(null);
   currentDocFormat = null;
-  currentDocUid = newSessionDocUid();
   currentDocId = null; // new doc → minted on first save
   markCurrentDocClean();
   syncSingleDocSpeechRegistration();
   updateWindowTitle();
+  void prepCreated(currentDocUid).catch(e => showToast(String(e)));
 }
 
 /** Close the current doc back to the home screen rather than
@@ -7471,10 +7500,11 @@ async function handleCloseDocToHome(): Promise<void> {
 }
 
 async function handleCloseDocToHomeInner(): Promise<void> {
-  if (homeScreen.isVisible()) return;
+  if (homeScreen.isVisible() && prepClosedToHome) return;
   const finish = (): void => {
     mountFreshBlankDoc();
     homeScreen.show();
+    prepClosedToHome = true;
   };
   // A co-edited doc gets the session-aware close first (keep resumable vs
   // end/leave), naming the doc.
@@ -7515,6 +7545,7 @@ async function handleCloseDocToHomeInner(): Promise<void> {
 /** File-picker open that always loads in-place (never spawns a
  *  window) — used by the home screen. Returns true on success. */
 async function pickAndLoadInPlace(): Promise<boolean> {
+  if (!prepOpenAllowed()) return false;
   let opened: OpenedFile | null;
   try {
     opened = await getHost().openFile({ filters: OPEN_FILE_FILTERS });
@@ -8056,11 +8087,11 @@ async function createSpeechDocInPlace(): Promise<boolean> {
     ? makeSpeechBlankDoc(filename.replace(/\.(cmir|docx)$/i, ''))
     : makeNewDocBody();
   void clearCurrentJournal();
+  currentDocUid = newSessionDocUid();
   mountView(docNode);
   currentDocFilename = null;
   setCurrentDocHandle(null);
   currentDocFormat = null;
-  currentDocUid = newSessionDocUid();
   currentDocId = null; // new doc → minted on first save
   markCurrentDocClean();
   syncSingleDocSpeechRegistration();
@@ -8480,7 +8511,7 @@ async function runSaveAsFlowInner(): Promise<boolean> {
     // A full Save As is a distinct logical doc → fork a new docId (the
     // original file keeps its own). Derived/lossy exports get no docId
     // (clean copies). Works in both layouts via the focused-doc identity.
-    const forkDocId = isFullSave ? crypto.randomUUID() : undefined;
+    const forkDocId = prepDoc(sessionUid) ? srcDocId ?? ensureActiveDocId() : isFullSave ? crypto.randomUUID() : undefined;
     // Before serializing, same as runSaveFlowInner — mid-write edits
     // must keep the doc dirty. Only consumed on the full-save path.
     const commitClean = captureActiveDocCleanToken();
@@ -8519,15 +8550,15 @@ async function runSaveAsFlowInner(): Promise<boolean> {
       const hadOnDiskOriginal = file.handle != null;
       commitSaveResultFor(sessionUid, result.name, result.handle ?? null, choice.format);
       if (forkDocId) {
-        if (srcDocId && hadOnDiskOriginal) {
+        if (srcDocId && hadOnDiskOriginal && srcDocId !== forkDocId) {
           // Real file → fork: the original keeps its cards; the copy
           // follows the new file.
           learnStore.copyDocAnnotations(srcDocId, forkDocId);
-        } else if (srcDocId) {
+        } else if (srcDocId && srcDocId !== forkDocId) {
           // Never-saved doc whose docId was minted by an in-doc
           // flashcard: move it, don't copy.
           learnStore.rekeyDoc(srcDocId, forkDocId);
-        } else {
+        } else if (!srcDocId) {
           // Never-saved + never-minted: annotations are still under the
           // session uid.
           learnStore.rekeyDoc(sessionUid, forkDocId);
@@ -8668,6 +8699,7 @@ async function runSilentExportFlow(spec: SilentExportSpec): Promise<boolean> {
  * `sendDocDestination` / `sendDocFolder` / `sendDocFormat` / `SEND_` prefix.
  */
 export async function runSaveSendDocFlow(): Promise<boolean> {
+  if (prepDoc(activeDocIdentity().sessionUid)) { showToast('Prep document: use Save or full Save As.'); return false; }
   return runSilentExportFlow({
     label: 'Send doc',
     formatKey: 'sendDocFormat',
@@ -8694,6 +8726,7 @@ export async function runSaveSendDocFlow(): Promise<boolean> {
  * `readDocFolder` / `readDocFormat` / `READ_` prefix.
  */
 export async function runSaveReadDocFlow(): Promise<boolean> {
+  if (prepDoc(activeDocIdentity().sessionUid)) { showToast('Prep document: use Save or full Save As.'); return false; }
   return runSilentExportFlow({
     label: 'Read doc',
     formatKey: 'readDocFormat',
@@ -8723,6 +8756,7 @@ export async function runSaveReadDocFlow(): Promise<boolean> {
  * with a toast when nothing is marked. Returns `true` when bytes hit disk.
  */
 export async function runSaveMarkedCardsFlow(): Promise<boolean> {
+  if (prepDoc(activeDocIdentity().sessionUid)) { showToast('Prep document: use Save or full Save As.'); return false; }
   const docToExport = view ? view.state.doc : currentDoc;
   if (countMarkedCards(docToExport) === 0) {
     showToast('No marked cards to save.');
@@ -9769,6 +9803,7 @@ async function handleUserCloseRequest(): Promise<void> {
 async function handleUserCloseRequestInner(
   electronHost: NonNullable<ReturnType<typeof getElectronHost>>,
 ): Promise<void> {
+  const closeLogged = async (): Promise<void> => { await prepFlush(); await electronHost.closeSelf(); };
   // Multi-pane: `currentDocDirty` only tracks the single-doc view, so the quit
   // must ask the SHELL to prompt for every unsaved pane before closing —
   // otherwise closing the window silently discards their work. (Sessions persist
@@ -9788,7 +9823,7 @@ async function handleUserCloseRequestInner(
       } catch (err) {
         console.warn('Session flush on quit failed:', err);
       }
-      await electronHost.closeSelf();
+      await closeLogged();
     } else await electronHost.cancelClose?.();
     return;
   }
@@ -9805,20 +9840,20 @@ async function handleUserCloseRequestInner(
     }
     if (co === 'keep') {
       // Closing the doc (session kept resumable) completes a pending quit.
-      await electronHost.closeSelf();
+      await closeLogged();
       return;
     }
     // 'run-normal' → fall through to the dirty/save flow below.
   }
   if (!currentDocDirty) {
-    await electronHost.closeSelf();
+    await closeLogged();
     return;
   }
   const choice = await confirmCloseUnsaved();
   switch (choice) {
     case 'save': {
       const ok = await runSaveFlow();
-      if (ok) await electronHost.closeSelf();
+      if (ok) await closeLogged();
       // Save failed — the window stays open, so a quit that was
       // waiting on this confirmation is off. Let main know.
       else await electronHost.cancelClose?.();
@@ -9826,7 +9861,7 @@ async function handleUserCloseRequestInner(
     }
     case 'saveAs': {
       const ok = await runSaveAsFlow();
-      if (ok) await electronHost.closeSelf();
+      if (ok) await closeLogged();
       else await electronHost.cancelClose?.();
       return;
     }
@@ -9837,7 +9872,7 @@ async function handleUserCloseRequestInner(
       await clearCurrentJournal().catch(() => {
         /* best-effort */
       });
-      await electronHost.closeSelf();
+      await closeLogged();
       return;
     }
     case 'cancel':
@@ -10483,8 +10518,41 @@ if (getHost().kind === 'browser') {
   );
 }
 
+let prepClosedToHome = false;
+const prepBoot = initPrepController({
+  documents: () => multiDocActive ? multiDocPrep?.documents() ?? [] : view && !prepClosedToHome ? [{ uid: currentDocUid, name: currentDocFilename ?? 'Untitled' }] : [],
+  focused: () => multiDocActive ? multiDocGetFocusedFile?.()?.uid ?? null : view && !prepClosedToHome ? currentDocUid : null,
+  create: async (doc?: PMNode) => {
+    if (multiDocActive && multiDocPrep) return multiDocPrep.create(doc);
+    const host = getHost();
+    if (!host.canSpawnWindow) return null;
+    await host.spawnWindow({ filename: doc ? 'Prep flow.cmir' : 'Prep document.cmir', bytes: serializeNative(doc ?? makeBlankDoc()), handle: null,
+      format: 'cmir', uid: newSessionDocUid(), prepBlank: true, prepMark: true, popout: true });
+    return null; // receiving window marks it before allowing input
+  },
+  closeNonPrep: async () => {
+    if (multiDocActive && multiDocPrep) return multiDocPrep.closeNonPrep();
+    if (prepClosedToHome || prepDoc(currentDocUid)) return true;
+    await handleCloseDocToHome(); prepInventoryChanged(); return homeScreen.isVisible();
+  },
+  hasCollaboration: uid => collabPluginSourceFor(uid) != null,
+  identity: uid => {
+    if (uid === activeDocIdentity().sessionUid) return ensureActiveDocId();
+    const id = resolveDocPersistentId(uid) ?? crypto.randomUUID(); setDocIdFor(uid, id); return id;
+  },
+  endCollaboration: async onlyPrep => {
+    const m = await loadCollabUi();
+    const ok = await m.disconnectForPrep(onlyPrep, !!prepRuntime.status.error);
+    // Reconfiguration destroys/re-registers the guard's view entry. Iterate a
+    // snapshot so deleting/reinserting a Map key cannot repeat it forever.
+    for (const [uid, v] of [...prepRuntime.views]) v.updateState(v.state.reconfigure({ plugins: buildEditorPlugins(uid) }));
+    return ok;
+  },
+});
+
 if (BOOT_MULTI_DOC_WORKSPACE) {
   void (async () => {
+    await prepBoot;
     // Singleton: only one three-pane window. Run the check alongside the shell
     // import; if an older three-pane window is already open, this is a
     // browser-spawned duplicate (Cmd+N / app icon) — bounce it instead of
@@ -10586,6 +10654,7 @@ if (BOOT_MULTI_DOC_WORKSPACE) {
  *  drafts — that belongs to the first window of the session).
  *  If no payload, mount the starter and run normal recovery. */
 async function initSingleDocBoot(): Promise<void> {
+  await prepBoot;
   const host = getHost();
   // Firstness is settled before anything else so the workspace
   // roll-over below runs even on the OS-open path (which returns
@@ -10639,7 +10708,8 @@ async function initSingleDocBoot(): Promise<void> {
   // windows would otherwise offer to recover the docs the user
   // already has open in OTHER windows of the same session, which
   // is both confusing and useless.
-  mountView(currentDoc);
+  mountView(prepRuntime.status.session ? makeBlankDoc() : currentDoc);
+  void prepCreated(currentDocUid).catch(e => showToast(String(e)));
   syncSingleDocSpeechRegistration();
   // A window spawned by "New document" exists to be typed into — focus
   // the editor so typing works with no extra click. Gated on the home
@@ -10670,6 +10740,7 @@ async function initSingleDocBoot(): Promise<void> {
     // runStartupRecovery's mount path. We show home first so a
     // no-recovery launch lands on the hub rather than a blank doc.
     homeScreen.show();
+    prepClosedToHome = true;
     await runStartupRecovery();
   }
   if (isFirst) {
@@ -10806,12 +10877,14 @@ async function mountFromSpawnPayload(
       docThreads = result.threads;
       docId = result.docId;
     }
+    currentDocUid = payload.uid ?? newSessionDocUid();
+    void prepRestoreIdentity(currentDocUid, docId);
+    if (payload.prepMark) prepRuntime.pending.add(currentDocUid);
     mountView(docNode, docThreads);
     currentDocFilename = payload.filename;
     rememberJournaledBase(payload.handle, (payload as { diskBase?: DiskBase }).diskBase);
     setCurrentDocHandle(payload.handle);
     currentDocFormat = format;
-    currentDocUid = payload.uid ?? newSessionDocUid();
     // A mode-switch respawn of a recovered, not-yet-saved draft re-marks it
     // here so the stale-overwrite guard + autosave hold-off survive the move
     // into this window.
@@ -10866,6 +10939,12 @@ async function mountFromSpawnPayload(
     view?.focus();
     markNonPristineStarter();
     updateWindowTitle();
+    if (payload.prepBlank) {
+      homeScreen.hide();
+      if (payload.prepMark) await prepMarkCreated(currentDocUid);
+      else await prepCreated(currentDocUid);
+    } else prepOpened(currentDocUid, payload.filename);
+    prepInventoryChanged();
     console.log(`Spawned with ${payload.filename}: ${countSummary(docNode)}`);
   } catch (err) {
     if (err instanceof NativeDamagedError) {
@@ -10927,6 +11006,10 @@ async function handleModeSwitch(newValue: boolean): Promise<void> {
 }
 
 async function handleModeSwitchInner(newValue: boolean): Promise<void> {
+  if (prepRuntime.status.session) {
+    showToast('End the Prep / Round session before switching workspace layouts.');
+    settings.set('multiDocWorkspace', BOOT_MULTI_DOC_WORKSPACE); return;
+  }
   modeSwitchInFlight = true;
   const electron = !!getElectronHost();
   let message: string;
@@ -11127,6 +11210,12 @@ async function runStartupRecoveryInner(): Promise<void> {
   } catch (err) {
     console.warn('Failed to read recovery journals:', err);
     return;
+  }
+  if (prepRuntime.status.session) {
+    const protectedDrafts = entries.filter(entry => prepDoc(entry.uid));
+    if (protectedDrafts.length) await autoRecoverAll(protectedDrafts);
+    entries = entries.filter(entry => !prepDoc(entry.uid));
+    if (prepRuntime.status.session.mode === 'round') return;
   }
   // Mode-switch reload: the user toggled `multiDocWorkspace` and we
   // journaled the open docs before reloading. Auto-open exactly the
@@ -11509,6 +11598,8 @@ async function applyRecovery(
     console.warn(`Failed to parse recovery journal for ${entry.uid}:`, err);
     return;
   }
+  currentDocUid = entry.uid;
+  void prepRestoreIdentity(currentDocUid, parsed.docId);
   mountView(parsed.doc, parsed.threads.length > 0 ? parsed.threads : undefined);
   currentDocFilename = entry.filename;
   // The journal's on-disk baseline rides into the path registration so
@@ -11518,7 +11609,6 @@ async function applyRecovery(
   currentDocFormat = entry.format;
   // Reuse the original uid so a re-crash overwrites the same
   // journal slot (rather than accumulating new ones).
-  currentDocUid = entry.uid;
   // Restore the Learn doc id from the recovered bytes so flashcards
   // re-associate (and a never-saved doc's cards stay keyed to the
   // reused uid above). adoptDocId registers it when present.

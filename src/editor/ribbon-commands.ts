@@ -67,6 +67,7 @@ import {
 import { applyPlainPasteFromText, togglePlainPaste } from './paste-plugin.js';
 import { lockHighlighting } from './create-reference.js';
 import { showToast } from './toast.js';
+import { prepDoc, prepRound, prepRuntime, prepTransferBlocked } from './prep-runtime.js';
 import { activateCitePromptPreset, citePromptPresets } from './ai/cite-prompt-presets.js';
 import { surfaceError } from './error-surface.js';
 import { TYPE_TO_LEVEL, TYPE_LABEL } from './headings.js';
@@ -4632,6 +4633,13 @@ export type RibbonCommandId =
   | 'reopenWorkspace'
   | 'openOpenCaselist'
   | 'newFlow'
+  | 'startPrep'
+  | 'newPrep'
+  | 'newPrepFlow'
+  | 'markPrep'
+  | 'startRound'
+  | 'endPrep'
+  | 'prepLogs'
   | 'popOutPane'
   | 'arrangeWindows'
   | 'toggleCommentsVisible'
@@ -4920,6 +4928,13 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'reopenWorkspace',
   'openOpenCaselist',
   'newFlow',
+  'startPrep',
+  'newPrep',
+  'newPrepFlow',
+  'markPrep',
+  'startRound',
+  'endPrep',
+  'prepLogs',
   'popOutPane',
   'arrangeWindows',
   'toggleCommentsVisible',
@@ -5153,6 +5168,13 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   reopenWorkspace: 'Reopen Last Workspace',
   openOpenCaselist: 'Browse OpenCaselist',
   newFlow: 'New Flow (Spreadsheet)',
+  startPrep: 'Start Prep Mode',
+  newPrep: 'New Prep Document',
+  newPrepFlow: 'New Prep Flow (NPDA)',
+  markPrep: 'Mark as Prep Document',
+  startRound: 'Start Round Mode',
+  endPrep: 'End Prep / Round Session',
+  prepLogs: 'Prep / Round Logs',
   popOutPane: 'Pop Out Pane to New Window',
   arrangeWindows: 'Arrange Windows',
   toggleCommentsVisible: 'Show / Hide Comments',
@@ -5596,6 +5618,13 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   reopenWorkspace: '',
   openOpenCaselist: '',
   newFlow: '',
+  startPrep: '',
+  newPrep: '',
+  newPrepFlow: '',
+  markPrep: '',
+  startRound: '',
+  endPrep: '',
+  prepLogs: '',
   popOutPane: '',
   arrangeWindows: '',
   toggleCommentsVisible: '',
@@ -5892,6 +5921,13 @@ export interface RibbonContext {
   openOpenCaselist: () => void;
   /** Open a new spreadsheet flow document. */
   newFlow: () => void;
+  startPrep: () => void;
+  newPrep: () => void;
+  newPrepFlow: () => void;
+  markPrep: () => void;
+  startRound: () => void;
+  endPrep: () => void;
+  prepLogs: () => void;
   /** Three-pane: move the focused pane's doc into its own window. */
   popOutPane: () => void;
   /** Arrange Windows: speech doc on one side, everything else on the
@@ -6133,6 +6169,13 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   reopenWorkspace: () => {},
   openOpenCaselist: () => {},
   newFlow: () => {},
+  startPrep: () => {},
+  newPrep: () => {},
+  newPrepFlow: () => {},
+  markPrep: () => {},
+  startRound: () => {},
+  endPrep: () => {},
+  prepLogs: () => {},
   popOutPane: () => {},
   arrangeWindows: () => {},
   openShortcutsReference: () => {},
@@ -6438,6 +6481,13 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
         ctx.openOpenCaselist();
         return true;
       };
+    case 'startPrep': return (_state, dispatch) => { if (dispatch) ctx.startPrep(); return true; };
+    case 'newPrep': return (_state, dispatch) => { if (dispatch) ctx.newPrep(); return true; };
+    case 'newPrepFlow': return (_state, dispatch) => { if (dispatch) ctx.newPrepFlow(); return true; };
+    case 'markPrep': return (_state, dispatch) => { if (dispatch) ctx.markPrep(); return true; };
+    case 'startRound': return (_state, dispatch) => { if (dispatch) ctx.startRound(); return true; };
+    case 'endPrep': return (_state, dispatch) => { if (dispatch) ctx.endPrep(); return true; };
+    case 'prepLogs': return (_state, dispatch) => { if (dispatch) ctx.prepLogs(); return true; };
     case 'newFlow':
       return (_state, dispatch) => {
         if (!dispatch) return true;
@@ -7472,8 +7522,19 @@ export function getRibbonCommand(
   id: AnyCommandId,
   ctx: RibbonContext = DEFAULT_RIBBON_CONTEXT,
 ): Command {
-  if (isPluginCommandId(id)) return () => runPluginCommand(id);
-  return commandFor(id as RibbonCommandId, ctx);
+  const base: Command = isPluginCommandId(id) ? () => runPluginCommand(id) : commandFor(id as RibbonCommandId, ctx);
+  return (state, dispatch, view) => {
+    if (dispatch) {
+      const uid = view?.dom.dataset['prepUid'] ?? prepRuntime.focused;
+      if (prepDoc(uid) && /^(paste|copy(?!Session|Invite|View)|cut|sendTo|addQuickCard|insert(Image|InDocCopy|Self|Transclusion)|absorb|extract|ai|chatCut|translate|repairText|reformatAll)/i.test(id)) {
+        prepTransferBlocked(uid, id); showToast('Prep document: content transfers are blocked.'); return true;
+      }
+      if (prepRound() && /^(openFile|reopenWorkspace|openQuickCardSearch|recoverPreviousVersion|openOpenCaselist|startSession|joinSession|resumeSession)/.test(id)) {
+        prepRuntime.record('blocked', uid, { reason: id }); showToast('Round Mode: this command is blocked.'); return true;
+      }
+    }
+    return base(state, dispatch, view);
+  };
 }
 
 /**

@@ -1,3 +1,4 @@
+import { prepHandle, registerPrepDesktop, trackPrepWindow, prepNativeRefusal, prepIsProtected } from './prep-desktop.js';
 /**
  * CardMirror desktop — Electron main process.
  *
@@ -129,7 +130,8 @@ hardenStdio();
 
 // Set before profile reads, session creation and the single-instance lock.
 app.setName(APP_NAME);
-app.setPath('userData', path.join(app.getPath('appData'), PROFILE_NAME));
+app.setPath('userData', !app.isPackaged && process.env['CARDMIRROR_DEV_PROFILE']
+  ? path.resolve(process.env['CARDMIRROR_DEV_PROFILE']) : path.join(app.getPath('appData'), PROFILE_NAME));
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 const DEV_SERVER_URL = 'http://localhost:5173';
@@ -240,6 +242,8 @@ let mainWindow: BrowserWindow | null = null;
  *  spawning renderer pre-load a file into the new window without
  *  going through the file dialog again. Keyed by `BrowserWindow.id`. */
 interface InitialDocPayload {
+  prepBlank?: boolean;
+  prepMark?: boolean;
   filename: string;
   bytes: unknown; // arrives from renderer as Uint8Array / Buffer / ArrayBuffer
   handle: string | null;
@@ -403,6 +407,7 @@ async function isEmptyOnDisk(filePath: string, bytes: Buffer): Promise<boolean> 
  *  a fresh window with the file as its initial doc (VS Code / Word-like,
  *  and the single-pane behavior is unchanged). */
 async function openExternalFile(filePath: string): Promise<void> {
+  try { prepNativeRefusal(0, 'open'); } catch { return; }
   const ext = path.extname(filePath).toLowerCase();
   const format: 'cmir' | 'docx' | null =
     ext === '.cmir' ? 'cmir' : ext === '.docx' ? 'docx' : null;
@@ -493,6 +498,7 @@ function createWindow(initialDoc?: InitialDocPayload): BrowserWindow {
   });
 
   hardenWindow(win);
+  trackPrepWindow(win);
 
   // Mirror tagged renderer console lines to the main-process stdout —
   // renderer console output is otherwise only visible in DevTools,
@@ -652,15 +658,15 @@ function bytesToBuffer(bytes: unknown): Buffer {
  *  (no Ctrl/Cmd+V required, no sticky toggle). Web edition keeps
  *  its arm-then-paste flow because navigator.clipboard.readText
  *  needs a per-press permission grant under Chromium's web policy. */
-ipcMain.handle('host:clipboard-read-text', () => clipboard.readText());
+prepHandle('host:clipboard-read-text', () => clipboard.readText());
 /** Editor context-menu Paste: both flavors in one read so the
  *  renderer can prefer rich html and fall back to plain text
  *  without a second IPC round trip racing the clipboard. */
-ipcMain.handle('host:clipboard-read-html', () => ({
+prepHandle('host:clipboard-read-html', () => ({
   html: clipboard.readHTML(),
   text: clipboard.readText(),
 }));
-ipcMain.handle(
+prepHandle(
   'host:clipboard-write-html',
   (_evt, payload?: { html?: unknown; text?: unknown }) => {
     const html = typeof payload?.html === 'string' ? payload.html : '';
@@ -695,7 +701,7 @@ ipcMain.handle(
  *  null application menu on Windows/Linux, so the stock accelerators
  *  (F12 / Ctrl+Shift+I) don't exist there — without this, a packaged
  *  build has no console access at all. */
-ipcMain.handle('host:toggle-devtools', (event) => {
+prepHandle('host:toggle-devtools', (event) => {
   BrowserWindow.fromWebContents(event.sender)?.webContents.toggleDevTools();
 });
 
@@ -705,7 +711,7 @@ ipcMain.handle('host:toggle-devtools', (event) => {
  *  In dev (non-packaged) the menu shows a friendly note instead
  *  of running; the renderer path returns `'dev'` so the UI can
  *  do the same. */
-ipcMain.handle('host:check-for-updates', async () => {
+prepHandle('host:check-for-updates', async () => {
   if (MANUAL_PREVIEW_UPDATES) return { status: 'error', message: 'CardMirror Green previews update manually. Download the latest Green installer from ' + PREVIEW_DOWNLOADS };
   if (!app.isPackaged) return { status: 'dev' };
   return new Promise<{ status: 'latest' | 'updating' | 'error'; message?: string }>((resolve) => {
@@ -738,13 +744,13 @@ ipcMain.handle('host:check-for-updates', async () => {
  *  as the manual path but with the "latest" and "error" dialogs
  *  suppressed; only "Update available" fires a dialog, which is
  *  the same modal the manual flow shows. */
-ipcMain.handle('host:trigger-auto-update-check', async () => {
+prepHandle('host:trigger-auto-update-check', async () => {
   runUpdateCheck({ alertOnLatest: false, alertOnError: false, alertOnAvailable: false });
 });
 
 /** Open the OS file manager at the crash-dumps folder. Mirrors
  *  the Help → Open Crash Dumps Folder menu item. */
-ipcMain.handle('host:open-crash-dumps', async () => {
+prepHandle('host:open-crash-dumps', async () => {
   await shell.openPath(app.getPath('crashDumps'));
 });
 
@@ -754,7 +760,7 @@ ipcMain.handle('host:open-crash-dumps', async () => {
 /** Reveal a document in the OS file manager (Finder / Explorer),
  *  highlighted inside its containing folder. The handle IS the
  *  absolute path on desktop (same contract as host:save-existing). */
-ipcMain.handle('host:show-item-in-folder', (_event, handle: unknown) => {
+prepHandle('host:show-item-in-folder', (_event, handle: unknown) => {
   if (typeof handle !== 'string' || handle.length === 0) return;
   shell.showItemInFolder(handle);
 });
@@ -776,40 +782,40 @@ ipcMain.on('host:drag-file-out', (event, payload: unknown) => {
   event.sender.startDrag({ file, icon: icon.resize({ width: 32, height: 32 }) });
 });
 
-ipcMain.handle('host:open-journals-folder', async () => {
+prepHandle('host:open-journals-folder', async () => {
   await ensureJournalsDir();
   await shell.openPath(journalsDir());
 });
 
 /** Minimize the calling window — the `minimizeWindow` ribbon command
  *  (Mod-m default) and the macOS Window-menu Minimize item. */
-ipcMain.handle('host:minimize-window', (event) => {
+prepHandle('host:minimize-window', (event) => {
   ownerWindow(event.sender)?.minimize();
 });
 
 // Renderer accessibility tree toggle (see the `--disable-renderer-accessibility`
 // block above). The pref is machine-local and read at startup; these let the
 // settings UI show + change it. Changing it needs a restart to take effect.
-ipcMain.handle('host:get-accessibility-tree-enabled', () =>
+prepHandle('host:get-accessibility-tree-enabled', () =>
   readAccessibilityTreeEnabled(app.getPath('userData')),
 );
-ipcMain.handle('host:set-accessibility-tree-enabled', (_event, enabled: unknown) => {
+prepHandle('host:set-accessibility-tree-enabled', (_event, enabled: unknown) => {
   writeAccessibilityTreeEnabled(app.getPath('userData'), enabled === true);
 });
 // The state ACTUALLY APPLIED this session (the value read at startup, which
 // decides whether `--disable-renderer-accessibility` was appended). May differ
 // from the saved pref until the next restart — the settings UI uses this to show
 // "currently on/off" and whether a restart is pending.
-ipcMain.handle('host:get-accessibility-tree-applied', () => rendererAccessibilityEnabled);
+prepHandle('host:get-accessibility-tree-applied', () => rendererAccessibilityEnabled);
 // Whether Chromium currently reports an assistive-tech / UI-Automation client as
 // active. True here means this machine would hit the AX crash if the tree were
 // enabled — surfaced in Settings so the user understands why it's off.
-ipcMain.handle('host:is-accessibility-support-active', () =>
+prepHandle('host:is-accessibility-support-active', () =>
   app.isAccessibilitySupportEnabled(),
 );
 // Full app relaunch — used by the accessibility toggle so the Chromium switch
 // (read only at process start) actually takes effect.
-ipcMain.handle('host:relaunch-app', () => {
+prepHandle('host:relaunch-app', () => {
   app.relaunch();
   app.exit(0);
 });
@@ -818,7 +824,7 @@ ipcMain.handle('host:relaunch-app', () => {
  *  hyperlink context menu's "Open Link" action — we route through
  *  the shell instead of `window.open` so the link lands in the
  *  user's real browser, not a new Electron BrowserWindow. */
-ipcMain.handle('host:open-external', async (_event, url: string) => {
+prepHandle('host:open-external', async (_event, url: string) => {
   // Defensive: only allow http(s) + mailto so a crafted file:// URL
   // can't pop a local viewer the user didn't expect.
   if (typeof url !== 'string') return;
@@ -826,7 +832,7 @@ ipcMain.handle('host:open-external', async (_event, url: string) => {
   await shell.openExternal(url);
 });
 
-ipcMain.handle(
+prepHandle(
   'host:pick-directory',
   async (event, opts?: { defaultPath?: string; title?: string }) => {
     const win = ownerWindow(event.sender);
@@ -849,7 +855,7 @@ ipcMain.handle(
 // Path-only file picker: unlike host:open-file below, nothing is read
 // and NO read scope is granted — the caller (the file-search exclusion
 // list) needs a path to block, never the file's content.
-ipcMain.handle(
+prepHandle(
   'host:pick-file',
   async (event, opts?: { defaultPath?: string; title?: string; filters?: FileFilter[] }) => {
     const win = ownerWindow(event.sender);
@@ -864,7 +870,7 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('host:open-file', async (event, opts: { filters?: FileFilter[] }) => {
+prepHandle('host:open-file', async (event, opts: { filters?: FileFilter[] }) => {
   const win = ownerWindow(event.sender);
   const result = await dialog.showOpenDialog(win ?? new BrowserWindow({ show: false }), {
     properties: ['openFile'],
@@ -886,7 +892,7 @@ ipcMain.handle('host:open-file', async (event, opts: { filters?: FileFilter[] })
 // pick several documents at once. Each pick gets the same read grant and
 // empty-on-disk flag as the single open; a file that can't be read is
 // dropped rather than failing the whole batch.
-ipcMain.handle('host:open-files', async (event, opts: { filters?: FileFilter[] }) => {
+prepHandle('host:open-files', async (event, opts: { filters?: FileFilter[] }) => {
   const win = ownerWindow(event.sender);
   const result = await dialog.showOpenDialog(win ?? new BrowserWindow({ show: false }), {
     properties: ['openFile', 'multiSelections'],
@@ -917,7 +923,7 @@ ipcMain.handle('host:open-files', async (event, opts: { filters?: FileFilter[] }
 function cardCutterDefaultPath(): string {
   return path.join(app.getPath('userData'), 'plugins', 'cardcutter.global.js');
 }
-ipcMain.handle('host:cardcutter-pick-file', async (event) => {
+prepHandle('host:cardcutter-pick-file', async (event) => {
   const win = ownerWindow(event.sender);
   const result = await dialog.showOpenDialog(win ?? new BrowserWindow({ show: false }), {
     title: 'Select card-cutter engine file',
@@ -927,7 +933,7 @@ ipcMain.handle('host:cardcutter-pick-file', async (event) => {
   if (result.canceled || result.filePaths.length === 0) return null;
   return result.filePaths[0]!;
 });
-ipcMain.handle('host:cardcutter-read', async (_event, explicit: string | null) => {
+prepHandle('host:cardcutter-read', async (_event, explicit: string | null) => {
   const target =
     (explicit && explicit.trim()) || process.env.CARDCUTTER_ENGINE || cardCutterDefaultPath();
   try {
@@ -948,26 +954,26 @@ ipcMain.handle('host:cardcutter-read', async (_event, explicit: string | null) =
 // check lives inside inspectFromGithub — main-side, so the renderer can't
 // route around it. The unlock flag arrives over its own channel (the
 // renderer's console command re-arms it each boot from its stored setting).
-ipcMain.handle('host:plugin-install-inspect', async (_e, ref: string) =>
+prepHandle('host:plugin-install-inspect', async (_e, ref: string) =>
   inspectFromGithub(String(ref)),
 );
 // The relay's browsable plugin directory (allowlist-filtered main-side).
-ipcMain.handle('host:plugin-browse', async () => fetchPluginDirectory());
-ipcMain.handle('host:plugin-install-commit', async (_e, token: string) =>
+prepHandle('host:plugin-browse', async () => fetchPluginDirectory());
+prepHandle('host:plugin-install-commit', async (_e, token: string) =>
   commitPendingInstall(String(token)),
 );
-ipcMain.handle('host:plugin-install-discard', async (_e, token: string) => {
+prepHandle('host:plugin-install-discard', async (_e, token: string) => {
   discardPendingInstall(String(token));
 });
-ipcMain.handle('host:plugin-community-installs', async (_e, on: boolean) => {
+prepHandle('host:plugin-community-installs', async (_e, on: boolean) => {
   setCommunityInstallsUnlocked(on === true);
 });
-ipcMain.handle('host:plugin-list', async () => listInstalled());
-ipcMain.handle('host:plugin-read', async (_e, id: string) => {
+prepHandle('host:plugin-list', async () => listInstalled());
+prepHandle('host:plugin-read', async (_e, id: string) => {
   const source = await readPluginSource(String(id));
   return source === null ? { error: 'not found' } : { source };
 });
-ipcMain.handle('host:plugin-read-file', async (_e, filePath: string) => {
+prepHandle('host:plugin-read-file', async (_e, filePath: string) => {
   // Dev path — load an arbitrary local bundle the user picked.
   if (typeof filePath !== 'string' || !filePath) return { error: 'bad path' };
   try {
@@ -976,11 +982,11 @@ ipcMain.handle('host:plugin-read-file', async (_e, filePath: string) => {
     return { error: (err as Error).message };
   }
 });
-ipcMain.handle('host:plugin-uninstall', async (_e, id: string) => uninstallPlugin(String(id)));
-ipcMain.handle('host:plugin-check-update', async (_e, id: string, repoRef: string) =>
+prepHandle('host:plugin-uninstall', async (_e, id: string) => uninstallPlugin(String(id)));
+prepHandle('host:plugin-check-update', async (_e, id: string, repoRef: string) =>
   checkPluginUpdate(String(id), String(repoRef)),
 );
-ipcMain.handle('host:plugin-pick-file', async (event) => {
+prepHandle('host:plugin-pick-file', async (event) => {
   const win = ownerWindow(event.sender);
   const result = await dialog.showOpenDialog(win ?? new BrowserWindow({ show: false }), {
     title: 'Select a plugin bundle',
@@ -1004,13 +1010,13 @@ ipcMain.handle('host:plugin-pick-file', async (event) => {
 // The renderer mirrors its File-search folders here (boot + on change),
 // and imports its pre-existing recents ONCE (the import channel dies as
 // soon as the grant journal exists — it can't mint grants after that).
-ipcMain.handle('host:sync-library-roots', async (_event, roots: unknown) => {
+prepHandle('host:sync-library-roots', async (_event, roots: unknown) => {
   setLibraryRoots(Array.isArray(roots) ? roots.map(String) : []);
 });
 // The speech-doc auto-save folder (a settings string) is the one place
 // write-file-at-path writes without a dialog in the same session; the
 // renderer mirrors it here (boot + on change) so the write scope knows it.
-ipcMain.handle('host:sync-write-folders', async (_event, folders: unknown) => {
+prepHandle('host:sync-write-folders', async (_event, folders: unknown) => {
   setWriteFolders(Array.isArray(folders) ? folders.map(String) : []);
 });
 // Fired by the preload's getPathForFile — a real dropped file resolved
@@ -1018,10 +1024,10 @@ ipcMain.handle('host:sync-write-folders', async (_event, folders: unknown) => {
 ipcMain.on('host:grant-dropped-path', (_event, p: unknown) => {
   if (typeof p === 'string' && p) grantReadPath(p);
 });
-ipcMain.handle('host:grant-legacy-recents', async (_event, paths: unknown) =>
+prepHandle('host:grant-legacy-recents', async (_event, paths: unknown) =>
   grantLegacyRecents(Array.isArray(paths) ? paths.map(String) : []),
 );
-ipcMain.handle('host:read-file-at-path', async (_event, filePath: string) => {
+prepHandle('host:read-file-at-path', async (_event, filePath: string) => {
   if (typeof filePath !== 'string' || !filePath) return null;
   if (!(await isReadAllowed(filePath))) return null;
   try {
@@ -1044,7 +1050,7 @@ ipcMain.handle('host:read-file-at-path', async (_event, filePath: string) => {
 
 // stat a file (mtime + size) for the recovery-save staleness check. Null
 // when the path is gone / unreadable.
-ipcMain.handle('host:stat-file', async (_event, filePath: string) => {
+prepHandle('host:stat-file', async (_event, filePath: string) => {
   if (typeof filePath !== 'string' || !filePath) return null;
   try {
     const st = await fs.stat(filePath);
@@ -1139,7 +1145,7 @@ function normalizeRefArgs(
   };
 }
 
-ipcMain.handle(
+prepHandle(
   'host:read-cmir-file',
   async (
     _event,
@@ -1165,7 +1171,7 @@ ipcMain.handle(
 /** Resolve a transclusion source ref to its safe absolute path (for "Open source
  *  file" from a live zone). Same boundary as reading — never resolves a path
  *  outside the allowed roots. */
-ipcMain.handle(
+prepHandle(
   'host:resolve-cmir-path',
   async (
     _event,
@@ -1189,7 +1195,7 @@ ipcMain.handle(
  *  atomically (temp + fsync + rename) so a crash can't tear the source. It only
  *  ever persists caller bytes to a resolved-safe path — it never constructs the
  *  content, so a hostile ref can't be used to overwrite arbitrary files. */
-ipcMain.handle(
+prepHandle(
   'host:write-source-anchor',
   async (
     _event,
@@ -1254,7 +1260,7 @@ ipcMain.handle(
 // Bulk-convert support: recursively list files of a given extension
 // under a directory, and write bytes to an arbitrary path. Used by the
 // home-screen .docx↔.cmir bulk converter.
-ipcMain.handle(
+prepHandle(
   'host:list-files-recursive',
   async (_event, dir: string, ext: string): Promise<Array<{ path: string; relPath: string }>> => {
     if (typeof dir !== 'string' || !dir || typeof ext !== 'string' || !ext) return [];
@@ -1318,7 +1324,7 @@ interface BulkCompressSummary {
 const gzip = promisify(zlibGzip);
 const gunzip = promisify(zlibGunzip);
 
-ipcMain.handle(
+prepHandle(
   'host:bulk-compress',
   async (event, dir: string): Promise<BulkCompressSummary> => {
     if (typeof dir !== 'string' || !dir) throw new Error('bulk-compress: no folder');
@@ -1412,6 +1418,7 @@ ipcMain.handle(
 // of the loop. Lazy: forked on the first port request, respawned on the
 // next request if it dies.
 let fileIndexService: Electron.UtilityProcess | null = null;
+registerPrepDesktop(() => { fileIndexService?.kill(); fileIndexService = null; });
 
 function ensureFileIndexService(): Electron.UtilityProcess {
   if (fileIndexService) return fileIndexService;
@@ -1430,12 +1437,13 @@ function ensureFileIndexService(): Electron.UtilityProcess {
 // request: port1 goes to the service, port2 back to the renderer (the
 // preload forwards it into the main world).
 ipcMain.on('host:file-index-port', (event) => {
+  try { prepNativeRefusal(event.sender.id, 'open'); } catch { return; }
   const { port1, port2 } = new MessageChannelMain();
   ensureFileIndexService().postMessage({ type: 'port' }, [port1]);
   event.sender.postMessage('host:file-index-port', null, [port2]);
 });
 
-ipcMain.handle(
+prepHandle(
   'host:write-file-at-path',
   async (
     _event,
@@ -1472,7 +1480,7 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle(
+prepHandle(
   'host:save-as',
   async (
     event,
@@ -1515,7 +1523,7 @@ ipcMain.handle(
 // custom/empty prefix at the same folder + format, or a fixed folder that
 // happens to contain the source) — so the renderer can defer to the Save As
 // dialog instead.
-ipcMain.handle(
+prepHandle(
   'host:save-send-doc',
   async (
     _event,
@@ -1533,7 +1541,7 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle(
+prepHandle(
   'host:save-existing',
   async (event, handle: string, bytes: unknown, opts?: { force?: boolean }) => {
     if (typeof handle !== 'string' || handle.length === 0) {
@@ -1559,7 +1567,7 @@ ipcMain.handle(
  *  promotes the candidate baseline this write records. `userName` is the
  *  renderer's pick (co-editing display name, else comment author name);
  *  empty → the computer account username. */
-ipcMain.handle(
+prepHandle(
   'host:save-conflicted-copy',
   async (_event, handle: string, bytes: unknown, userName: unknown) => {
     if (typeof handle !== 'string' || handle.length === 0) {
@@ -1584,7 +1592,7 @@ ipcMain.handle(
 
 /** Cloud-sync provider for a path (null = local) — the badge's
  *  `synced` state. Cached per canonical path by the poller wiring. */
-ipcMain.handle('host:cloud-provider', async (_event, p: unknown): Promise<CloudProvider | null> => {
+prepHandle('host:cloud-provider', async (_event, p: unknown): Promise<CloudProvider | null> => {
   if (typeof p !== 'string' || !p) return null;
   return cloudProviderFor(canonicalOpenPath(p));
 });
@@ -1641,7 +1649,7 @@ async function ensureJournalsDir(): Promise<void> {
 // the previous one's settle keeps the on-disk file always valid.
 const journalWriteTails = new Map<string, Promise<void>>();
 
-ipcMain.handle('host:write-journal', (event, entry: JournalEntryIpc) => {
+prepHandle('host:write-journal', (event, entry: JournalEntryIpc) => {
   if (!entry || typeof entry.uid !== 'string' || !entry.uid) {
     throw new Error('host:write-journal: entry.uid is required.');
   }
@@ -1693,7 +1701,7 @@ ipcMain.handle('host:write-journal', (event, entry: JournalEntryIpc) => {
   return next;
 });
 
-ipcMain.handle('host:read-journals', async () => {
+prepHandle('host:read-journals', async () => {
   let entries: string[];
   try {
     entries = await fs.readdir(journalsDir());
@@ -1732,7 +1740,7 @@ ipcMain.handle('host:read-journals', async () => {
   return results;
 });
 
-ipcMain.handle('host:delete-journal', async (_event, uid: string) => {
+prepHandle('host:delete-journal', async (_event, uid: string) => {
   if (typeof uid !== 'string' || !uid) return;
   try {
     await fs.unlink(journalPathFor(uid));
@@ -1780,7 +1788,7 @@ function historyPathFor(roomId: string): string {
 // path otherwise race into a valid-JSON-then-garbage file.
 const historyWriteTails = new Map<string, Promise<void>>();
 
-ipcMain.handle('host:write-history', (_event, entry: HistoryWriteIpc) => {
+prepHandle('host:write-history', (_event, entry: HistoryWriteIpc) => {
   if (!entry || entry.v !== 1 || typeof entry.roomId !== 'string' || !entry.roomId) {
     throw new Error('host:write-history: a v1 envelope with roomId is required.');
   }
@@ -1837,7 +1845,7 @@ function validHistoryPolicy(raw: unknown): HistoryPolicy | null {
   return { retentionDays, maxDocBytes, maxTotalBytes };
 }
 
-ipcMain.handle(
+prepHandle(
   'host:history-snapshot',
   async (_event, docId: string, bytes: unknown, policy: unknown, trigger?: unknown) => {
     if (typeof docId !== 'string' || !docId) return { stored: false, reason: 'bad-doc-id' };
@@ -1851,22 +1859,22 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('host:history-list', async (_event, docId: string) => {
+prepHandle('host:history-list', async (_event, docId: string) => {
   if (typeof docId !== 'string' || !docId) return [];
   return listHistorySnapshots(versionHistoryRoot(), docId);
 });
 
-ipcMain.handle('host:history-read', async (_event, docId: string, id: string) => {
+prepHandle('host:history-read', async (_event, docId: string, id: string) => {
   if (typeof docId !== 'string' || typeof id !== 'string') return null;
   const buf = await readHistorySnapshot(versionHistoryRoot(), docId, id);
   return buf ? new Uint8Array(buf) : null;
 });
 
-ipcMain.handle('host:history-usage', async () => historyUsage(versionHistoryRoot()));
+prepHandle('host:history-usage', async () => historyUsage(versionHistoryRoot()));
 
-ipcMain.handle('host:history-clear', async () => clearHistory(versionHistoryRoot()));
+prepHandle('host:history-clear', async () => clearHistory(versionHistoryRoot()));
 
-ipcMain.handle('host:list-history', async () => {
+prepHandle('host:list-history', async () => {
   let entries: string[];
   try {
     entries = await fs.readdir(journalsDir());
@@ -1890,7 +1898,7 @@ ipcMain.handle('host:list-history', async () => {
   return rows;
 });
 
-ipcMain.handle(
+prepHandle(
   'host:read-history',
   async (_event, target: { roomId?: string; path?: string }) => {
     const fullPath =
@@ -1909,7 +1917,7 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle('host:delete-history', async (_event, roomId: string) => {
+prepHandle('host:delete-history', async (_event, roomId: string) => {
   if (typeof roomId !== 'string' || !roomId) return;
   try {
     await fs.unlink(historyPathFor(roomId));
@@ -1921,7 +1929,7 @@ ipcMain.handle('host:delete-history', async (_event, roomId: string) => {
 
 /** "Recover from file…": native picker opened AT the journals folder,
  *  filtered to history files. Returns the picked absolute path. */
-ipcMain.handle('host:pick-history-file', async (event) => {
+prepHandle('host:pick-history-file', async (event) => {
   await ensureJournalsDir();
   const win = BrowserWindow.fromWebContents(event.sender);
   const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0]!, {
@@ -2023,8 +2031,8 @@ function getLearnStoreOwner(): LearnStoreOwnerLike {
   }
   return learnStoreOwner;
 }
-ipcMain.handle('host:read-learn-store', (): Promise<string> => getLearnStoreOwner().read());
-ipcMain.handle('host:learn-op', (_event, op: unknown): Promise<string> => getLearnStoreOwner().apply(op));
+prepHandle('host:read-learn-store', (): Promise<string> => getLearnStoreOwner().read());
+prepHandle('host:learn-op', (_event, op: unknown): Promise<string> => getLearnStoreOwner().apply(op));
 
 // ─── Multi-window: spawn + initial-doc handshake ──────────────────
 // Renderers in "windows mode" (multiDocWorkspace = false on
@@ -2034,7 +2042,7 @@ ipcMain.handle('host:learn-op', (_event, op: unknown): Promise<string> => getLea
 // boot to retrieve the payload (or `null` if it was just opened
 // blank). Main owns the pending-map keyed by window id.
 
-ipcMain.handle('host:spawn-window', async (_event, payload: InitialDocPayload | null) => {
+prepHandle('host:spawn-window', async (_event, payload: InitialDocPayload | null) => {
   // `payload.bytes` may arrive as a Buffer / typed array depending on
   // the IPC transfer; stored as-is — the renderer normalizes at read
   // time.
@@ -2065,7 +2073,7 @@ ipcMain.handle('host:spawn-window', async (_event, payload: InitialDocPayload | 
   }
 });
 
-ipcMain.handle('host:get-initial-doc', async (event) => {
+prepHandle('host:get-initial-doc', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win) return null;
   const payload = pendingInitialDocs.get(win.id);
@@ -2077,14 +2085,14 @@ ipcMain.handle('host:get-initial-doc', async (event) => {
 // The renderer reports its workspace mode at boot (and re-reports on
 // the reload a mode toggle triggers) so the OS-open path knows which
 // windows can take a file into their slot picker.
-ipcMain.handle('host:register-multipane', async (event, isMultiPane: boolean) => {
+prepHandle('host:register-multipane', async (event, isMultiPane: boolean) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win) return;
   if (isMultiPane) multiPaneWindows.add(win.id);
   else multiPaneWindows.delete(win.id);
 });
 
-ipcMain.handle('host:is-first-window', async (event) => {
+prepHandle('host:is-first-window', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win) return false;
   return win.id === firstWindowId;
@@ -2126,7 +2134,7 @@ let modeSwitchInProgress = false;
 // — sessionStorage can't carry the closed windows' lists across.
 let modeSwitchJournaledDocs: Array<{ uid: string; dirty: boolean }> = [];
 
-ipcMain.handle('host:journal-and-close-other-windows', async (event) => {
+prepHandle('host:journal-and-close-other-windows', async (event) => {
   const sender = BrowserWindow.fromWebContents(event.sender);
   if (modeSwitchInProgress) return;
   modeSwitchInProgress = true;
@@ -2160,7 +2168,7 @@ ipcMain.handle('host:journal-and-close-other-windows', async (event) => {
   }
 });
 
-ipcMain.handle('host:close-self', async (event) => {
+prepHandle('host:close-self', async (event) => {
   const sender = BrowserWindow.fromWebContents(event.sender);
   if (sender && !sender.isDestroyed()) {
     // Mark this window as "already confirmed" so the close event
@@ -2177,18 +2185,18 @@ ipcMain.handle('host:close-self', async (event) => {
 // clear the intent flag. Otherwise a later ordinary window close
 // would wrongly terminate the app on macOS instead of leaving it
 // alive in the dock.
-ipcMain.handle('host:close-cancelled', () => {
+prepHandle('host:close-cancelled', () => {
   quitInitiated = false;
 });
 
-ipcMain.handle(
+prepHandle(
   'host:mode-switch-journaled',
   (_event, docs: Array<{ uid: string; dirty: boolean }>) => {
     if (Array.isArray(docs)) modeSwitchJournaledDocs.push(...docs);
   },
 );
 
-ipcMain.handle('host:take-mode-switch-journaled', () => {
+prepHandle('host:take-mode-switch-journaled', () => {
   const docs = modeSwitchJournaledDocs;
   modeSwitchJournaledDocs = [];
   return docs;
@@ -2274,7 +2282,7 @@ function broadcastSpeechState(): void {
  *  null for unsaved docs. */
 const docInfo: Map<string, { filename: string | null }> = new Map();
 
-ipcMain.handle('host:doc-register', async (event, uid: string) => {
+prepHandle('host:doc-register', async (event, uid: string) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || typeof uid !== 'string' || !uid) return;
   docOwners.set(uid, win.id);
@@ -2286,7 +2294,7 @@ ipcMain.handle('host:doc-register', async (event, uid: string) => {
   set.add(uid);
 });
 
-ipcMain.handle('host:doc-unregister', async (event, uid: string) => {
+prepHandle('host:doc-unregister', async (event, uid: string) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || typeof uid !== 'string' || !uid) return;
   docOwners.delete(uid);
@@ -2303,7 +2311,7 @@ ipcMain.handle('host:doc-unregister', async (event, uid: string) => {
 /** Renderer pushes a uid's display info (currently just filename;
  *  the type is open for future fields). Called on doc mount and
  *  whenever the filename changes (save, save-as, rename). */
-ipcMain.handle(
+prepHandle(
   'host:doc-info-update',
   async (
     _event,
@@ -2323,7 +2331,7 @@ ipcMain.handle(
  *  into another app — Slack, Mail, Finder — and Cmd-click shows the
  *  path menu. Empty string clears it. No-op off macOS (Electron has
  *  no equivalent there). */
-ipcMain.handle('host:set-represented-file', async (event, p: unknown) => {
+prepHandle('host:set-represented-file', async (event, p: unknown) => {
   if (process.platform !== 'darwin') return;
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win.isDestroyed()) return;
@@ -2334,7 +2342,7 @@ ipcMain.handle('host:set-represented-file', async (event, p: unknown) => {
  *  modal calls this to populate its row list. Stale entries
  *  (windowless uids) are filtered out so the modal never offers
  *  a target that no longer has a home. */
-ipcMain.handle('host:list-docs', async (event) => {
+prepHandle('host:list-docs', async (event) => {
   const senderWin = BrowserWindow.fromWebContents(event.sender);
   const senderId = senderWin ? senderWin.id : -1;
   const focusedWin = BrowserWindow.getFocusedWindow();
@@ -2379,7 +2387,7 @@ app.on('browser-window-focus', (_event, win) => {
   windowFocusOrder.unshift(win.id);
 });
 
-ipcMain.handle('host:list-windows', async (event) => {
+prepHandle('host:list-windows', async (event) => {
   const senderId = BrowserWindow.fromWebContents(event.sender)?.id ?? -1;
   const rank = (id: number): number => {
     const i = windowFocusOrder.indexOf(id);
@@ -2400,7 +2408,7 @@ ipcMain.handle('host:list-windows', async (event) => {
     }));
 });
 
-ipcMain.handle('host:focus-window', async (_event, windowId: unknown) => {
+prepHandle('host:focus-window', async (_event, windowId: unknown) => {
   if (typeof windowId !== 'number') return false;
   const win = BrowserWindow.fromId(windowId);
   if (!win || win.isDestroyed() || isTimerWindow(win)) return false;
@@ -2431,9 +2439,9 @@ function broadcastDropzoneState(): void {
   }
 }
 
-ipcMain.handle('host:dropzone-list', async () => dropzoneItems);
+prepHandle('host:dropzone-list', async () => dropzoneItems);
 
-ipcMain.handle('host:dropzone-add', async (_event, item: DropzoneItem) => {
+prepHandle('host:dropzone-add', async (_event, item: DropzoneItem) => {
   if (!item || typeof item.id !== 'string' || !item.id) return;
   // De-dup by id — re-adding the same id moves it to the end (most
   // recent), which is the natural "use this again" semantics.
@@ -2442,7 +2450,7 @@ ipcMain.handle('host:dropzone-add', async (_event, item: DropzoneItem) => {
   broadcastDropzoneState();
 });
 
-ipcMain.handle('host:dropzone-remove', async (_event, id: string) => {
+prepHandle('host:dropzone-remove', async (_event, id: string) => {
   if (typeof id !== 'string' || !id) return;
   const next = dropzoneItems.filter((x) => x.id !== id);
   if (next.length === dropzoneItems.length) return;
@@ -2450,7 +2458,7 @@ ipcMain.handle('host:dropzone-remove', async (_event, id: string) => {
   broadcastDropzoneState();
 });
 
-ipcMain.handle('host:dropzone-clear', async () => {
+prepHandle('host:dropzone-clear', async () => {
   if (dropzoneItems.length === 0) return;
   dropzoneItems = [];
   broadcastDropzoneState();
@@ -2525,12 +2533,12 @@ function broadcastQuickCardsState(): void {
   }
 }
 
-ipcMain.handle('host:quick-cards-list', async () => {
+prepHandle('host:quick-cards-list', async () => {
   await ensureQuickCardsLoaded();
   return quickCards;
 });
 
-ipcMain.handle('host:quick-cards-upsert', async (_event, card: QuickCardIpc) => {
+prepHandle('host:quick-cards-upsert', async (_event, card: QuickCardIpc) => {
   if (!card || typeof card.id !== 'string' || !card.id) return;
   await ensureQuickCardsLoaded();
   // De-dup by id — upsert covers both new-card adds and edits.
@@ -2539,7 +2547,7 @@ ipcMain.handle('host:quick-cards-upsert', async (_event, card: QuickCardIpc) => 
   await persistQuickCards();
 });
 
-ipcMain.handle('host:quick-cards-bulk-upsert', async (_event, cards: QuickCardIpc[]) => {
+prepHandle('host:quick-cards-bulk-upsert', async (_event, cards: QuickCardIpc[]) => {
   if (!Array.isArray(cards)) return;
   await ensureQuickCardsLoaded();
   const incoming = new Map(
@@ -2551,7 +2559,7 @@ ipcMain.handle('host:quick-cards-bulk-upsert', async (_event, cards: QuickCardIp
   await persistQuickCards();
 });
 
-ipcMain.handle('host:quick-cards-remove', async (_event, id: string) => {
+prepHandle('host:quick-cards-remove', async (_event, id: string) => {
   if (typeof id !== 'string' || !id) return;
   await ensureQuickCardsLoaded();
   const next = quickCards.filter((c) => c.id !== id);
@@ -2561,7 +2569,7 @@ ipcMain.handle('host:quick-cards-remove', async (_event, id: string) => {
   await persistQuickCards();
 });
 
-ipcMain.handle('host:quick-cards-clear', async () => {
+prepHandle('host:quick-cards-clear', async () => {
   await ensureQuickCardsLoaded();
   if (quickCards.length === 0) return;
   quickCards = [];
@@ -2577,7 +2585,7 @@ ipcMain.handle('host:quick-cards-clear', async () => {
 // registration happens through `host:open-path-register` once
 // the doc has actually mounted (the centralized
 // `setCurrentDocHandle` helper in the renderer wires that up).
-ipcMain.handle('host:open-path-check', async (event, p: string) => {
+prepHandle('host:open-path-check', async (event, p: string) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || typeof p !== 'string' || !p) return { takenByOther: false };
   // Focus the owning window (and clean up a stale entry) via the same
@@ -2589,7 +2597,7 @@ ipcMain.handle('host:open-path-check', async (event, p: string) => {
 // "Show in context" cross-window focus: if another window owns `p`,
 // focus it AND send it the anchor so it scrolls to the card's text.
 // Returns whether it was delivered (false ⇒ caller spawns a window).
-ipcMain.handle(
+prepHandle(
   'host:focus-anchor-in-window',
   async (event, p: string, descriptor: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -2646,7 +2654,7 @@ const diskWatch = createDiskWatch({
 // caught the conflict; best-effort for Save-As / recovery paths).
 // Resolves with how the baseline was obtained + the cloud provider, for
 // the renderer's badge.
-ipcMain.handle(
+prepHandle(
   'host:open-path-register',
   async (
     event,
@@ -2678,7 +2686,7 @@ ipcMain.handle(
 
 // Release a previously-registered path. No-op if the caller
 // doesn't own it (defensive — shouldn't happen in normal flow).
-ipcMain.handle('host:open-path-release', async (event, p: string) => {
+prepHandle('host:open-path-release', async (event, p: string) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || typeof p !== 'string' || !p) return;
   const norm = canonicalOpenPath(p);
@@ -2700,12 +2708,12 @@ registerOpenCaselistIpc();
 // cardmirror-bridge plugin surface (plugin API v1): jump broadcast via
 // the fast-paste bridge, plus flow-app discovery / POST relay from the
 // shared handshake directory. Tokens never reach the renderer.
-ipcMain.handle('host:plugin-jump', async (_event, source: string) => {
+prepHandle('host:plugin-jump', async (_event, source: string) => {
   if (typeof source !== 'string') return { ok: false, error: 'bad-request' };
   return broadcastJump(source);
 });
-ipcMain.handle('host:flow-apps', async () => scanFlowApps());
-ipcMain.handle('host:flow-post', async (_event, appId: string, route: string, body: unknown) => {
+prepHandle('host:flow-apps', async () => scanFlowApps());
+prepHandle('host:flow-post', async (_event, appId: string, route: string, body: unknown) => {
   if (typeof appId !== 'string' || typeof route !== 'string') {
     return { ok: false, error: 'no-such-app' };
   }
@@ -2723,7 +2731,7 @@ if (!LITE_BUILD) registerPairingIpc();
 // takes effect without a restart. The route itself is ungated.
 setAllowlistRelayUrlSupplier(relayUrl);
 
-ipcMain.handle('host:speech-set', async (event, uid: string | null) => {
+prepHandle('host:speech-set', async (event, uid: string | null) => {
   const senderWin = BrowserWindow.fromWebContents(event.sender);
   if (!senderWin) return;
   if (uid === null) {
@@ -2743,7 +2751,7 @@ ipcMain.handle('host:speech-set', async (event, uid: string | null) => {
   broadcastSpeechState();
 });
 
-ipcMain.handle('host:speech-get', async () => {
+prepHandle('host:speech-get', async () => {
   return speechRegistration ? { uid: speechRegistration.uid } : { uid: null };
 });
 
@@ -2751,7 +2759,7 @@ ipcMain.handle('host:speech-get', async () => {
  *  doc. Returns the result of the routing — caller cares whether
  *  the slice actually got applied vs. there's no speech doc / the
  *  speech doc's window has gone away. */
-ipcMain.handle(
+prepHandle(
   'host:speech-send-slice',
   async (
     event,
@@ -2759,6 +2767,10 @@ ipcMain.handle(
   ) => {
     const sender = BrowserWindow.fromWebContents(event.sender);
     if (!speechRegistration) return { delivered: false, reason: 'no-speech-doc' };
+    if (prepIsProtected(speechRegistration.uid)) {
+      prepNativeRefusal(event.sender.id, 'transfer', speechRegistration.uid);
+      return { delivered: false, reason: 'prep-document' };
+    }
     const targetWin = BrowserWindow.fromId(speechRegistration.windowId);
     if (!targetWin || targetWin.isDestroyed()) {
       // Speech-doc's window vanished — drop the registration.
@@ -3206,13 +3218,13 @@ function buildMenu(): Menu {
  *  keybindings (after rebinds via Settings → Keybindings) show
  *  next to each menu item. Idempotent — safe to call on every
  *  settings change. */
-ipcMain.handle('host:set-menu-recents', async (_event, payload: unknown) => {
+prepHandle('host:set-menu-recents', async (_event, payload: unknown) => {
   menuRecents = sanitizeMenuRecents(payload);
   // macOS only — see the note on the bindings handler below.
   Menu.setApplicationMenu(process.platform === 'darwin' ? buildMenu() : null);
 });
 
-ipcMain.handle(
+prepHandle(
   'host:set-menu-bindings',
   async (_event, bindings: Record<string, string | null>) => {
     if (!bindings || typeof bindings !== 'object') return;
@@ -3460,7 +3472,7 @@ function isTimerWindow(w: BrowserWindow): boolean {
  *  fallback). Windows are taken out of full-screen / maximized /
  *  minimized first; Linux window managers and macOS both ignore
  *  `setBounds` on a window that is not in the normal state. */
-ipcMain.handle('host:arrange-windows', async (event, opts: ArrangeOptions) => {
+prepHandle('host:arrange-windows', async (event, opts: ArrangeOptions) => {
   const sender = BrowserWindow.fromWebContents(event.sender);
   if (!sender || sender.isDestroyed()) return { speechFound: false, arranged: 0 };
   const windows = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && !isTimerWindow(w));
@@ -3601,7 +3613,7 @@ function openTimerWindow(popoutOpts?: TimerPopoutOpts): void {
   timerWindow = win;
 }
 
-ipcMain.handle('host:timer-popout-open', (_evt, popoutOpts?: TimerPopoutOpts) => {
+prepHandle('host:timer-popout-open', (_evt, popoutOpts?: TimerPopoutOpts) => {
   openTimerWindow(popoutOpts);
 });
 /** The pop-out's content reflowed (compact ↔ expanded toggle): hug
@@ -3609,7 +3621,7 @@ ipcMain.handle('host:timer-popout-open', (_evt, popoutOpts?: TimerPopoutOpts) =>
  *  its CSS px, scaled by the zoom the window was opened with, and
  *  the result is re-clamped into the work area so growing near a
  *  screen edge can't push the float off-screen. */
-ipcMain.handle(
+prepHandle(
   'host:timer-popout-resize',
   (evt, dims?: { contentWidth?: number; contentHeight?: number }) => {
     if (!timerWindow || timerWindow.isDestroyed()) return;
@@ -3633,7 +3645,7 @@ ipcMain.handle(
 /** Boot-time reconciliation: lets a reloading renderer distinguish
  *  "pop-out is alive, keep the flag" (three-pane mode switch) from
  *  "flag is stale, clear it" (fresh launch). */
-ipcMain.handle('host:timer-popout-exists', () =>
+prepHandle('host:timer-popout-exists', () =>
   timerWindow !== null && !timerWindow.isDestroyed(),
 );
 
@@ -3667,11 +3679,11 @@ const fakeUpdateChip: UpdateChipState = (() => {
 if (fakeUpdateChip) updateChip = fakeUpdateChip;
 
 /** Late-opened windows pull the current chip state at boot. */
-ipcMain.handle('host:update-chip-state', () => updateChip);
+prepHandle('host:update-chip-state', () => updateChip);
 
 /** Chip click: 'ready' (staged) → quit + install now; 'available'
  *  (macOS, not stageable yet) → open the release page. */
-ipcMain.handle('host:update-chip-action', () => {
+prepHandle('host:update-chip-action', () => {
   if (!updateChip) return;
   if (fakeUpdateChip) {
     console.log('Update chip clicked (CM_FAKE_UPDATE): no action in a dev build.');

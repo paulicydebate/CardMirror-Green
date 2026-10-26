@@ -19,6 +19,7 @@
  */
 
 import { getHost } from '../host/index.js';
+import { prepRound } from '../prep-runtime.js';
 import { isLiteBuild } from '../lite.js';
 import { settings } from '../settings.js';
 import { resolveMobileLayout } from '../mobile-layout.js';
@@ -45,6 +46,7 @@ function isMobileShell(): boolean {
 }
 
 export function collabEnabled(): boolean {
+  if (prepRound()) return false;
   // Lite builds have no collaboration at all — closing this gate is
   // what removes the pills, sessions list, join links, web account
   // wiring, and every collab command in one move.

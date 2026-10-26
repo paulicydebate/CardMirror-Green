@@ -4,6 +4,8 @@ This document is the starting point for a new LLM or developer. The previous cha
 
 ## Repository and non-negotiable scope
 
+**Desktop permission (user, 2026-10-26): ask before every desktop app launch/control or visible UI test and wait for explicit approval. Code edits and headless command-line tests can continue. Use isolated profiles/synthetic documents for approved tests. Never delete personal files or clear the user's app profile.**
+
 - Repository: https://github.com/paulicydebate/CardMirror-Green
 - Active branch: `feature/full-card-api`
 - Draft PR: https://github.com/paulicydebate/CardMirror-Green/pull/1
@@ -161,11 +163,11 @@ Done and in the user's hands:
 - Green default accent.
 - Chat cutting is built but **on hold** at the user's request.
 
-**Next: build Prep Mode / Round Mode and the typing log, following LOCKDOWN.md.** That file holds the user's final decisions; its "Final design" section wins where sections differ. Summary:
+**Prep / Round implementation is now connected and usable in the desktop source build.** Read CARDMIRROR_GREEN.md, "Usable Prep / Round Modes", for the current behavior and completed validation. This supersedes the inactive milestone notes below. The remaining work is installer CI verification, an optional final UI check only after explicit permission, real two-install prep collaboration validation (also permission required), and macOS user smoke testing. Do not restart implementation from scratch. LOCKDOWN.md holds the design; summary:
 
-Implementation started by Codex (2026-10-26): `apps/desktop/src/prep-session.ts` and `tests/desktop/prep-session.test.ts` provide the session transitions, new-document eligibility, durable hash chain, restart recovery and seal verification (11 focused Windows tests; root typecheck and desktop main build passed). This module is intentionally not connected to IPC or the renderer: the app does not yet offer Prep / Round Mode. See CARDMIRROR_GREEN.md, "Prep / Round foundation", for the full remaining integration list. Keep the UI unavailable until enforcement is connected; there is no protected installer to user-test yet.
+Historical first milestone (superseded by the usable implementation above): Codex added `apps/desktop/src/prep-session.ts` and `tests/desktop/prep-session.test.ts` with transitions, eligibility, a durable chain, recovery and verification. At that milestone the module was intentionally disconnected from IPC and UI. It is now connected; do not treat this historical note as the current status.
 
-Second Codex milestone: the shared plugin stack now includes `prepDocumentGuard(targetUid)`, inert until `configurePrepGuards()` receives a controller policy. Scoped capture listeners and transaction/flow guards, macro/autocorrect metadata and accepted-change audit callbacks are implemented; rejected flow edits roll back visibly. 27 new guard tests plus the related suites pass (77 tests total); typecheck and renderer build pass. Read CARDMIRROR_GREEN.md, "Prep document guards", before integrating. In particular, fix/verify uid assignment before single-doc mounting, wire main-process clipboard/external/file-open routes, and implement prep collaboration gates before exposing a mode UI. Raw typing/focus/lifecycle logging is not yet connected.
+Historical second milestone (also superseded): the shared plugin stack gained `prepDocumentGuard(targetUid)`, capture/transaction/flow guards, expansion metadata and accepted-change callbacks, plus rejected-flow rollback (27 new guard tests; 77 related tests). The controller, uid ordering, native gates, collaboration rules and typing/focus/lifecycle logging described as future work there are now connected. See the current status guide for remaining validation.
 - **Prep Mode (yellow):**
   - Only new documents become prep docs, and they can't be unmarked.
   - In prep docs: no copy, cut, paste or drag in **or out**, and no large inserts from any feature. Macros and autocorrect are logged.
@@ -184,7 +186,7 @@ Second Codex milestone: the shared plugin stack now includes `prepDocumentGuard(
 Follow the "Suggested build order" in LOCKDOWN.md. Test in the desktop app with Playwright `_electron` under xvfb (see the notes in CARDMIRROR_GREEN.md):
 - Run the vite dev server on port 5173.
 - Pick the window whose URL starts with http://localhost:5173, not the devtools window.
-- Clear `~/.config/CardMirror Green` for a fresh profile.
+- Request permission before launching the app. Set `CARDMIRROR_DEV_PROFILE` to a new scratch directory for an isolated development profile. Never clear or modify the user's normal app profile. Packaged apps ignore this override.
 
 Do not put a process pattern in the same shell line as `pkill -f`.
 
@@ -218,4 +220,4 @@ Do not build a search UI, hosted database, fuzzy matching or automatic profile s
 
 ## Prompt the user can give a new LLM
 
-Continue CardMirror Green at paulicydebate/CardMirror-Green on branch feature/full-card-api. Read AGENTS.md, HANDOFF.md (start with "Next task") and LOCKDOWN.md. Then read CARDMIRROR_GREEN.md and FLOW.md for context. Build Prep Mode / Round Mode and the typing log exactly as LOCKDOWN.md's "Final design" describes, test it in the desktop app, push, and give me the installer links from the Desktop builds workflow. Keep PR #1 draft and leave main unchanged. Never ask for or handle my Tabroom password. Do not copy code from flower (GPL). Do not assume access to the previous chat or machine.
+Continue CardMirror Green at paulicydebate/CardMirror-Green on branch feature/full-card-api. Read AGENTS.md, HANDOFF.md, LOCKDOWN.md and CARDMIRROR_GREEN.md's "Usable Prep / Round Modes" section. The desktop implementation is connected; continue its remaining validation and fixes. Ask for my explicit approval before launching or controlling desktop apps or running visible UI tests. Use separate test profiles and synthetic files; never delete my files. Code and headless checks can continue. Keep PR #1 draft and main unchanged. Never ask for or handle my Tabroom password. Do not copy code from flower (GPL). Give me installer artifact links after verified builds; do not install anything automatically.

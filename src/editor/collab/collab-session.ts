@@ -416,6 +416,8 @@ export class CollabSession {
   /** Start a session on the current document. Uploads the seed state as
    *  update #1 and returns the share code alongside the session. */
   static async host(opts: {
+    /** Published inside the encrypted seed before any partner can join. */
+    prep?: boolean;
     pmDoc: PMNode;
     client: RoomsClient;
     callbacks?: CollabSessionCallbacks;
@@ -442,6 +444,7 @@ export class CollabSession {
 
     const loroDoc = new LoroDoc();
     configTextStyle(loroDoc);
+    if (opts.prep) loroDoc.getMap('meta').set('cardmirrorGreenPrep', true);
     updateLoroToPmState(loroDoc as SyncDoc, new Map(), EditorState.create({ doc: opts.pmDoc }));
     loroDoc.commit();
 
@@ -473,7 +476,7 @@ export class CollabSession {
       session.childrenFormat() === 'movable' ? MOVABLE_ROOMS_MIN_VERSION : undefined;
     session.guestPass = guestPass;
     session.viewPass = viewPass;
-    return { session, shareCode: encodeShareCode(roomId, keyBytes, floor), guestPass };
+    return { session, shareCode: encodeShareCode(roomId, keyBytes, floor, opts.prep), guestPass };
   }
 
   /** Join an existing session; resolves once the backlog (seed + tail)

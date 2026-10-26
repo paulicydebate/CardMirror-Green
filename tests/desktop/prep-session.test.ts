@@ -123,6 +123,25 @@ describe('Prep / Round session foundation', () => {
     expect(session.loggingFailed).toBe(true);
     expect(readdirSync(join(dir, 'lockdown'))).not.toContain(`${start.sessionId}.jsonl`);
   });
+  it('keeps prep identity across save/reopen, Save As, aliases, and process restart', () => {
+    const session = new PrepSession(dir, now);
+    session.start(); session.documentCreated('original', 1); session.markPrepDocument('original', 1);
+    session.bindIdentity('original', 'persistent-doc-id', 1);
+    session.restoreIdentity('reopened', 'persistent-doc-id', 2);
+    expect(session.snapshot()?.prepDocIds).toEqual(['original', 'reopened']);
+    expect(() => session.restoreIdentity('old-file', 'unrelated-doc-id', 2)).toThrow('Unknown');
+    const resumed = new PrepSession(dir, now);
+    expect(resumed.snapshot()?.persistentDocIds).toEqual({ 'persistent-doc-id': 'original' });
+    expect(resumed.snapshot()?.prepDocIds).toEqual(['original', 'reopened']);
+    resumed.restoreIdentity('save-as-copy', 'persistent-doc-id', 3);
+    expect(resumed.snapshot()?.prepDocIds).toContain('save-as-copy');
+  });
+  it('protects blank documents created during Round so they cannot become a paste bypass', () => {
+    const session = new PrepSession(dir, now); session.start(); session.startRound();
+    session.documentCreated('round-blank', 1);
+    expect(session.snapshot()?.prepDocIds).toContain('round-blank');
+    expect(new PrepSession(dir, now).snapshot()?.prepDocIds).toContain('round-blank');
+  });
 
   it('supports successive sessions without overwriting logs and validates JSON before writing', () => {
     const session = new PrepSession(dir, now);

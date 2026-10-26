@@ -350,6 +350,9 @@ export interface Host {
  *  renderer to mount the doc without re-prompting via the file
  *  picker. */
 export interface SpawnWindowPayload {
+  /** Generated blank Prep/flow document, not an imported file. */
+  prepBlank?: boolean;
+  prepMark?: boolean;
   /** Journal-carried baseline of a recovered doc being respawned. */
   diskBase?: DiskBase;
   filename: string;

@@ -1,3 +1,4 @@
+import { prepHandle } from "./prep-desktop.js";
 /**
  * OpenCaselist panel — main-process side.
  *
@@ -74,7 +75,7 @@ function getService(): ServiceLike {
 }
 
 export function registerOpenCaselistIpc(): void {
-  ipcMain.handle('host:opencaselist', async (_event, op: unknown, ...args: unknown[]): Promise<Result> => {
+  prepHandle('host:opencaselist', async (_event, op: unknown, ...args: unknown[]): Promise<Result> => {
     const s = getService();
     switch (op) {
       case 'status': return s.status();

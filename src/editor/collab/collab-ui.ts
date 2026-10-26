@@ -1,3 +1,5 @@
+import { prepDoc, prepRound, prepRuntime } from '../prep-runtime.js';
+import { prepMarkCreated, copyPrepInvite } from '../prep-controller.js';
 /**
  * Collaboration-session UI flows: start / join / copy-code / end,
  * wired to the ribbon commands, plus the status-bar chip. Lazily
@@ -1046,10 +1048,12 @@ async function startSessionFlowInner(
     let sess: ActiveSession;
     try {
       ({ session, shareCode } = await CollabSession.host({
+        prep: prepDoc(ownerUid),
         pmDoc: view.state.doc,
         client,
         callbacks: sessionCallbacks(deps, () => sessRef),
       }));
+      if (prepRound()) { await session.stop(); await endRoomOnRelay(session.roomId); return; }
       // ownerUid captured at flow start (line ~427), under the doc that was
       // focused when Start was chosen — host() shared THAT doc's content, so
       // the seams must bind to it even if focus has since moved.
@@ -1081,10 +1085,7 @@ async function startSessionFlowInner(
     const inviteText = getElectronHost()
       ? shareCode
       : buildJoinLink({ shareCode, guestPass: session.guestPass });
-    const copied = await navigator.clipboard?.writeText(inviteText).then(
-      () => true,
-      () => false,
-    );
+    const copied = await copySessionText(inviteText);
     showToast(
       copied
         ? getElectronHost()
@@ -1216,6 +1217,9 @@ async function joinSessionWithCodeInner(
     showToast('That does not look like a share code');
     return false;
   }
+  if (decoded.prep && prepRuntime.status.session?.mode !== 'prep') {
+    showToast('Start Prep Mode in CardMirror Green before joining this prep document.'); return false;
+  }
   let client: RoomsClient | null;
   if (decoded.view) {
     // SPECTATOR join: authenticate with the room's view pass and NOTHING
@@ -1310,6 +1314,11 @@ async function joinSessionWithCodeInner(
       });
       joinedOffline = true;
     }
+    if (prepRound()) { await session.stop(); return false; }
+    const isPrepSession = session.loroDoc.getMap('meta').get('cardmirrorGreenPrep') === true;
+    if (isPrepSession && prepRuntime.status.session?.mode !== 'prep') {
+      await session.stop(); showToast('This is a prep document. Start Prep Mode in CardMirror Green before joining.'); return false;
+    }
     // Create the fresh unsaved session doc — its uid is the session owner
     // (single-pane swaps this window's doc; multi-pane slot-picks). A false
     // return = the user balked (overwrite prompt / slot picker) — unwind
@@ -1323,6 +1332,7 @@ async function joinSessionWithCodeInner(
     // The session owner is the doc newSessionDoc() just created — capture its
     // uid NOW, before any later focus change, so the seams bind into it.
     const ownerUid = deps.getOwnerUid?.() ?? '';
+    if (isPrepSession) await prepMarkCreated(ownerUid);
     sessRef = installSeams(session, deps, code.trim(), ownerUid);
     // Add the binding to the fresh doc's view — its init replaces the
     // empty content with the session's CRDT state synchronously (~10s
@@ -1468,6 +1478,11 @@ async function resumeSessionFlowInner(
       callbacks: sessionCallbacks(deps, () => sessRef),
     });
     session.guestPass = record.guestPass ?? null;
+    if (prepRound()) { await session.stop(); return false; }
+    const isPrepSession = session.loroDoc.getMap('meta').get('cardmirrorGreenPrep') === true;
+    if (isPrepSession && prepRuntime.status.session?.mode !== 'prep') {
+      await session.stop(); showToast('Start Prep Mode before resuming this prep document.'); return false;
+    }
     if (record.role === 'spectator') session.viewPass = record.guestPass ?? null;
     // Host resume without a stored pass: re-mint so fresh invite links
     // stay possible (no-op 404 while the relay flip is off, and guests
@@ -1491,6 +1506,7 @@ async function resumeSessionFlowInner(
     // already-open doc under its uid; otherwise the fresh doc newSessionDoc()
     // just made (single-pane swap, or multi-pane slot). Capture past the awaits.
     const ownerUid = deps.getOwnerUid?.() ?? '';
+    if (isPrepSession && !prepDoc(ownerUid)) await prepMarkCreated(ownerUid);
     sessRef = installSeams(session, deps, record.shareCode, ownerUid);
     deps.refreshPlugins();
     sessRef.commentsSync.pull();
@@ -1518,6 +1534,13 @@ async function resumeSessionFlowInner(
   }
 }
 
+async function copySessionText(text: string): Promise<boolean> {
+  let code = text;
+  if (text.startsWith('https://')) { try { code = new URLSearchParams(new URL(text).hash.slice(1)).get('join') ?? text; } catch {} }
+  if (/^(cmshare3|cmview2)\./.test(code)) return copyPrepInvite(code);
+  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+}
+
 export async function copyInviteLinkFlow(): Promise<void> {
   const sess = actionSession();
   if (!sess) {
@@ -1528,10 +1551,7 @@ export async function copyInviteLinkFlow(): Promise<void> {
     shareCode: sess.shareCode,
     guestPass: sess.session.guestPass,
   });
-  const ok = await navigator.clipboard?.writeText(link).then(
-    () => true,
-    () => false,
-  );
+  const ok = await copySessionText(link);
   showToast(ok ? 'Invite link copied' : 'Could not copy the invite link');
 }
 
@@ -1543,10 +1563,7 @@ export async function copyViewCodeFlow(): Promise<void> {
     showToast('This document has no active session');
     return;
   }
-  const ok = await navigator.clipboard?.writeText(code).then(
-    () => true,
-    () => false,
-  );
+  const ok = await copySessionText(code);
   showToast(ok ? 'View code copied — whoever joins with it watches, without editing' : 'Could not copy the view code');
 }
 
@@ -1564,10 +1581,7 @@ export async function copyViewLinkFlow(): Promise<void> {
     return;
   }
   const link = buildJoinLink({ shareCode: code, guestPass: pass });
-  const ok = await navigator.clipboard?.writeText(link).then(
-    () => true,
-    () => false,
-  );
+  const ok = await copySessionText(link);
   showToast(ok ? 'View link copied — whoever opens it watches, without editing' : 'Could not copy the view link');
 }
 
@@ -1577,10 +1591,7 @@ export async function copyShareCodeFlow(): Promise<void> {
     showToast('This document has no active session');
     return;
   }
-  const ok = await navigator.clipboard?.writeText(sess.shareCode).then(
-    () => true,
-    () => false,
-  );
+  const ok = await copySessionText(sess.shareCode);
   showToast(ok ? 'Share code copied' : 'Could not copy the share code');
 }
 
@@ -1825,6 +1836,21 @@ export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
  *  session), or null. */
 export function activeSession(): CollabSession | null {
   return chipSession()?.session ?? null;
+}
+
+/** Round transition: disconnect all local sessions, aborting on failed host
+ * termination. Ending Prep only disconnects protected shared documents. */
+export async function disconnectForPrep(onlyPrep: boolean, forceLocal = false): Promise<boolean> {
+  for (const sess of [...sessions.values()]) {
+    if (onlyPrep && !prepDoc(sess.ownerUid)) continue;
+    if (!(await endOrLeaveSession(sess))) {
+      if (!forceLocal) return false;
+      await sess.session.stop();
+      await teardownSession(sess, true);
+    }
+    prepRuntime.record('collaboration-ended', sess.ownerUid, { room: sess.session.roomId });
+  }
+  return true;
 }
 
 /** Recover Previous Version command body. Lives here (not in the

@@ -1,3 +1,4 @@
+import { prepTransferBlocked } from './prep-runtime.js';
 /**
  * Send-to-speech routing.
  *
@@ -245,6 +246,7 @@ export function resolveSendSlice(view: EditorView): Slice | null {
  *  left untouched (its enclosing-structure send is unambiguous). Returns null
  *  when there's nothing structural to send. */
 export function takeSendSlice(view: EditorView): Slice | null {
+  if (prepTransferBlocked(getSpeechDocResolver().uidForView(view), 'send-from-prep')) return null;
   // A discontinuous selection sends all its pieces; it stays on screen as-is.
   const shadow = shadowSendRanges(view);
   if (shadow.length > 0) return concatSendSlices(view.state.doc, shadow);
@@ -320,6 +322,7 @@ export function splitSendSlice(slice: Slice): Slice[] {
  *  piece never straddles two scattered ranges. Null when there is
  *  nothing structural to send. */
 export function takeSendPieces(view: EditorView): Slice[] | null {
+  if (prepTransferBlocked(getSpeechDocResolver().uidForView(view), 'send-from-prep')) return null;
   const shadow = shadowSendRanges(view);
   if (shadow.length > 0) {
     const doc = view.state.doc;
@@ -353,6 +356,7 @@ export function insertSpeechSlice(
   // stray blank line above it.
 
   setTimeout(() => {
+    if (prepTransferBlocked(getSpeechDocResolver().uidForView(speechView), 'send-into-prep')) return;
     try {
       // The speech doc can be closed in the 0 ms defer window; dispatching
       // into a destroyed view throws. ProseMirror nulls `docView` on

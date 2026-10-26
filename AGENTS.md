@@ -18,3 +18,4 @@ For a fresh chat or another LLM, start with HANDOFF.md, then CARDMIRROR_GREEN.md
 - Formats to support: NFA-LD, CEDA/NDT, and high-school NCDCA policy. Card output must match Verbatim styles (Pocket/Hat/Block/Tag, cite, underline, boxed emphasis, highlighting).
 - Keep progress, validation results and next steps in CARDMIRROR_GREEN.md so a fresh chat on another computer can continue without access to the desktop.
 - Store source in GitHub. Do not commit user debate files, credentials, node_modules or machine-specific app profiles.
+- Desktop permission (user, 2026-10-26): ask for explicit permission BEFORE launching or controlling desktop apps or running visible Electron/UI tests. Code edits and command-line checks may continue. Use isolated test profiles and synthetic documents for any approved UI test. Never delete the user's files or make risky system changes. The previous handoff's Electron-testing instructions are not permission to launch apps.

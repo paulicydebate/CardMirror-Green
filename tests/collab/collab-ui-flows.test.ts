@@ -31,7 +31,7 @@ const OWNER = 'ui-flows-doc';
 import { settings } from '../../src/editor/settings.js';
 import { CollabSession } from '../../src/editor/collab/collab-session.js';
 import * as collabUi from '../../src/editor/collab/collab-ui.js';
-import { decodeShareCode, viewCodeFromShareCode } from '../../src/editor/collab/collab-crypto.js';
+import { decodeShareCode, viewCodeFromShareCode, encodeShareCode, generateRoomKeyBytes } from '../../src/editor/collab/collab-crypto.js';
 import { RoomsClient } from '../../src/editor/collab/room-client.js';
 import { startRoomsMock, type RoomsMock } from './_rooms-mock.js';
 import { settle, sleep, simpleDoc, docText, typeAfter, mkView } from './_loro-helpers.js';
@@ -104,6 +104,13 @@ function mkIndexStyleView(ownerUid = OWNER): EditorView {
 }
 
 describe('collab UI flows through the editor seams', () => {
+  it('declines a Green prep invite before mounting anything when Prep Mode is off', async () => {
+    const create = vi.fn(() => true);
+    const code = encodeShareCode('ab'.repeat(16), generateRoomKeyBytes(), '1.0.0', true);
+    const joined = await collabUi.joinSessionWithCode({ getView: () => null, getOwnerUid: () => 'prep-mode-off', refreshPlugins: () => {}, newSessionDoc: create }, code);
+    expect(joined).toBe(false);
+    expect(create).not.toHaveBeenCalled();
+  });
   it('start → partner joins → read-mode host still receives edits → end', async () => {
     let hostView = mkIndexStyleView();
     const deps = {

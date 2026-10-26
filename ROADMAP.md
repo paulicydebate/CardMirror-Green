@@ -16,6 +16,7 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 | Chat cutting (copy-paste) | Copy a prompt for Grok/any chat AI, paste the reply; every quote verified against the card before underline/emphasis/green highlight are applied in one undoable step |
 | Spreadsheet flow (v1) | New Flow command/Home tile; sheets per position, speech columns for NPDA/NFA-LD/policy, wrapping cells, keyboard navigation, column-as-document toggle, Word export as tables |
 | Cloud handoff | GitHub holds source, AGENTS.md, current status, contract documentation and this roadmap so another computer can continue with the desktop off |
+| Prep / Round Modes | Desktop controller, per-document restrictions, coordinated Round closing, native file/clipboard gates, prep-aware encrypted collaboration, durable typing logs, restart recovery, viewer/export and seal code; see CARDMIRROR_GREEN.md for validation limits |
 
 ## Completed in the batch-export milestone
 
@@ -32,7 +33,7 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 
 ## Next
 
-1. **Prep / Round Mode and typing log (in progress).** Session/log foundation and scoped renderer clipboard/transaction/flow guards implemented and tested; no app controls or protections enabled yet. Connect the controller, main-process routes, collaboration gates and UI described in [LOCKDOWN.md](LOCKDOWN.md) and [CARDMIRROR_GREEN.md](CARDMIRROR_GREEN.md).
+1. **Prep / Round validation.** Implementation is connected. Verify installer CI and, only with explicit permission before desktop testing, check real two-install prep collaboration and the latest UI refinements. macOS still needs user smoke testing. See [LOCKDOWN.md](LOCKDOWN.md) and [CARDMIRROR_GREEN.md](CARDMIRROR_GREEN.md).
 
 1. **Chat cutting (on hold by user choice, 2026-10-26).** See CHAT_CUT.md for the state at pause.
 1. **Chat cutting: user check.** Try "Cut Card with Chat AI" with Grok on a few real cards ([CHAT_CUT.md](CHAT_CUT.md)); tune the prompt from what Grok gets wrong.

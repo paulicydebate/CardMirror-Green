@@ -171,6 +171,8 @@ export default defineConfig(({ command }) => {
         : []),
     ],
     server: {
+      // Local Electron smoke-test profiles contain locked Chromium databases.
+      watch: { ignored: ['**/tests/scratch/**'] },
       fs: { allow: [path.resolve(__dirname), path.resolve(__dirname, '../card-cutter')] },
       // Pre-transform the collab chain (and the loro wasm loader
       // behind it) on dev-server start. Without this, the renderer's

@@ -1,3 +1,4 @@
+import { prepTransferBlocked } from './prep-runtime.js';
 /**
  * Renderer-side handler for the Fast Debate Paste integration's
  * `POST /insert` requests (see the FDP integration spec in
@@ -53,7 +54,7 @@ interface InsertRequest {
 interface InsertResult {
   requestId: string;
   ok: boolean;
-  error?: 'no-target-doc' | 'doc-readonly' | 'bad-request' | 'internal' | 'target-not-found';
+  error?: 'no-target-doc' | 'doc-readonly' | 'bad-request' | 'internal' | 'target-not-found' | 'prep-document';
   docTitle?: string;
 }
 
@@ -122,6 +123,7 @@ function handle(req: InsertRequest, opts: ExternalInsertHostOpts): InsertResult 
       if (!view) return { requestId, ok: false, error: 'no-target-doc' };
       return { requestId, ok: false, error: 'doc-readonly' };
     }
+    if (prepTransferBlocked(view.dom.dataset['prepUid'] ?? null, 'external-insert')) return { requestId, ok: false, error: 'prep-document' };
     // Rich path first: valid html that parses to content wins; anything
     // else falls through to the text path (identical to how an older
     // CardMirror, which never reads `html`, renders this payload).
