@@ -1,6 +1,6 @@
 # Prep docs, Prep Mode, Round Mode (lockdown) and typing log: viability and plan
 
-Status (2026-10-26): assessed, not built. Requested by the user's colleagues for NPDA rounds, where copy-paste is banned during prep.
+Status (2026-10-26): implementation started. The session/log foundation is implemented and tested, but not connected to the app; protections and user controls are not available yet. See CARDMIRROR_GREEN.md, "Prep / Round foundation". Requested by the user's colleagues for NPDA rounds, where copy-paste is banned during prep.
 
 ## Requests
 

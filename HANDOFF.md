@@ -162,6 +162,8 @@ Done and in the user's hands:
 - Chat cutting is built but **on hold** at the user's request.
 
 **Next: build Prep Mode / Round Mode and the typing log, following LOCKDOWN.md.** That file holds the user's final decisions; its "Final design" section wins where sections differ. Summary:
+
+Implementation started by Codex (2026-10-26): `apps/desktop/src/prep-session.ts` and `tests/desktop/prep-session.test.ts` provide the session transitions, new-document eligibility, durable hash chain, restart recovery and seal verification (11 focused Windows tests; root typecheck and desktop main build passed). This module is intentionally not connected to IPC or the renderer: the app does not yet offer Prep / Round Mode. See CARDMIRROR_GREEN.md, "Prep / Round foundation", for the full remaining integration list. Keep the UI unavailable until enforcement is connected; there is no protected installer to user-test yet.
 - **Prep Mode (yellow):**
   - Only new documents become prep docs, and they can't be unmarked.
   - In prep docs: no copy, cut, paste or drag in **or out**, and no large inserts from any feature. Macros and autocorrect are logged.

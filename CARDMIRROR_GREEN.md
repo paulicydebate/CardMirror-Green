@@ -80,6 +80,18 @@ Home → **New flow** (or command bar → New Flow). Sheets per position, one co
 - The default accent (buttons, selected items, navigation level numbers, focus rings) is olive-to-bright green instead of upstream blue: light theme `#4f7f1a` (hover `#3f6814`, focus `#6aab2e`), dark theme `#5c9e2d` (hover `#7cb342`, focus `#8bc34a`). White text on the light accent is 4.8:1; the dark accent on the dark background is 5.1:1. Set in `src/editor/style.css`.
 - The colorblind-friendly preset keeps its blue. Each user can still pick their own accent in Settings → Accessibility → Color overrides.
 
+## Prep / Round foundation (Codex, 2026-10-26)
+
+Implementation has started, but **Prep / Round Mode is not available in the app yet**. No mode banner or start command is exposed until its document protections are connected.
+
+- `apps/desktop/src/prep-session.ts`: a main-process session owner with Prep → Round → End transitions; immutable state snapshots; stable session document identities; only newly created documents can be marked during Prep Mode; no unmark operation.
+- The append-only SHA-256 JSON Lines log is flushed before a state transition succeeds. `lockdown/state.json` points at the active log; restart replays verified events and records the restart. Corruption and write failures fail closed. This module must have exactly one owner, and its future controller must stop edits on `loggingFailed`.
+- Typing/macro/autocorrect/undo/redo/remote-insert events require a registered prep document. Strategy-document content is not logged through those event kinds. End returns timestamps, the full final hash and a 16-hex-digit seal code. An independently recorded final hash/seal is required to detect removal of a valid log suffix; the chain alone does not prove authenticity.
+- Validation: 11 focused tests pass on Windows with Node 24.21.0, covering lifecycle, eligibility, restart in both modes, privacy, tampering/truncation, corrupt pointers, interrupted end cleanup, failed writes and deleted logs. Root typecheck and desktop `build:main` pass. The sandbox blocks atomic renames in its temp folder; filesystem tests passed outside that sandbox. CI's Node 22 verification remains separate.
+- **Still required:** main-process IPC/state broadcast and renderer controller; yellow/red pane/window UI and commands; scoped clipboard/drag/drop and transaction/flow guards; macro/autocorrect tagging; external-insert/file-open restrictions; all-window save/close coordination; prep-aware collaboration protocol; input/focus/lifecycle event batching; viewer/export; packaged-app multiwindow/three-pane tests. Never call `startRound()` until all windows have acknowledged non-prep-doc closing and collaboration shutdown; canceling a save must leave Prep Mode active.
+
+This is infrastructure only, not a lockdown-capable installer. Continue with `LOCKDOWN.md`'s final design; chat cutting remains on hold.
+
 ## Continue with another LLM
 
 Start with [HANDOFF.md](HANDOFF.md). It records the verified implementation commit, CI evidence, setup commands, architecture, contract invariants, private-data limitations, and the next OpenCaselist-adapter task. [ROADMAP.md](ROADMAP.md) separates completed work, planned work and optional future ideas. The next LLM does not need the previous chat or access to the original desktop.
