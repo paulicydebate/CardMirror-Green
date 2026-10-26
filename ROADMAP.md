@@ -32,6 +32,7 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 
 ## Next
 
+1. **Chat cutting (on hold by user choice, 2026-10-26).** See CHAT_CUT.md for the state at pause.
 1. **Chat cutting: user check.** Try "Cut Card with Chat AI" with Grok on a few real cards ([CHAT_CUT.md](CHAT_CUT.md)); tune the prompt from what Grok gets wrong.
 1. **Chat cutting, next pieces.** Cut a raw article into a new card; AI-suggested omissions; a CLI so Claude Code/Codex can apply `cardmirror.cut.v1` replies to files; several cards per prompt.
 1. **Spreadsheet flowing** ([FLOW.md](FLOW.md)): first version done; next match the user's Google Sheets template, send-to-flow, rich text in cells, .xlsx export.

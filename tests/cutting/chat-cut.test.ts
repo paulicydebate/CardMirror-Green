@@ -15,15 +15,18 @@ const PARAS = [
   'Deterrence still works in most cases, but miscalculation is the most likely path to war.',
 ];
 
-const reply = (r: Partial<ChatCutReply>): ChatCutReply => ({ tag: null, underline: [], emphasis: [], highlight: [], ...r });
+const reply = (r: Partial<ChatCutReply>): ChatCutReply => ({ tag: null, undertag: null, underline: [], emphasis: [], highlight: [], warnings: [], ...r });
 const text = (s: CutSpan): string => PARAS[s.p]!.slice(s.start, s.end);
 
 describe('chat cut prompt', () => {
   it('includes the rules, the format and only the cleaned card text', () => {
     const prompt = buildCutPrompt({ tag: 'Escalation  risk', cite: 'Smith 25', paragraphs: ['  a\n b ', '', 'c'], purpose: 'war is likely', targetWords: 40 });
     expect(prompt).toContain('The card should prove: war is likely');
-    expect(prompt).toContain('HIGHLIGHT about 40 words in total (never more than 50)');
-    expect(prompt).toContain('not whole sentences or clauses');
+    expect(prompt).toContain('HIGHLIGHT what the debater reads aloud: about 40 words in total (never more than 50)');
+    expect(prompt).toContain('never whole sentences or clauses');
+    expect(prompt).toContain('Highlight whole words only');
+    expect(prompt).toContain('"undertag": null');
+    expect(prompt).toContain('A fiscal crisis could be triggered threatening to balloon the deficit');
     expect(prompt).toContain(`"format": "${CHAT_CUT_FORMAT}"`);
     expect(prompt).toContain('CURRENT TAG (may be improved): Escalation risk');
     expect(prompt).toContain('<<<\na b\n\nc\n>>>');
@@ -31,12 +34,12 @@ describe('chat cut prompt', () => {
 });
 
 describe('highlight budget and density', () => {
-  it('defaults to about 12% of the card, between 20 and 80 words', () => {
+  it('defaults to about 12% of the card, between 25 and 60 words', () => {
     const words = (n: number) => [Array.from({ length: n }, () => 'w').join(' ')];
-    expect(defaultHighlightTarget(words(100))).toBe(20);
+    expect(defaultHighlightTarget(words(100))).toBe(25);
     expect(defaultHighlightTarget(words(400))).toBe(50);
-    expect(defaultHighlightTarget(words(2000))).toBe(80);
-    expect(buildCutPrompt({ tag: '', cite: '', paragraphs: words(400) })).toContain('HIGHLIGHT about 50 words');
+    expect(defaultHighlightTarget(words(2000))).toBe(60);
+    expect(buildCutPrompt({ tag: '', cite: '', paragraphs: words(400) })).toContain('about 50 words in total');
   });
 
   it('measures highlight share and long block highlights', () => {
@@ -51,7 +54,9 @@ describe('highlight budget and density', () => {
 describe('parseCutReply', () => {
   it('reads JSON from a fenced block surrounded by chatter', () => {
     const r = parseCutReply('Sure! Here you go:\n```json\n{"format":"cardmirror.cut.v1","tag":" T ","underline":["a"],"highlight":["b"]}\n```\nHope that helps.');
-    expect(r).toEqual({ ok: true, reply: { tag: 'T', underline: ['a'], emphasis: [], highlight: ['b'] } });
+    expect(r).toEqual({ ok: true, reply: { tag: 'T', undertag: null, underline: ['a'], emphasis: [], highlight: ['b'], warnings: [] } });
+    const full = parseCutReply('{"tag":"T","undertag":" author is cautious ","highlight":["b"],"warnings":["hedged: could"]}');
+    expect(full).toMatchObject({ ok: true, reply: { undertag: 'author is cautious', warnings: ['hedged: could'] } });
   });
 
   it('repairs trailing commas and smart quotes used as JSON delimiters', () => {

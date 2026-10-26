@@ -16,7 +16,10 @@ Options: replace the card's existing underline/emphasis/highlight (on by default
 
 ## Highlight quality
 
-- The prompt sets a highlight budget: the user's number, or about 12% of the card's words (20–80) when left blank, and asks for word-level highlighting (mostly 1–4 word runs, never whole sentences) that reads as natural sentences, with a made-up good/bad example.
+**On hold (user, 2026-10-26):** chat cutting is paused as a bigger lift than expected. State at pause: the prompt now follows the user's own cutting standard (their debate-evidence-files skill, references/cutting.md): underline 30-50%, emphasis 1-3 per read paragraph, brief-but-sufficient word-level highlighting with whole words only, honest tags, reversal warnings, and the skill's Edelberg '25 worked example. The reply format gained optional `undertag` and `warnings` fields, which are parsed but NOT yet shown or applied in the dialog. Next when resumed: show warnings, offer to insert the undertag, re-test Grok and compare with Claude chat on the same two cards (Gledhill '25 arms nationalization, Kumar '24 public pharma).
+
+
+- The prompt sets a highlight budget: the user's number, or about 12% of the card's words (25–60, the user's 1AC/1NC standard) when left blank, and asks for word-level highlighting (mostly 1–4 word runs, never whole sentences) that reads as natural sentences, with a made-up good/bad example.
 - The dialog warns (does not block) when highlighted words exceed half the underlined words, and counts highlight quotes longer than 8 words.
 
 ## Safety rules (enforced in code, not by trusting the AI)

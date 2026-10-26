@@ -27,9 +27,13 @@ export interface CutSpan {
 
 export interface ChatCutReply {
   tag: string | null;
+  /** Optional honest disclosure line shown under the tag (e.g. "author concludes X is unlikely"). */
+  undertag: string | null;
   underline: string[];
   emphasis: string[];
   highlight: string[];
+  /** The AI's own cautions: hedged claims, context that qualifies the card, re-highlight risk. */
+  warnings: string[];
 }
 
 export interface PromptInput {
@@ -62,14 +66,19 @@ export function buildCutPrompt(input: PromptInput): string {
     '',
     'TASK',
     purpose ? `The card should prove: ${purpose}` : 'Decide the strongest honest claim this evidence supports.',
-    '- UNDERLINE the author\'s claims and warrants that matter for that argument, plus enough surrounding text for context. Skip background, examples and asides that do not help the argument.',
-    `- HIGHLIGHT about ${target} words in total (never more than ${Math.round(target * 1.25)}). This is what the debater reads aloud in a timed speech, so it must be lean.`,
-    '- Highlight SELECTIVELY, word by word, not whole sentences or clauses. Pick the nouns, verbs and numbers that carry the claim and warrant; leave out articles, filler, hedges, examples, attributions and transitions. Most highlight quotes are 1 to 4 words; a run longer than 6 words is almost always too much.',
-    '- Read on their own, in order, the highlighted words must form grammatical, natural-sounding sentences that make the argument.',
-    '- Good: in "Rising sea levels will, according to most of the models we reviewed, displace more than 200 million people by the end of the century", highlight "Rising sea levels will", "displace", "200 million people" so it reads "Rising sea levels will displace 200 million people". Bad: highlighting the whole sentence or every clause.',
-    '- EMPHASIS (boxed text): at most 3 to 5 of the most important words or short phrases in the whole card, inside underlined text.',
-    '- TAG: one sentence stating the claim the highlighted text actually proves. Do not overclaim.',
-    '- Never make the author say something they do not mean. Do not highlight around a "not" or a qualifier in a way that flips or inflates the meaning.',
+    '- UNDERLINE the full warrant: the sentences a debater could choose to read. Underlining is generous, usually 30 to 50% of the text.',
+    '- EMPHASIS (boxed text): the few words that carry the argument, about 1 to 3 per paragraph that is read (e.g. "no feasible", "210 percent"). Emphasized words count as underlined.',
+    `- HIGHLIGHT what the debater reads aloud: about ${target} words in total (never more than ${Math.round(target * 1.25)}). Brief but always sufficient: read alone, in order, the highlighted words must be grammatical enough to follow and must prove every part of the tag. A judge hearing only them should understand the claim and the reason for it.`,
+    '- Highlight selectively, word by word, never whole sentences or clauses. Keep the numbers, the causal word ("because", "causes", "triggers") and any qualifier that keeps the claim defensible; drop articles, filler, attributions, examples and transitions. Most highlight quotes are 1 to 5 words. Highlight whole words only, never part of a word.',
+    '- TAG: the claim the card proves, phrased as the argument the debater makes (not a topic label), usually one sentence. Never stronger than the highlighted text: if it says "could", the tag does not say "will"; if it is about the EU, the tag does not say "globally".',
+    '- Never let the highlighting reverse or distort the author: watch for "Critics claim...", "It is often argued that...", views the author reports only to rebut, and a "but" or "however" right after the highlighted part.',
+    '- UNDERTAG (optional): if the rest of the text qualifies the claim (e.g. the author concludes the risk is small), write one honest line for the debater, e.g. "author concludes a crisis is unlikely from delay alone; read for the trigger mechanism". Otherwise use null.',
+    '- WARNINGS (optional): short cautions for the debater, e.g. the read text is hedged ("could", "may"), or the other side could re-highlight the card against us. Use [] if none.',
+    '',
+    'EXAMPLE OF GOOD HIGHLIGHTING',
+    'Text: "A fiscal crisis could be triggered if politicians take irresponsible actions like threatening to default, threatening to undermine essential institutions (such as the Federal Reserve), or threatening to balloon the deficit in ways that suggest no commitment to future generations."',
+    'Underline: "A fiscal crisis could be triggered if politicians take irresponsible actions like" and "threatening to balloon the deficit in ways that suggest no commitment to future generations". Emphasis: "balloon the deficit", "no commitment". Highlight: "A fiscal crisis could be triggered", "threatening to", "balloon the deficit", "in ways that suggest", "no commitment".',
+    'Read aloud: "A fiscal crisis could be triggered threatening to balloon the deficit in ways that suggest no commitment." Short, grammatical enough, and it proves the tag "Ballooning the deficit is the trigger for a fiscal crisis".',
     '',
     'QUOTING RULES (replies that break these are rejected automatically)',
     '- Every quote must be copied EXACTLY from the card text below: same words, same spelling, same punctuation.',
@@ -85,9 +94,11 @@ export function buildCutPrompt(input: PromptInput): string {
     '{',
     `  "format": "${CHAT_CUT_FORMAT}",`,
     '  "tag": "one-sentence tag",',
+    '  "undertag": null,',
     '  "underline": ["exact quote", "exact quote"],',
     '  "emphasis": ["exact quote"],',
-    '  "highlight": ["exact quote", "exact quote"]',
+    '  "highlight": ["exact quote", "exact quote"],',
+    '  "warnings": []',
     '}',
     '```',
     '',
@@ -99,10 +110,12 @@ export function buildCutPrompt(input: PromptInput): string {
 }
 
 /** Highlight budget when the user gives none: about 12% of the card's words,
- *  kept between 20 and 80 (a typical well-cut card reads in well under a minute). */
+ *  kept between 25 and 60 — the user's cutting standard for 1AC/1NC cards
+ *  (about 20-40 seconds read aloud). Extensions and 2AR cards read less;
+ *  the user can type a smaller number. */
 export function defaultHighlightTarget(paragraphs: string[]): number {
   const words = paragraphs.join(' ').split(/\s+/).filter(Boolean).length;
-  return Math.max(20, Math.min(80, Math.round((words * 0.12) / 5) * 5));
+  return Math.max(25, Math.min(60, Math.round((words * 0.12) / 5) * 5));
 }
 
 // ─── Reply parsing ───────────────────────────────────────────────────
@@ -155,13 +168,16 @@ export function parseCutReply(text: string): ParseResult {
   }
   try {
     const tag = typeof obj['tag'] === 'string' && obj['tag'].trim() ? obj['tag'].trim().slice(0, MAX_TAG_CHARS) : null;
+    const undertag = typeof obj['undertag'] === 'string' && obj['undertag'].trim() ? obj['undertag'].trim().slice(0, MAX_TAG_CHARS) : null;
     const reply = {
       tag,
+      undertag,
       underline: stringList(obj['underline'], 'underline'),
       emphasis: stringList(obj['emphasis'], 'emphasis'),
       highlight: stringList(obj['highlight'], 'highlight'),
+      warnings: stringList(obj['warnings'], 'warnings').map((w) => w.slice(0, 500)).slice(0, 10),
     };
-    if (!reply.tag && reply.underline.length + reply.emphasis.length + reply.highlight.length === 0) {
+    if (!reply.tag && !reply.undertag && reply.underline.length + reply.emphasis.length + reply.highlight.length === 0) {
       return { ok: false, error: 'The reply has no tag and no quotes.' };
     }
     return { ok: true, reply };
@@ -303,7 +319,7 @@ function wordsIn(text: string, ranges: Array<[number, number]>): number {
 }
 
 /** Find every quote of a parsed reply in the card's body paragraphs. */
-export function matchCutReply(paragraphs: string[], reply: ChatCutReply): MatchReport {
+export function matchCutReply(paragraphs: string[], reply: Pick<ChatCutReply, 'underline' | 'emphasis' | 'highlight'> & Partial<ChatCutReply>): MatchReport {
   const exact = paragraphs.map((p) => normalizeWithMap(p, false));
   const lower = paragraphs.map((p) => normalizeWithMap(p, true));
   const report: MatchReport = {
