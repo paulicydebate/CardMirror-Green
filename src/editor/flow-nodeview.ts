@@ -92,6 +92,8 @@ export class FlowWorkbookView implements NodeView {
   private appearanceOpen = false;
   private theme: FlowTheme = loadFlowTheme();
   private readonly unsubscribeTheme: () => void;
+  private resizeObserver: ResizeObserver | null = null;
+  private fitFrame = 0;
 
   constructor(node: PMNode, private readonly view: EditorView, private readonly getPos: () => number | undefined) {
     this.dom = el('div', 'pmd-flow-root');
@@ -106,10 +108,55 @@ export class FlowWorkbookView implements NodeView {
       if (this.appearanceOpen) this.render(this.lastCell ?? undefined);
     });
     this.render();
+    this.watchHeight();
   }
 
   destroy(): void {
     this.unsubscribeTheme();
+    this.resizeObserver?.disconnect();
+    window.removeEventListener('resize', this.scheduleFit);
+    cancelAnimationFrame(this.fitFrame);
+  }
+
+  // ─── Fill the window / pane height ────────────────────────────────
+
+  /** Nearest scrolling ancestor: the editor's scroller in a window or a three-pane slot. */
+  private scroller(): HTMLElement | null {
+    for (let n = this.dom.parentElement; n; n = n.parentElement) {
+      const oy = getComputedStyle(n).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && n.clientHeight > 0) return n;
+    }
+    return null;
+  }
+
+  private scheduleFit = (): void => {
+    cancelAnimationFrame(this.fitFrame);
+    this.fitFrame = requestAnimationFrame(() => this.fitHeight());
+  };
+
+  /** Size the flow to the visible height of its window or pane, so the grid
+   *  reaches the bottom and scrolls inside itself like a spreadsheet. */
+  private fitHeight(): void {
+    if (!this.dom.isConnected) return;
+    const sc = this.scroller();
+    const visible = sc ? sc.clientHeight : window.innerHeight;
+    const style = getComputedStyle(this.dom);
+    const margins = parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+    const height = Math.max(360, Math.floor(visible - margins - 8));
+    if (this.dom.style.height !== `${height}px`) this.dom.style.height = `${height}px`;
+  }
+
+  private watchHeight(): void {
+    window.addEventListener('resize', this.scheduleFit);
+    this.scheduleFit();
+    if (typeof ResizeObserver === 'undefined') return;
+    this.resizeObserver = new ResizeObserver(this.scheduleFit);
+    // The scroller only exists once the view is mounted in the page.
+    requestAnimationFrame(() => {
+      const sc = this.scroller();
+      if (sc) this.resizeObserver?.observe(sc);
+      this.scheduleFit();
+    });
   }
 
   private parse(data: string): FlowWorkbook {
@@ -416,7 +463,14 @@ export class FlowWorkbookView implements NodeView {
     const wrap = el('div', `pmd-flow-doc pmd-flow-side-${columnSide(this.book.event, sheet, col)}`);
     const bar = el('div', 'pmd-flow-docbar');
     bar.appendChild(el('strong', undefined, `${sheet.columns[col]} — ${sheet.name}`));
-    bar.appendChild(el('span', 'pmd-flow-hint', 'Escape returns to the spreadsheet'));
+    bar.appendChild(el('span', 'pmd-flow-hint', 'Enter = next argument · Shift+Enter = new line · Escape = back to the spreadsheet'));
+    if (this.sections.some((sec) => /\n/.test(sec.text.trim()))) {
+      const split = el('button', 'pmd-flow-tool pmd-flow-split', 'Split lines into arguments');
+      split.type = 'button';
+      split.title = 'Make every line its own argument (cell)';
+      split.addEventListener('click', () => this.splitAllLines());
+      bar.appendChild(split);
+    }
     wrap.appendChild(bar);
     if (this.sections.length === 0) this.sections = [{ rowId: null, text: '' }];
     this.sections.forEach((section, i) => {
@@ -435,13 +489,35 @@ export class FlowWorkbookView implements NodeView {
         this.commitSections();
       });
       area.addEventListener('keydown', (e) => {
+        const atStart = area.selectionStart === 0 && area.selectionEnd === 0;
+        const atEnd = area.selectionStart === area.value.length && area.selectionEnd === area.value.length;
         if (e.key === 'Escape' || (modKey(e) && e.shiftKey && e.key.toLowerCase() === 'e')) {
           e.preventDefault();
           this.collapse();
         } else if (modKey(e) && e.key === 'Enter') {
           e.preventDefault();
           this.addSection(i + 1);
+        } else if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !modKey(e)) {
+          // Enter = next argument (its own cell); Shift+Enter = new line in this argument.
+          e.preventDefault();
+          this.splitSection(i, area.selectionStart, area.selectionEnd);
+        } else if (e.key === 'Backspace' && atStart && i > 0) {
+          e.preventDefault();
+          this.mergeWithPrevious(i);
+        } else if (e.key === 'ArrowUp' && atStart && i > 0) {
+          e.preventDefault();
+          this.focusSection(i - 1, 'end');
+        } else if (e.key === 'ArrowDown' && atEnd && i < this.sections.length - 1) {
+          e.preventDefault();
+          this.focusSection(i + 1, 0);
         }
+      });
+      area.addEventListener('paste', (e) => {
+        const text = e.clipboardData?.getData('text/plain') ?? '';
+        if (!/\r?\n/.test(text)) return;
+        // Pasted lines become separate arguments, like typing them with Enter.
+        e.preventDefault();
+        this.insertLines(i, area.selectionStart, area.selectionEnd, text);
       });
       wrap.appendChild(area);
       const add = el('button', 'pmd-flow-addsec', '+ Add argument');
@@ -473,6 +549,64 @@ export class FlowWorkbookView implements NodeView {
     this.sections.splice(at, 0, { rowId: null, text: '' });
     this.render();
     requestAnimationFrame(() => this.dom.querySelector<HTMLTextAreaElement>(`.pmd-flow-docsec[data-section="${at}"]`)?.focus());
+  }
+
+  private focusSection(i: number, caret: number | 'end'): void {
+    requestAnimationFrame(() => {
+      const area = this.dom.querySelector<HTMLTextAreaElement>(`.pmd-flow-docsec[data-section="${i}"]`);
+      if (!area) return;
+      area.focus();
+      const at = caret === 'end' ? area.value.length : Math.min(caret, area.value.length);
+      area.setSelectionRange(at, at);
+    });
+  }
+
+  /** Enter in document view: text after the caret becomes the next argument. */
+  private splitSection(i: number, start: number, end: number): void {
+    const text = this.sections[i]!.text;
+    this.sections[i] = { ...this.sections[i]!, text: text.slice(0, start) };
+    this.sections.splice(i + 1, 0, { rowId: null, text: text.slice(end) });
+    this.commitSections();
+    this.render();
+    this.focusSection(i + 1, 0);
+  }
+
+  /** Backspace at the start of an argument joins it onto the one above. */
+  private mergeWithPrevious(i: number): void {
+    const prev = this.sections[i - 1]!;
+    const join = prev.text.length;
+    this.sections[i - 1] = { ...prev, text: prev.text + this.sections[i]!.text };
+    this.sections.splice(i, 1);
+    this.commitSections();
+    this.render();
+    this.focusSection(i - 1, join);
+  }
+
+  /** Paste of several lines: each line becomes its own argument. */
+  private insertLines(i: number, start: number, end: number, pasted: string): void {
+    const text = this.sections[i]!.text;
+    const lines = pasted.replace(/\r\n?/g, '\n').split('\n');
+    const first = text.slice(0, start) + lines[0];
+    const last = lines[lines.length - 1]! + text.slice(end);
+    const middle = lines.slice(1, -1);
+    this.sections[i] = { ...this.sections[i]!, text: lines.length === 1 ? first + text.slice(end) : first };
+    const added = lines.length === 1 ? [] : [...middle, last].map((t) => ({ rowId: null, text: t }));
+    this.sections.splice(i + 1, 0, ...added);
+    this.commitSections();
+    this.render();
+    this.focusSection(i + added.length, lines.length === 1 ? first.length : lines[lines.length - 1]!.length);
+  }
+
+  /** Turn every line of every argument into its own argument. */
+  private splitAllLines(): void {
+    const next: ColumnSection[] = [];
+    for (const sec of this.sections) {
+      const lines = sec.text.split('\n').filter((l, k, all) => l.trim() !== '' || all.length === 1);
+      lines.forEach((line, k) => next.push({ rowId: k === 0 ? sec.rowId : null, text: line }));
+    }
+    this.sections = next;
+    this.commitSections();
+    this.render();
   }
 
   /** Write the sections back and learn the row ids of newly created ones. */

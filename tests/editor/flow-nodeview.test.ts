@@ -168,6 +168,56 @@ describe('flow NodeView', () => {
     expect(cellAt(book(v).sheets[0]!, 1, 2).text).toBe('Turn');
   });
 
+  it('document view: Enter starts a new argument in its own cell', async () => {
+    const v = mount();
+    type(cell(v, 0, 1), 'Existing LOC answer');
+    v.dom.querySelectorAll('.pmd-flow-head')[0]!.dispatchEvent(new MouseEvent('dblclick'));
+    await frame();
+    const secs = () => Array.from(v.dom.querySelectorAll<HTMLTextAreaElement>('.pmd-flow-docsec'));
+    type(secs()[0]!, 'Adv 1 econ');
+    secs()[0]!.setSelectionRange(10, 10);
+    key(secs()[0]!, 'Enter');
+    await frame();
+    expect(document.activeElement).toBe(secs()[1]);
+    type(secs()[1]!, 'Adv 2 war');
+    key(secs()[1]!, 'Enter');
+    await frame();
+    type(secs()[2]!, 'Adv 3 rights');
+    const sheet = () => book(v).sheets[0]!;
+    expect([0, 1, 2].map((r) => cellAt(sheet(), r, 0).text)).toEqual(['Adv 1 econ', 'Adv 2 war', 'Adv 3 rights']);
+    expect(cellAt(sheet(), 0, 1).text).toBe('Existing LOC answer');
+    // Splitting mid-text moves the rest to a new argument; Backspace at its start joins back.
+    secs()[1]!.setSelectionRange(5, 5);
+    key(secs()[1]!, 'Enter');
+    await frame();
+    expect(secs().map((s) => s.value)).toEqual(['Adv 1 econ', 'Adv 2', ' war', 'Adv 3 rights']);
+    secs()[2]!.setSelectionRange(0, 0);
+    key(secs()[2]!, 'Backspace');
+    await frame();
+    expect(secs().map((s) => s.value)).toEqual(['Adv 1 econ', 'Adv 2 war', 'Adv 3 rights']);
+    expect([0, 1, 2, 3].map((r) => cellAt(sheet(), r, 0).text)).toEqual(['Adv 1 econ', 'Adv 2 war', '', 'Adv 3 rights']);
+  });
+
+  it('document view: pasted lines and old multi-line cells become separate arguments', async () => {
+    const v = mount();
+    type(cell(v, 0, 0), 'one\ntwo\nthree');
+    v.dom.querySelectorAll('.pmd-flow-head')[0]!.dispatchEvent(new MouseEvent('dblclick'));
+    await frame();
+    const split = v.dom.querySelector<HTMLButtonElement>('.pmd-flow-split')!;
+    expect(split).not.toBeNull();
+    split.click();
+    await frame();
+    expect([0, 1, 2].map((r) => cellAt(book(v).sheets[0]!, r, 0).text)).toEqual(['one', 'two', 'three']);
+    const secs = () => Array.from(v.dom.querySelectorAll<HTMLTextAreaElement>('.pmd-flow-docsec'));
+    const last = secs()[2]!;
+    last.setSelectionRange(5, 5);
+    const paste = new Event('paste', { bubbles: true, cancelable: true }) as Event & { clipboardData: unknown };
+    Object.defineProperty(paste, 'clipboardData', { value: { getData: () => ' A\nB\nC' } });
+    last.dispatchEvent(paste);
+    await frame();
+    expect(secs().map((s) => s.value)).toEqual(['one', 'two', 'three A', 'B', 'C']);
+  });
+
   it('re-renders when the data changes from outside', () => {
     const v = mount();
     const pos = 0;
