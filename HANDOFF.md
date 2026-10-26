@@ -152,14 +152,45 @@ Aggregate results:
 - Both exported batches passed JSON Schema validation. Re-importing the same files produced the same batch/record IDs. Source file hashes were unchanged.
 - These real files do not exercise tables, images, footnotes or reference subtrees; synthetic tests cover relevant raw-content retention cases. Do not generalize the real-file check into a universal lossless-format claim.
 
-## Next task for the receiving LLM
+## Next task for the receiving LLM (updated 2026-10-26)
 
-The adapter is built (see the milestone above). Next:
+Done and in the user's hands:
+- OpenCaselist panel, confirmed with the user's real account.
+- Spreadsheet flow: co-editing fix, highlights, Prep column, document view keeping blank arguments.
+- Three-pane resizing and pop-out to a new window.
+- Green default accent.
+- Chat cutting is built but **on hold** at the user's request.
 
-1. Confirm GitHub CI is green for the adapter commit on both platforms.
-2. Limited real run, with the user signing in themselves — easiest through the app panel (Home → Browse OpenCaselist) on a fresh preview build, or `npm run caselist -- login` in their own terminal; never handle the password. Open ~3 files from one team (panel) or `export --limit 3` (CLI). Record the real caselist names, file formats, any redirect behavior and failures in OPENCASELIST.md. Fix what the real service disagrees with.
-3. Then widen to a whole school, and check repeatability and duplicate annotations on real data.
-4. Next features, per the AI design decision in AGENTS.md (the OpenCaselist panel and copy-paste chat cutting are done): the user's Grok check of chat cutting, then the next pieces listed in CHAT_CUT.md, then block generation and scouting through the same pattern.
+**Next: build Prep Mode / Round Mode and the typing log, following LOCKDOWN.md.** That file holds the user's final decisions; its "Final design" section wins where sections differ. Summary:
+- **Prep Mode (yellow):**
+  - Only new documents become prep docs, and they can't be unmarked.
+  - In prep docs: no copy, cut, paste or drag in **or out**, and no large inserts from any feature. Macros and autocorrect are logged.
+  - Typing in prep docs is logged.
+  - Other docs (the coaches' strategy doc) are unrestricted.
+  - Co-editing a prep doc requires every member to be in Prep Mode.
+- **Round Mode (red):**
+  - Ends all co-editing.
+  - Force-closes every non-prep doc and blocks opening files.
+  - New blank windows and documents are allowed.
+- **Log:**
+  - A hash-chained JSON Lines file in userData, with timestamps for Prep start, Round start and end.
+  - A seal code shown when the session ends.
+  - A viewer and export.
+
+Follow the "Suggested build order" in LOCKDOWN.md. Test in the desktop app with Playwright `_electron` under xvfb (see the notes in CARDMIRROR_GREEN.md):
+- Run the vite dev server on port 5173.
+- Pick the window whose URL starts with http://localhost:5173, not the devtools window.
+- Clear `~/.config/CardMirror Green` for a fresh profile.
+
+Do not put a process pattern in the same shell line as `pkill -f`.
+
+After each pushed milestone, the "Desktop builds (Windows and macOS)" workflow produces installers. Give the user the artifact links: they install manually. In-app updates are a later discussion; GitHub Releases plus an updater is the likely route, and Mac auto-update needs Apple signing.
+
+Later or optional:
+- Chat cutting follow-ups (CHAT_CUT.md).
+- Card search database.
+- Flow follow-ups (FLOW.md "Not done yet").
+- Real OpenCaselist widening (OPENCASELIST.md).
 
 The original adapter plan, kept for reference:
 1. Define a small selectable scope and implement document discovery with an injectable transport for tests.
@@ -183,4 +214,4 @@ Do not build a search UI, hosted database, fuzzy matching or automatic profile s
 
 ## Prompt the user can give a new LLM
 
-Continue CardMirror Green at paulicydebate/CardMirror-Green on branch feature/full-card-api. Read HANDOFF.md, AGENTS.md, CARDMIRROR_GREEN.md, ROADMAP.md and CARD_INGEST_V1.md. The v1 local exporter and the OpenCaselist adapter (mock-tested) are complete; the next task is a limited real OpenCaselist run, then the in-app panel, as described in HANDOFF.md. Keep PR #1 draft and leave main unchanged. Do not assume access to the previous chat or machine.
+Continue CardMirror Green at paulicydebate/CardMirror-Green on branch feature/full-card-api. Read AGENTS.md, HANDOFF.md (start with "Next task") and LOCKDOWN.md. Then read CARDMIRROR_GREEN.md and FLOW.md for context. Build Prep Mode / Round Mode and the typing log exactly as LOCKDOWN.md's "Final design" describes, test it in the desktop app, push, and give me the installer links from the Desktop builds workflow. Keep PR #1 draft and leave main unchanged. Never ask for or handle my Tabroom password. Do not copy code from flower (GPL). Do not assume access to the previous chat or machine.
