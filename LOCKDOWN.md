@@ -1,4 +1,4 @@
-# Prep Mode, Round Mode (lockdown) and typing log: viability and plan
+# Prep docs, Prep Mode, Round Mode (lockdown) and typing log: viability and plan
 
 Status (2026-10-26): assessed, not built. Requested by the user's colleagues for NPDA rounds, where copy-paste is banned during prep.
 
@@ -81,6 +81,8 @@ When lockdown starts, every window leaves its co-edit sessions (`src/editor/coll
 
 ## Decisions (user, 2026-10-26)
 
+Where this section and "Final design" below differ, Final design wins. The file-opening block applies to Round Mode only, and the copy/paste block to prep docs only.
+
 1. **No opening files during lockdown.** New blank windows and blank documents are allowed; opening or reading any existing file is not. Block every path:
    - Open dialog, recents and the start screen.
    - File search and browse panes, and card search results that read files.
@@ -92,31 +94,47 @@ When lockdown starts, every window leaves its co-edit sessions (`src/editor/coll
 3. **Border: yellow.**
 4. **Keyboard macros and autocorrect expansions: logged, not blocked.** Exempt them from the large-insert block with an allow meta and record their text.
 
-## Two modes (user addendum, 2026-10-26)
+## Final design (user, 2026-10-26): prep docs, Prep Mode, Round Mode
 
-One session moves through two modes, logged as one chain with a timestamp at every change.
+**Parli workflow it fits:**
+- **Doc 1:** the strategy doc the coaches and team write in. Anything goes, including paste.
+- **Docs 2–X:** the debaters' **prep docs**, where everything must be retyped by hand for the round.
 
-| | Prep Mode (prep starts) | Round Mode (round starts, the true lockdown) |
-|---|---|---|
-| Border | Yellow | Red, so the two can be told apart (to confirm) |
-| Copy, paste, drag, large inserts | Blocked (macros and autocorrect logged) | Blocked |
-| Co-editing | Allowed | Every session ended; no new ones |
-| Typing log | On | On |
-| Opening files | To confirm (proposal: allowed but logged) | Blocked; blank windows and new docs allowed |
-| On entering | — | Closes every document **not created during Prep Mode** (save prompt first) |
+So protection is **per document**, not per window.
 
-- **Track what Prep Mode created.** Prep Mode tags each document created new during prep (blank doc, new flow, new window) with an id in main's session state. That tag survives Save and Save As. On Round Mode, any open document without the tag is closed, including files opened during prep.
-- **Ending.** Ending either mode records the time. Round Mode can also be started directly, in which case only blank documents stay open.
-- **Co-editing during Prep Mode:** a partner who is not in Prep Mode could paste, and their text would arrive as a remote change. Proposal:
-  - The co-edit session shares each member's mode.
-  - Large remote insertions are logged with the partner's name.
-  - The host can require every member to be in Prep Mode.
+**Prep Mode (yellow)**
+- Starting Prep Mode starts the session log.
+- The debater creates or marks **prep docs**.
+  - Proposal: only documents created new during Prep Mode can become prep docs, so a pre-written file cannot be marked. If marking an existing doc is ever allowed, log a full snapshot of its starting text.
+  - A prep doc cannot be unmarked until the session ends.
+- **Each prep doc** gets:
+  - A yellow outline on its window or three-pane pane.
+  - No paste, no drops, no drag-in, and no large inserts from any feature (send to speech doc, card search, transclusion, external insert…). Macros and autocorrect expansions are allowed and logged.
+  - Every typed character logged.
+  - Copying *out* of a prep doc is allowed.
+- **Other documents (Doc 1)** are unrestricted: open files, paste, anything. Their opening and closing is logged, not their content. The block applies wherever the change *lands*: dragging or sending from Doc 1 into a prep doc is refused.
+- **Co-editing a prep doc:**
+  - The session carries a "prep" flag. A partner can join only when their app is in Prep Mode, which makes their copy a prep doc with the same blocks and log.
+  - Large insertions arriving from a partner are also logged with the partner's name, as a backstop.
+  - Co-editing non-prep docs is unchanged.
 
-## Still open
+**Round Mode (red, the true lockdown)**
+- Red border on every CardMirror window.
+- Every co-edit session ends, and no new ones can start.
+- Every document that is not a prep doc closes (save prompt first), and existing files cannot be opened, so Doc 1 cannot come back.
+- Prep docs stay open and keep their blocks and logging.
+- New blank windows and documents are allowed.
 
-- Round Mode border color (red proposed).
-- Whether files may be opened during Prep Mode.
-- Whether co-edit partners must also be in Prep Mode.
+**Timestamps**
+- The log records Prep Mode start, each prep doc created or marked, Round Mode start, and the end.
+- Debaters can end either mode themselves after a confirmation. The end screen shows the start and end times and the seal code.
+
+**Implementation notes**
+- Main keeps the session state, including the set of prep-doc ids (`docId`, which survives Save and Save As).
+- Renderers apply the paste/drop/large-insert blocks only to editors and panes whose doc is in that set.
+  - The capture listeners check whether the event target is inside a prep-doc editor or pane.
+  - The `filterTransaction` plugin is active only on prep-doc editor states.
+- Main's clipboard refusals are no longer global. The clipboard-read IPC refuses only when the requesting window's focused doc is a prep doc; the renderer must send the doc id, or the check moves into the renderer.
 
 ## Suggested build order
 
