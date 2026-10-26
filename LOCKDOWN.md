@@ -111,7 +111,7 @@ So protection is **per document**, not per window.
   - A yellow outline on its window or three-pane pane.
   - No paste, no drops, no drag-in, and no large inserts from any feature (send to speech doc, card search, transclusion, external insert…). Macros and autocorrect expansions are allowed and logged.
   - Every typed character logged.
-  - Copying *out* of a prep doc is allowed.
+  - No copying, cutting or dragging *out* of a prep doc either (user, 2026-10-26), so prep text cannot reach a shared Google Doc or another app. That covers copy/cut events, the main-process clipboard-write IPC, and in-app copy features (copy matching cite, create reference, read-mode copy) when the source is a prep doc. Blocked attempts are logged.
 - **Other documents (Doc 1)** are unrestricted: open files, paste, anything. Their opening and closing is logged, not their content. The block applies wherever the change *lands*: dragging or sending from Doc 1 into a prep doc is refused.
 - **Co-editing a prep doc:**
   - The session carries a "prep" flag. A partner can join only when their app is in Prep Mode, which makes their copy a prep doc with the same blocks and log.
@@ -131,7 +131,7 @@ So protection is **per document**, not per window.
 
 **Implementation notes**
 - Main keeps the session state, including the set of prep-doc ids (`docId`, which survives Save and Save As).
-- Renderers apply the paste/drop/large-insert blocks only to editors and panes whose doc is in that set.
+- Renderers apply the copy/cut/paste/drag/drop/large-insert blocks only to editors and panes whose doc is in that set.
   - The capture listeners check whether the event target is inside a prep-doc editor or pane.
   - The `filterTransaction` plugin is active only on prep-doc editor states.
 - Main's clipboard refusals are no longer global. The clipboard-read IPC refuses only when the requesting window's focused doc is a prep doc; the renderer must send the doc id, or the check moves into the renderer.
