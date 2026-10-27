@@ -196,7 +196,7 @@ Follow the "Suggested build order" in LOCKDOWN.md. Test in the desktop app with 
 
 Do not put a process pattern in the same shell line as `pkill -f`.
 
-Feature pushes produce Windows and Mac preview artifacts. Windows version tags run release.yml, verify the installer and update metadata, then publish a Green GitHub release. Windows v1.16.1 enables in-app updates; old previews need one manual install. Mac updates remain manual.
+Feature pushes produce Windows and Mac preview artifacts. Version tags run release.yml, verify Windows x64 and Mac ARM64 installers and update metadata, then publish both in one Green release. Windows v1.16.1 and Mac ARM64 v1.16.4 enable in-app updates; older previews need one manual install.
 
 Later or optional:
 - Chat cutting follow-ups (CHAT_CUT.md).
@@ -220,7 +220,7 @@ Do not build a search UI, hosted database, fuzzy matching or automatic profile s
 ## Unresolved operational issues
 
 - Chrome reported the Windows preview as a dangerous download. The user later reported Green installed and working. That does NOT resolve the browser verdict. No malware-clearance result or false-positive determination has been established. Do not advise disabling protections or present passing tests/hash verification as proof of safety. Investigate the exact detected artifact and an appropriate scan/signing/distribution approach if this issue is resumed.
-- Windows v1.16.1 enables updates from Green releases only; Mac previews remain manual. Never install upstream CardMirror over Green. App profiles/settings/local Quick Cards are per machine; automatic profile synchronization is not implemented.
+- Windows v1.16.1 and Mac ARM64 v1.16.4 enable updates from Green releases only; older previews need one manual install. Never install upstream CardMirror over Green. App profiles/settings/local Quick Cards are per machine; automatic profile synchronization is not implemented.
 - If an older preview replaced upstream CardMirror, installing Green does not restore upstream automatically. Green now installs alongside it.
 - Local extraction/validation outputs from the previous machine are private workspace artifacts, not repository files.
 
