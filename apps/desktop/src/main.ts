@@ -3731,7 +3731,7 @@ function startAutoUpdate(): void {
   // check); install-on-quit is Windows/Linux-only.
   const isMac = process.platform === 'darwin';
   autoUpdater.autoDownload = !isMac;
-  autoUpdater.autoInstallOnAppQuit = !isMac;
+  autoUpdater.autoInstallOnAppQuit = false; // Install only after the user clicks Restart.
   autoUpdater.on('error', (err) => {
     console.warn('Auto-update error:', err);
   });
@@ -3762,10 +3762,9 @@ function startAutoUpdate(): void {
       }
       return;
     }
-    console.log(`Auto-update: ${info.version} downloaded; chip shown, installs on quit.`);
+    console.log(`Auto-update: ${info.version} downloaded; awaiting explicit restart.`);
     // No dialog (install-on-confirm): the status-bar chip is the only
-    // surface. autoInstallOnAppQuit stays on, so quitting normally
-    // still applies the update for users who never click the chip.
+    // surface. Ordinary quitting does not install a downloaded update.
     setUpdateChip({ state: 'ready', version: info.version });
   });
   // The at-launch check fires from the renderer's boot path (gated

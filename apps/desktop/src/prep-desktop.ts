@@ -4,6 +4,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { PrepSession, verifyPrepLog, type PrepSessionState } from './prep-session.js';
+import { createPrepLogReport, exportPrepLogReport } from './prep-log-report.js';
 
 export interface PrepStatus { session: PrepSessionState | null; transitioning: boolean; error: string | null }
 let owner: PrepSession | null = null;
@@ -222,9 +223,16 @@ export function registerPrepDesktop(roundCallback: () => void): void {
     });
   });
   ipcMain.handle('prep:read-log', (e, id) => { assertReady(e); return readLog(id); });
-  ipcMain.handle('prep:export-log', async (e, id) => {
-    const text = readLog(id); // contains typed content; explicit user export only
-    const result = await dialog.showSaveDialog(assertReady(e).win, { defaultPath: `CardMirror-session-${id}.jsonl`, filters: [{ name: 'Typing log', extensions: ['jsonl'] }] });
+  ipcMain.handle('prep:export-log', async (e, id, format = 'raw', timeZone?: string) => {
+    if (format !== 'raw' && format !== 'readable') throw new Error('Unknown log export format.');
+    let text = readLog(id); // contains typed content; explicit user export only
+    if (format === 'readable') {
+      let valid = false, sealCode: string | undefined;
+      try { sealCode = verifyPrepLog(text).sealCode; valid = true; } catch {}
+      text = exportPrepLogReport(createPrepLogReport(text, { timeZone, chainValid: valid, sealCode }));
+    }
+    const extension = format === 'readable' ? 'txt' : 'jsonl';
+    const result = await dialog.showSaveDialog(assertReady(e).win, { defaultPath: `CardMirror-session-${id}.${extension}`, filters: [{ name: format === 'readable' ? 'Readable report' : 'Raw audit log', extensions: [extension] }] });
     if (result.canceled || !result.filePath) return false;
     writeFileSync(result.filePath, text, { mode: 0o600 }); return true;
   });

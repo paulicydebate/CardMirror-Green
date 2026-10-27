@@ -1,4 +1,5 @@
 import { configurePrepGuards } from './prep-document-guard.js';
+import { createPrepLogReport, formatPrepTimeRange, prepReportSummary, type PrepLogReport } from '../../apps/desktop/src/prep-log-report.js';
 import { prepDoc, prepRound, prepRuntime, prepTransferBlocked, type PrepStatus } from './prep-runtime.js';
 import { confirmDialog, alertDialog } from './text-prompt.js';
 import { showToast } from './toast.js';
@@ -26,7 +27,7 @@ interface PrepApi {
   events(events: Audit[]): Promise<void>;
   logs(): Promise<LogSummary[]>;
   readLog(id: string): Promise<string>;
-  exportLog(id: string): Promise<boolean>;
+  exportLog(id: string, format?: 'raw' | 'readable', timeZone?: string): Promise<boolean>;
   prepared(requestId: string, ok: boolean): void;
   onState(fn: (state: PrepStatus) => void): () => void;
   onPrepare(fn: (req: { requestId: string; action: 'round' | 'end' }) => void): () => void;
@@ -223,21 +224,40 @@ async function openLogs(): Promise<void> {
   const detail = document.createElement('pre');
   const statistics = document.createElement('p');
   const filter = document.createElement('input'); filter.placeholder = 'Filter displayed events';
-  let full = '';
+  const timeline = document.createElement('div');
+  const technical = document.createElement('details');
+  const title = document.createElement('summary'); title.textContent = 'Technical audit (raw JSONL)'; technical.append(title, detail);
+  let report: PrepLogReport | undefined;
+  const redraw = (): void => {
+    timeline.replaceChildren(); if (!report) return;
+    const table = document.createElement('table'); table.className = 'pmd-prep-timeline';
+    const header = table.createTHead().insertRow();
+    for (const label of ['Time', 'Document', 'Action', 'Text / result']) { const th = document.createElement('th'); th.textContent = label; header.append(th); }
+    const body = table.createTBody();
+    for (const event of report.rows) {
+      const cells = [formatPrepTimeRange(event, report.timeZone), event.document, event.action + (event.flagged ? ' [flagged]' : ''), event.text];
+      if (!cells.join(' ').toLowerCase().includes(filter.value.toLowerCase())) continue;
+      const tr = body.insertRow(); for (const value of cells) tr.insertCell().textContent = value;
+    }
+    timeline.append(table);
+  };
   for (const log of logs) {
     const row = document.createElement('div'); row.className = 'pmd-prep-log-row';
     const text = document.createElement('span'); text.textContent = log.valid ? `${log.start ? new Date(log.start).toLocaleString() : log.id} · ${log.end ? 'Ended ' + new Date(log.end).toLocaleTimeString() : 'Active / unsealed'} · ${log.events} events · ${log.blocked} blocked · ${log.end ? log.sealCode : 'No final seal'}` : `${log.id} · Chain verification FAILED`;
     row.append(text);
     const inspect = document.createElement('button'); inspect.textContent = 'View'; inspect.onclick = () => void api!.readLog(log.id).then(value => {
-      full = value; filter.value = ''; detail.textContent = value;
-      statistics.textContent = `Duration: ${log.start ? Math.round(((log.end ? Date.parse(log.end) : Date.now()) - Date.parse(log.start)) / 1000) : '?'} seconds. Round started: ${log.round ? new Date(log.round).toLocaleString() : 'Not started'}. Typed: ${log.characters ?? 0} characters. Flagged inserts/restores: ${log.flagged ?? 0}. Time outside app (focus events): ${Math.round((log.outsideMs ?? 0) / 1000)} seconds. Typing by minute (5 chars/word): ${log.typingByMinute?.map(m => `${m.minute + 1}: ${m.wpm} wpm`).join('; ') || 'No typing'}.`;
+      filter.value = ''; detail.textContent = value;
+      report = createPrepLogReport(value, { chainValid: log.valid, sealCode: log.sealCode });
+      statistics.textContent = prepReportSummary(report) + '. Time zone: ' + report.timeZone + '. Audit chain: ' + (log.valid ? 'verified' : 'FAILED verification') + '. Nearby typing is grouped. Blocked attempts did not complete a transfer.';
+      redraw();
     }).catch(e => showToast(String(e)));
-    const download = document.createElement('button'); download.textContent = 'Export'; download.onclick = () => void api!.exportLog(log.id).catch(e => showToast(String(e)));
-    row.append(inspect, download); panel.append(row);
+    const download = document.createElement('button'); download.textContent = 'Export readable'; download.onclick = () => void api!.exportLog(log.id, 'readable', Intl.DateTimeFormat().resolvedOptions().timeZone).catch(e => showToast(String(e)));
+    const raw = document.createElement('button'); raw.textContent = 'Export raw JSONL'; raw.onclick = () => void api!.exportLog(log.id, 'raw').catch(e => showToast(String(e)));
+    row.append(inspect, download, raw); panel.append(row);
   }
   if (!logs.length) panel.append('No session logs yet.');
-  filter.oninput = () => { detail.textContent = full.split('\n').filter(line => line.toLowerCase().includes(filter.value.toLowerCase())).join('\n'); };
-  panel.append(statistics, filter, detail); overlay.append(panel); document.body.append(overlay); close.focus();
+  filter.oninput = redraw;
+  panel.append(statistics, filter, timeline, technical); overlay.append(panel); document.body.append(overlay); close.focus();
 }
 
 export async function initPrepController(hostAdapter: PrepAdapter): Promise<void> {

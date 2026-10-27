@@ -196,7 +196,7 @@ Follow the "Suggested build order" in LOCKDOWN.md. Test in the desktop app with 
 
 Do not put a process pattern in the same shell line as `pkill -f`.
 
-After each pushed milestone, the "Desktop builds (Windows and macOS)" workflow produces installers. Give the user the artifact links: they install manually. In-app updates are a later discussion; GitHub Releases plus an updater is the likely route, and Mac auto-update needs Apple signing.
+Feature pushes produce Windows and Mac preview artifacts. Windows version tags run release.yml, verify the installer and update metadata, then publish a Green GitHub release. Windows v1.16.1 enables in-app updates; old previews need one manual install. Mac updates remain manual.
 
 Later or optional:
 - Chat cutting follow-ups (CHAT_CUT.md).
@@ -220,7 +220,7 @@ Do not build a search UI, hosted database, fuzzy matching or automatic profile s
 ## Unresolved operational issues
 
 - Chrome reported the Windows preview as a dangerous download. The user later reported Green installed and working. That does NOT resolve the browser verdict. No malware-clearance result or false-positive determination has been established. Do not advise disabling protections or present passing tests/hash verification as proof of safety. Investigate the exact detected artifact and an appropriate scan/signing/distribution approach if this issue is resumed.
-- Preview updates are manual and must never install upstream CardMirror over Green. App profiles/settings/local Quick Cards are per machine; automatic profile synchronization is not implemented.
+- Windows v1.16.1 enables updates from Green releases only; Mac previews remain manual. Never install upstream CardMirror over Green. App profiles/settings/local Quick Cards are per machine; automatic profile synchronization is not implemented.
 - If an older preview replaced upstream CardMirror, installing Green does not restore upstream automatically. Green now installs alongside it.
 - Local extraction/validation outputs from the previous machine are private workspace artifacts, not repository files.
 

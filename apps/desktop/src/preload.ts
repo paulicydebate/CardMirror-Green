@@ -97,7 +97,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     events: (events: unknown[]) => ipcRenderer.invoke('prep:events', events),
     logs: () => ipcRenderer.invoke('prep:logs'),
     readLog: (id: string) => ipcRenderer.invoke('prep:read-log', id),
-    exportLog: (id: string) => ipcRenderer.invoke('prep:export-log', id),
+    exportLog: (id: string, format: 'raw' | 'readable' = 'raw', timeZone?: string) => ipcRenderer.invoke('prep:export-log', id, format, timeZone),
     prepared: (requestId: string, ok: boolean) => ipcRenderer.send('prep:prepared', { requestId, ok }),
     onState: (fn: (state: unknown) => void) => { const listener = (_e: unknown, state: unknown) => fn(state); ipcRenderer.on('prep:state', listener); return () => ipcRenderer.removeListener('prep:state', listener); },
     onPrepare: (fn: (request: { requestId: string; action: 'round' | 'end' }) => void) => { const listener = (_e: unknown, req: { requestId: string; action: 'round' | 'end' }) => fn(req); ipcRenderer.on('prep:prepare', listener); return () => ipcRenderer.removeListener('prep:prepare', listener); },

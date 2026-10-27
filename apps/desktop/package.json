@@ -1,7 +1,7 @@
 {
   "name": "@paulicydebate/cardmirror-green",
-  "version": "1.16.0",
-  "description": "CardMirror Green \u2014 personal research fork",
+  "version": "1.16.1",
+  "description": "CardMirror Green — personal research fork",
   "author": "Anthony Trufanov",
   "homepage": "https://github.com/ant981228/cardmirror",
   "private": true,
@@ -111,7 +111,8 @@
           ]
         }
       ],
-      "icon": "build/green.ico"
+      "icon": "build/green.ico",
+      "artifactName": "CardMirror-Green-Setup-${version}-${arch}.${ext}"
     },
     "linux": {
       "category": "Office",

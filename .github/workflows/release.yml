@@ -1,303 +1,68 @@
-name: Release
-
-# Triggered when a git tag matching `v*.*.*` (e.g. `v0.1.0-alpha.1`)
-# is pushed. Two stages:
-#
-#   1. `prepare-release` (one runner) creates an empty draft on
-#      GitHub Releases for the tag. Idempotent — if a draft already
-#      exists (e.g., a re-triggered run), it's a no-op.
-#   2. `build` (3-OS matrix) builds desktop installers and uploads
-#      them to the draft via electron-builder's GitHub provider.
-#
-# The two-stage shape avoids the matrix-race we hit on alpha.2:
-# without a pre-existing draft, three matrix jobs concurrently
-# checked GitHub Releases, all saw "no release for this tag," and
-# each created its own draft — assets ended up split across two
-# drafts that needed manual reconciliation. The dependent
-# `prepare-release` step makes sure every matrix job sees the same
-# draft.
-#
-# Builds are unsigned for the beta. README documents the
-# right-click → Open / More info → Run anyway workaround for the
-# first-launch warnings on macOS Gatekeeper and Windows SmartScreen.
-
+name: Release Windows
 on:
   push:
-    tags:
-      - 'v*.*.*'
-
+    tags: ['v*.*.*']
+permissions:
+  contents: read
+concurrency:
+  group: green-windows-release
+  cancel-in-progress: false
 jobs:
-  prepare-release:
-    name: Create draft release for tag
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract release notes from CHANGELOG.md
-        # Two-step extraction:
-        #   1. `awk` pulls the section between the matching version
-        #      header and the next `## ` header. Falls back to an
-        #      empty file if no matching section exists; the next
-        #      step then creates the draft with a placeholder body.
-        #      Strip a leading `v` from the tag because CHANGELOG
-        #      uses bare versions (`## 0.1.0-alpha.3 — DATE`) while
-        #      tags carry the `v` prefix.
-        #   2. `unwrap` collapses CHANGELOG's hand-wrapped lines
-        #      within each bullet into a single line. GitHub
-        #      renders single newlines in release notes as `<br>`,
-        #      which makes our ~62-col wrapping show up as visible
-        #      line breaks mid-sentence. Joining continuation lines
-        #      (indented more than the bullet's `-` marker, with
-        #      non-blank content) into the bullet itself preserves
-        #      the visual paragraph while keeping nested bullets,
-        #      headings, and blank lines as-is.
-        id: notes
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          if [ -f CHANGELOG.md ]; then
-            awk -v ver="$VERSION" '
-              $0 ~ "^## " ver { flag=1; next }
-              /^## / && flag { flag=0 }
-              flag { print }
-            ' CHANGELOG.md | awk '
-              function flush() {
-                if (buf != "") {
-                  for (i = 0; i < indent; i++) printf " "
-                  printf "- %s\n", buf
-                  buf = ""
-                  indent = -1
-                }
-              }
-              BEGIN { buf = ""; indent = -1 }
-              /^( *)- / {
-                flush()
-                match($0, /^( *)- /)
-                indent = RLENGTH - 2
-                buf = substr($0, RLENGTH + 1)
-                next
-              }
-              indent >= 0 && /^[ \t]+[^ \t]/ {
-                # Continuation: strip leading whitespace, join.
-                sub(/^[ \t]+/, "")
-                buf = buf " " $0
-                next
-              }
-              { flush(); print }
-              END { flush() }
-            ' > release-notes.md
-          else
-            : > release-notes.md
-          fi
-          if [ ! -s release-notes.md ]; then
-            echo "Release notes not found in CHANGELOG for $VERSION — using fallback body." >&2
-            echo "_(Release notes not yet pasted from CHANGELOG.md — maintainer should edit.)_" > release-notes.md
-          fi
-          echo "Wrote $(wc -l < release-notes.md) lines of notes."
-
-      - name: Ensure draft release exists
-        # `gh release view` exits non-zero if no release exists for
-        # the tag, so the `||` falls through to creating one. If
-        # the release already exists (e.g., a re-run of the
-        # workflow), update its notes in place from CHANGELOG so a
-        # re-trigger after a CHANGELOG fix actually refreshes the
-        # draft.
-        #
-        # Pre-release detection: SemVer treats any tag with a `-`
-        # after the version (e.g., `v0.1.0-alpha.3`, `v1.2.0-rc.1`,
-        # `v0.1.0-beta`) as a pre-release. Pass `--prerelease` so
-        # GitHub flags it accordingly in the Releases UI and
-        # auto-update consumers know not to treat it as stable.
-        # Stable tags (`v1.0.0`) skip the flag.
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          # The tag is `vX.Y.Z[-prerelease]`; check for `-` after `v`.
-          PRERELEASE_FLAG=""
-          if [[ "${TAG#v}" == *-* ]]; then
-            PRERELEASE_FLAG="--prerelease"
-            echo "Detected pre-release tag $TAG — applying --prerelease."
-          fi
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release edit "$TAG" --notes-file release-notes.md $PRERELEASE_FLAG
-            echo "Updated existing release $TAG with refreshed notes."
-          else
-            gh release create "$TAG" --draft --title "$TAG" --notes-file release-notes.md $PRERELEASE_FLAG
-            echo "Created draft release $TAG."
-          fi
-
-  build:
-    name: Build & publish (${{ matrix.os }})
-    needs: prepare-release
-    strategy:
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-      fail-fast: false
-    runs-on: ${{ matrix.os }}
+  windows:
+    runs-on: windows-latest
     timeout-minutes: 45
     permissions:
       contents: write
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-
-      - name: Install root dependencies
-        run: npm ci
-
-      - name: Install desktop dependencies
-        # apps/desktop is intentionally NOT in the workspaces array
-        # (electron-builder's internal install step prunes hoisted
-        # dev-deps mid-build under npm workspaces — separate install
-        # is the workaround). Each platform's runner does its own
-        # install here.
-        run: npm --prefix apps/desktop ci
-
-      - name: Bundle both macOS koffi arch binaries
-        # macos-latest runners are Apple Silicon, so the `ci` above only
-        # installs koffi's arm64 native package — the @koromix/koffi-darwin-*
-        # binaries are optional deps gated on `cpu`, so the x64 one is
-        # skipped. electron-builder then builds BOTH the x64 and arm64 dmgs
-        # from that single install, so the x64 dmg would ship with no koffi
-        # binary and Intel Macs (or Apple Silicon under Rosetta) hit
-        # "Cannot find the native Koffi module". Force-install both arch
-        # packages at koffi's own version so each dmg carries the binary it
-        # needs. --force bypasses the cpu guard; --no-save keeps the lockfile
-        # untouched (the package still lands in the hidden lockfile, so
-        # electron-builder's dependency collector bundles it).
-        if: matrix.os == 'macos-latest'
+          cache: npm
+      - name: Validate release version
+        shell: pwsh
         run: |
-          KOFFI_VER=$(node -p "require('./apps/desktop/node_modules/koffi/package.json').version")
-          npm --prefix apps/desktop install --no-save --force \
-            "@koromix/koffi-darwin-x64@$KOFFI_VER" \
-            "@koromix/koffi-darwin-arm64@$KOFFI_VER"
-
-      - name: Install Linux build tools
-        # fpm (the Ruby tool electron-builder shells out to for
-        # .pacman / .deb) needs `bsdtar` to assemble the package's
-        # .MTREE file. Ubuntu runners don't ship libarchive-tools
-        # by default — install it here.
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y libarchive-tools
-
-      - name: Run tests
-        # Same as the CI workflow — runs against ubuntu but we let
-        # the other platforms skip to save build minutes; the
-        # build itself catches any platform-specific issues.
-        if: matrix.os == 'ubuntu-latest'
+          $version = node -p "require('./apps/desktop/package.json').version"
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and package version must match' }
+      - run: npm ci
+      - run: npm --prefix apps/desktop ci
+      - run: npm run typecheck
+      - run: npm test
         env:
-          # Heavy transclusion/collab fuzz suites peak past the default ~4 GB
-          # V8 heap on a CI runner — give the vitest fork workers more room.
           NODE_OPTIONS: --max-old-space-size=6144
-        run: npm test
-
-      - name: Import the stable mac signing identity
-        # The self-signed "CardMirror Local Signing" cert (see
-        # apps/desktop/scripts/setup-signing.sh) keeps the app's code
-        # identity — and therefore TCC grants like the microphone —
-        # stable across auto-updates. The afterSign hook
-        # (scripts/sign-mac.js) re-signs with it when the identity is
-        # present and silently no-ops otherwise, so this step is
-        # guarded the same way: without the MAC_SIGNING_CERT_P12
-        # secret the build stays ad-hoc exactly as before.
-        if: matrix.os == 'macos-latest'
-        env:
-          MAC_SIGNING_CERT_P12: ${{ secrets.MAC_SIGNING_CERT_P12 }}
-          MAC_SIGNING_CERT_PASSWORD: ${{ secrets.MAC_SIGNING_CERT_PASSWORD }}
-        run: |
-          if [ -z "$MAC_SIGNING_CERT_P12" ]; then
-            echo "MAC_SIGNING_CERT_P12 not set — mac build will be ad-hoc signed."
-            exit 0
-          fi
-          KC="$RUNNER_TEMP/cardmirror-signing.keychain-db"
-          security create-keychain -p ci "$KC"
-          security set-keychain-settings -lut 21600 "$KC"
-          security unlock-keychain -p ci "$KC"
-          printf '%s' "$MAC_SIGNING_CERT_P12" | base64 -d > "$RUNNER_TEMP/identity.p12"
-          security import "$RUNNER_TEMP/identity.p12" -k "$KC" -f pkcs12 \
-            -P "$MAC_SIGNING_CERT_PASSWORD" -A -T /usr/bin/codesign
-          rm "$RUNNER_TEMP/identity.p12"
-          # Put the keychain on the search list so `security
-          # find-identity` (the hook's probe) and codesign can see it,
-          # and allow codesign to use the key non-interactively.
-          security list-keychains -d user -s "$KC" login.keychain
-          security set-key-partition-list -S apple-tool:,apple: -s -k ci "$KC" >/dev/null
-          security find-identity -p codesigning "$KC" | grep "CardMirror Local Signing"
-
-      - name: Bake relay token into the build
-        # Cross-machine card sharing: a packaged app can't read shell env, so
-        # the relay bearer token has to be compiled in. This writes it from the
-        # PAIRING_TOKEN secret into the (otherwise empty) pairing-build.ts in
-        # this ephemeral checkout only — the token is never committed. Card
-        # payloads are end-to-end encrypted, so this token is only light
-        # gating. No-op (empty token) if the secret isn't set.
-        env:
-          PAIRING_TOKEN: ${{ secrets.PAIRING_TOKEN }}
-        run: node apps/desktop/scripts/inject-relay-token.cjs
-
-      - name: Build and publish desktop installer
-        env:
-          # electron-builder reads GH_TOKEN (not GITHUB_TOKEN) for
-          # GitHub Releases publishing. The `prepare-release` job
-          # above already created the draft for this tag, so
-          # electron-builder's "always" publish mode finds and
-          # uploads to it instead of racing to create a new draft.
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm --prefix apps/desktop run release
-
-      - name: Build and upload CardMirror Lite installer
-        # The no-AI / no-internet build variant (src/editor/lite.ts),
-        # built from the same checkout AFTER the main publish. The
-        # deliberate differences:
-        #   - the relay token is BLANKED first — a no-internet build
-        #     must not carry the credential string in its binary;
-        #   - electron-builder runs --publish never: its GitHub
-        #     provider would upload Lite's latest*.yml OVER the main
-        #     app's auto-update manifests. Installers are uploaded by
-        #     name instead (no blockmaps/ymls — Lite has no updater);
-        #   - its own appId/productName, so Lite installs side by
-        #     side with its own settings profile instead of replacing
-        #     a standard install.
-        shell: bash
+      - run: npm --prefix apps/desktop run build:native
+      - run: npm --prefix apps/desktop run build:renderer
+      - run: npm --prefix apps/desktop run build:main
+      - run: npm --prefix apps/desktop run build:service
+      - name: Package Windows with update metadata
+        working-directory: apps/desktop
+        run: npx --no-install electron-builder --win nsis --x64 --publish never
+      - run: node apps/desktop/scripts/verify-preview.cjs x64
+      - run: node apps/desktop/scripts/verify-windows-update.cjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cardmirror-green-windows-release
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest.yml
+          if-no-files-found: error
+      - name: Publish verified Windows release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          node apps/desktop/scripts/inject-lite-build.cjs 1
-          PAIRING_TOKEN= node apps/desktop/scripts/inject-relay-token.cjs
-          VITE_LITE=1 npm --prefix apps/desktop run build:renderer
-          npm --prefix apps/desktop run build:main
-          npm --prefix apps/desktop run build:service
-          # Per-platform artifact names: each mirrors the main app's
-          # pattern with "Lite" inserted, so nothing else (Setup,
-          # -universal, the lowercase linux stem) gets displaced.
-          # Per-target names must be set per-target — the build
-          # config's linux entry outranks a global -c.artifactName,
-          # which shipped the first Lite run with main-app names on
-          # Linux and an empty upload glob.
-          (cd apps/desktop && npx electron-builder --publish never \
-            -c.appId=com.cardmirror.lite \
-            -c.productName="CardMirror Lite" \
-            -c.mac.artifactName='CardMirror-Lite-${version}-${arch}.${ext}' \
-            -c.win.artifactName='CardMirror-Lite-Setup-${version}.${ext}' \
-            -c.linux.artifactName='cardmirror-lite-${version}.${ext}' \
-            -c.executableName='CardMirror Lite' \
-            -c.linux.executableName=cardmirror-lite)
-          shopt -s nullglob
-          files=(apps/desktop/release/CardMirror-Lite-*.dmg \
-                 apps/desktop/release/CardMirror-Lite-*.exe \
-                 apps/desktop/release/cardmirror-lite-*.AppImage \
-                 apps/desktop/release/cardmirror-lite-*.pacman)
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No Lite artifacts found — naming regression?" >&2
-            exit 1
-          fi
-          echo "uploading: ${files[@]}"
-          gh release upload "${GITHUB_REF_NAME}" "${files[@]}" --clobber
+          $tag = $env:GITHUB_REF_NAME
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --draft --title "CardMirror Green $tag (Windows)" --notes-file WINDOWS_RELEASE_NOTES.md --verify-tag
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create release draft' }
+          } else {
+            $draft = gh release view $tag --json isDraft --jq .isDraft
+            if ($draft -ne 'true') { throw 'Refusing to replace a published release' }
+          }
+          $assets = @(Get-ChildItem apps/desktop/release -File | Where-Object { $_.Name -match '\.(exe|blockmap)$' -or $_.Name -eq 'latest.yml' } | ForEach-Object FullName)
+          gh release upload $tag @assets --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not upload release assets' }
+          gh release edit $tag --draft=false --latest --notes-file WINDOWS_RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish release' }

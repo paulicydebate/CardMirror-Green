@@ -5,9 +5,7 @@
  * module renders the chip and forwards clicks. Two states:
  *
  *   'ready'     — the update is downloaded and staged (Windows/Linux).
- *                 Click = restart now and install. Users who never
- *                 click still get it on next quit (install-on-quit
- *                 stays on as the fallback).
+ *                 Click = restart now and install. Ordinary quitting does not install.
  *   'available' — detected but not stageable (macOS until the swap
  *                 updater lands). Click = open the release page.
  *

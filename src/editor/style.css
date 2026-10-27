@@ -17302,3 +17302,7 @@ body.pmd-round-mode::after, body.pmd-prep-paused::after { border-color: var(--pm
 .pmd-prep-log-row { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid #bbb; padding: 10px 0; }
 .pmd-prep-log-row span { flex: 1; }
 .pmd-prep-log-panel input { width: 100%; margin-top: 16px; padding: 8px; }
+
+.pmd-prep-timeline { width: 100%; border-collapse: collapse; margin-top: 12px; }
+.pmd-prep-timeline th, .pmd-prep-timeline td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid #8885; }
+.pmd-prep-timeline td:last-child { white-space: pre-wrap; overflow-wrap: anywhere; }

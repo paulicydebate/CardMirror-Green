@@ -1,0 +1,24 @@
+// Verify update feed identity and installer integrity without launching the app.
+const fs = require('node:fs');
+const path = require('node:path');
+const { createHash } = require('node:crypto');
+const assert = require('node:assert/strict');
+const yaml = require('js-yaml');
+const root = path.join(__dirname, '..');
+const config = require('../package.json');
+const release = path.join(root, 'release');
+const feed = yaml.load(fs.readFileSync(path.join(release, 'latest.yml'), 'utf8'));
+assert.equal(feed.version, config.version);
+assert.ok(Array.isArray(feed.files) && feed.files.length === 1);
+const file = feed.files[0];
+assert.equal(file.url, `CardMirror-Green-Setup-${config.version}-x64.exe`);
+const bytes = fs.readFileSync(path.join(release, file.url));
+assert.equal(file.sha512, createHash('sha512').update(bytes).digest('base64'));
+assert.equal(file.size, bytes.length);
+assert.ok(fs.statSync(path.join(release, file.url + '.blockmap')).size > 0);
+const provider = yaml.load(fs.readFileSync(path.join(release, 'win-unpacked', 'resources', 'app-update.yml'), 'utf8'));
+assert.equal(provider.provider, 'github');
+assert.equal(provider.owner, 'paulicydebate');
+assert.equal(provider.repo, 'CardMirror-Green');
+assert.equal(config.build.appId, 'com.paulicydebate.cardmirror.green');
+console.log('Verified Green update provider, version, installer SHA-512 and blockmap.');

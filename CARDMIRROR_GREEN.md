@@ -5,7 +5,7 @@ Active branch: `feature/full-card-api`. PR #1 remains draft; do not merge or mod
 
 ## Two computers
 
-Install the Windows x64 preview on the desktop and the macOS ARM64 preview on an Apple Silicon Mac. Both artifacts come from the same desktop-previews workflow run and commit. Preview artifacts currently expire after 90 days. Install the Green build alongside upstream CardMirror; Green uses a distinct installer ID, executable, settings folder and bridge identity. Preview updates are manual and never install upstream builds.
+Install the Windows x64 preview on the desktop and the macOS ARM64 preview on an Apple Silicon Mac. Both artifacts come from the same desktop-previews workflow run and commit. Preview artifacts currently expire after 90 days. Install the Green build alongside upstream CardMirror; Green uses a distinct installer ID, executable, settings folder and bridge identity. Windows releases use the Green-only in-app updater from v1.16.1; older previews need one manual install. Mac previews remain manual.
 
 If an earlier preview replaced upstream CardMirror, installing Green does not restore upstream automatically. Reinstall upstream separately if desired. Green starts with its own empty profile; existing files on disk can be opened normally. Do not copy a running app profile between machines.
 
@@ -134,3 +134,11 @@ Remaining validation: macOS user smoke testing and, if desired, two different ma
 ## Continue with another LLM
 
 Start with [HANDOFF.md](HANDOFF.md). It records the verified implementation commit, CI evidence, setup commands, architecture, contract invariants, private-data limitations, and the next OpenCaselist-adapter task. [ROADMAP.md](ROADMAP.md) separates completed work, planned work and optional future ideas. The next LLM does not need the previous chat or access to the original desktop.
+
+### Readable Prep logs (2026-10-26)
+
+The log viewer now defaults to Time / Document / Action / Text, groups nearby accepted typing, and distinguishes blocked clipboard attempts from accepted paste events. Raw beforeinput events are paired with committed changes to avoid duplicate typing. Unmatched input remains explicitly unconfirmed. Export readable produces a timestamped text report; Export raw JSONL preserves the original audit file. Raw records remain available in a collapsed technical section. No personal log content is committed. Headless presenter/native tests and builds validate the change; no visible desktop test was run for this update.
+
+### Windows release updates (1.16.1)
+
+Windows now enables the existing Green GitHub updater. Downloads stage in the background; only an explicit restart/update click installs them (autoInstallOnAppQuit is false). Other platforms keep manual previews. The Windows-only release workflow runs tests, builds NSIS x64, verifies packaged resources and the Green feed/installer SHA-512, then publishes installer, blockmap and latest.yml together. Version tags must match both package versions; never replace a published release. User authorized publishing this release, but no local installation or desktop test is authorized.

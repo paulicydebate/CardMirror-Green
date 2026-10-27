@@ -109,6 +109,11 @@ describe('desktop Prep controller boundary', () => {
     const text = await invoke('prep:read-log', logs[0].id);
     await invoke('prep:export-log', logs[0].id);
     expect(readFileSync(join(mock.dir, 'export.jsonl'), 'utf8')).toBe(text);
+    await invoke('prep:export-log', logs[0].id, 'readable', 'America/Los_Angeles');
+    const readable = readFileSync(join(mock.dir, 'export.jsonl'), 'utf8');
+    expect(readable).toContain('CardMirror Green — readable session report');
+    expect(readable).toContain('Audit chain: Verified');
+    expect(await invoke('prep:read-log', logs[0].id)).toBe(text);
     await expect(invoke('prep:action', 'end')).rejects.toThrow('first');
     expect(() => invoke('prep:read-log', '../outside')).toThrow('identity');
   });
