@@ -24,6 +24,15 @@ const packagedIcon = asar.extractFile(path.join(resources, 'app.asar'), 'build/g
 const digest = data => createHash('sha256').update(data).digest('hex');
 assert.equal(digest(packagedIcon), digest(fs.readFileSync(path.join(__dirname, '..', 'build', 'green.png'))));
 if (mac) {
+  const plist = path.join(app, 'Contents', 'Info.plist');
+  const types = JSON.parse(execFileSync('plutil', ['-extract', 'CFBundleDocumentTypes', 'json', '-o', '-', plist], { encoding: 'utf8' }));
+  for (const ext of ['cmir', 'docx']) {
+    const association = types.find(type => type.CFBundleTypeExtensions?.includes(ext));
+    assert.ok(association, `Missing ${ext} document association`);
+    const icon = `green-${ext}.icns`;
+    assert.equal(association.CFBundleTypeIconFile, icon);
+    assert.equal(digest(fs.readFileSync(path.join(resources, icon))), digest(fs.readFileSync(path.join(__dirname, '..', 'build', icon))));
+  }
   const bundleId = execFileSync('/usr/libexec/PlistBuddy', ['-c', 'Print :CFBundleIdentifier', path.join(app, 'Contents', 'Info.plist')], { encoding: 'utf8' }).trim();
   assert.equal(bundleId, config.appId);
   const executable = path.join(app, 'Contents', 'MacOS', 'cardmirror-green');
@@ -32,6 +41,10 @@ if (mac) {
   assert.ok(fs.statSync(path.join(resources, 'native', 'ax-suppress.dylib')).size > 0);
   execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
 } else {
+  for (const ext of ['cmir', 'docx']) {
+    const icon = `green-${ext}.ico`;
+    assert.equal(digest(fs.readFileSync(path.join(resources, icon))), digest(fs.readFileSync(path.join(__dirname, '..', 'build', icon))));
+  }
   const exe = fs.readFileSync(path.join(app, 'cardmirror-green.exe'));
   const pe = exe.readUInt32LE(0x3c);
   assert.equal(exe.readUInt16LE(pe + 4), 0x8664, 'Expected Windows x64 executable');

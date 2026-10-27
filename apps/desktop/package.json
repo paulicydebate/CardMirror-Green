@@ -1,6 +1,6 @@
 {
   "name": "@paulicydebate/cardmirror-green",
-  "version": "1.16.4",
+  "version": "1.16.5",
   "description": "CardMirror Green — personal research fork",
   "author": "Anthony Trufanov",
   "homepage": "https://github.com/ant981228/cardmirror",
@@ -63,8 +63,12 @@
         "to": "flow"
       },
       {
-        "from": "build/docx.ico",
-        "to": "docx.ico"
+        "from": "build/green-docx.ico",
+        "to": "green-docx.ico"
+      },
+      {
+        "from": "build/green-cmir.ico",
+        "to": "green-cmir.ico"
       }
     ],
     "mac": {
@@ -98,7 +102,15 @@
           "name": "CardMirror Green Document",
           "description": "CardMirror Green native document",
           "role": "Editor",
-          "icon": "green.icns"
+          "icon": "green-cmir.icns"
+        },
+        {
+          "ext": "docx",
+          "name": "CardMirror Green Word document",
+          "description": "Microsoft Word document",
+          "role": "Editor",
+          "rank": "Alternate",
+          "icon": "green-docx.icns"
         }
       ],
       "artifactName": "CardMirror-Green-${version}-${arch}.${ext}"

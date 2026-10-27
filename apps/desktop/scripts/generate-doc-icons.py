@@ -13,14 +13,16 @@ extension. Regenerate after changing build/icon.png:
 
     python3 scripts/generate-doc-icons.py
 
+For the Green fork, run with --green to generate green-docx and
+green-cmir assets, preserving the original purple document icons.
+
 Design: standard macOS document-icon language — white portrait page
 with a folded corner, the CardMirror mark centered, extension label
 beneath.
 """
 
-import subprocess
+import argparse
 import sys
-import tempfile
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -29,7 +31,7 @@ BUILD = Path(__file__).resolve().parent.parent / "build"
 MARK = BUILD / "icon.png"
 CANVAS = 1024
 
-def make_doc_icon(label: str) -> Image.Image:
+def make_doc_icon(label: str, mark_path: Path = MARK) -> Image.Image:
     img = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
@@ -51,7 +53,7 @@ def make_doc_icon(label: str) -> Image.Image:
     d.line([(right - fold, top + fold), (right, top + fold)], fill=border, width=6)
 
     # App mark, centered on the upper page body.
-    mark = Image.open(MARK).convert("RGBA").resize((430, 430), Image.LANCZOS)
+    mark = Image.open(mark_path).convert("RGBA").resize((430, 430), Image.LANCZOS)
     img.alpha_composite(mark, (int((CANVAS - 430) / 2), 270))
 
     # Extension label.
@@ -70,24 +72,23 @@ def make_doc_icon(label: str) -> Image.Image:
     return img
 
 def write_icns(img: Image.Image, out: Path) -> None:
-    with tempfile.TemporaryDirectory() as td:
-        iconset = Path(td) / "doc.iconset"
-        iconset.mkdir()
-        for size in (16, 32, 64, 128, 256, 512):
-            img.resize((size, size), Image.LANCZOS).save(iconset / f"icon_{size}x{size}.png")
-            img.resize((size * 2, size * 2), Image.LANCZOS).save(
-                iconset / f"icon_{size}x{size}@2x.png")
-        subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(out)], check=True)
+    img.save(out, format="ICNS")
 
 def write_ico(img: Image.Image, out: Path) -> None:
     img.save(out, sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--green", action="store_true", help="Generate Green document icons using the existing Green app mark.")
+    args = parser.parse_args()
+    mark_path = BUILD / "green.png" if args.green else MARK
+    prefix = "green-" if args.green else ""
     for ext, label in (("docx", "DOCX"), ("cmir", "CMIR")):
-        icon = make_doc_icon(label)
-        write_icns(icon, BUILD / f"{ext}.icns")
-        write_ico(icon, BUILD / f"{ext}.ico")
-        print(f"generated build/{ext}.icns + .ico")
+        icon = make_doc_icon(label, mark_path)
+        name = f"{prefix}{ext}"
+        write_icns(icon, BUILD / f"{name}.icns")
+        write_ico(icon, BUILD / f"{name}.ico")
+        print(f"generated build/{name}.icns + .ico")
 
 if __name__ == "__main__":
     sys.exit(main())
