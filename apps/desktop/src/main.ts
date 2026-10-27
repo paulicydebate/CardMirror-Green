@@ -3658,7 +3658,7 @@ prepHandle('host:timer-popout-exists', () =>
 type UpdateChipState = { state: 'available' | 'ready'; version: string } | null;
 let updateChip: UpdateChipState = null;
 /** The verified update zip electron-updater staged (mac swap path). */
-let macStagedUpdateZip: string | null = null;
+let macStagedUpdate: { zipPath: string; sha512: string; version: string } | null = null;
 
 function setUpdateChip(next: Exclude<UpdateChipState, null>): void {
   updateChip = next;
@@ -3683,7 +3683,7 @@ prepHandle('host:update-chip-state', () => updateChip);
 
 /** Chip click: 'ready' (staged) → quit + install now; 'available'
  *  (macOS, not stageable yet) → open the release page. */
-prepHandle('host:update-chip-action', () => {
+prepHandle('host:update-chip-action', async () => {
   if (!updateChip) return;
   if (fakeUpdateChip) {
     console.log('Update chip clicked (CM_FAKE_UPDATE): no action in a dev build.');
@@ -3696,10 +3696,10 @@ prepHandle('host:update-chip-action', () => {
       // exit, swaps the bundle (restoring the old one on any failure),
       // and relaunches.
       const bundle = bundlePathFromExe(app.getPath('exe'));
-      if (macStagedUpdateZip && bundle) {
-        launchSwapHelper({
+      if (macStagedUpdate && bundle && macBundleSelfUpdatable(app.getPath('exe'))) {
+        await launchSwapHelper({
           pid: process.pid,
-          zipPath: macStagedUpdateZip,
+          ...macStagedUpdate,
           appBundlePath: bundle,
         });
         app.quit();
@@ -3753,8 +3753,9 @@ function startAutoUpdate(): void {
   autoUpdater.on('update-downloaded', (info) => {
     if (isMac) {
       const file = (info as { downloadedFile?: string }).downloadedFile;
-      if (file && file.endsWith('.zip')) {
-        macStagedUpdateZip = file;
+      const archive = info.files?.find(item => item.url.endsWith('.zip'));
+      if (file && file.endsWith('.zip') && archive?.sha512) {
+        macStagedUpdate = { zipPath: file, sha512: archive.sha512, version: info.version };
         console.log(`Auto-update: ${info.version} staged (mac swap); chip shown.`);
         setUpdateChip({ state: 'ready', version: info.version });
       } else {

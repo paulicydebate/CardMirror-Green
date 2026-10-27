@@ -1,18 +1,28 @@
-name: Release Windows
+name: Release desktop
 on:
   push:
     tags: ['v*.*.*']
 permissions:
   contents: read
 concurrency:
-  group: green-windows-release
+  group: green-desktop-release
   cancel-in-progress: false
 jobs:
-  windows:
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            target: --win nsis --x64
+          - os: macos-latest
+            platform: macos
+            arch: arm64
+            target: --mac dmg zip --arm64
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -20,10 +30,10 @@ jobs:
           node-version: '22'
           cache: npm
       - name: Validate release version
-        shell: pwsh
+        shell: bash
         run: |
-          $version = node -p "require('./apps/desktop/package.json').version"
-          if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag and package version must match' }
+          VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          test "$GITHUB_REF_NAME" = "v$VERSION"
       - run: npm ci
       - run: npm --prefix apps/desktop ci
       - run: npm run typecheck
@@ -34,35 +44,50 @@ jobs:
       - run: npm --prefix apps/desktop run build:renderer
       - run: npm --prefix apps/desktop run build:main
       - run: npm --prefix apps/desktop run build:service
-      - name: Package Windows with update metadata
+      - name: Package with update metadata
         working-directory: apps/desktop
-        run: npx --no-install electron-builder --win nsis --x64 --publish never
-      - run: node apps/desktop/scripts/verify-preview.cjs x64
-      - run: node apps/desktop/scripts/verify-windows-update.cjs
+        run: npx --no-install electron-builder ${{ matrix.target }} --publish never
+      - run: node apps/desktop/scripts/verify-preview.cjs ${{ matrix.arch }}
+      - name: Verify Windows updater assets
+        if: matrix.platform == 'windows'
+        run: node apps/desktop/scripts/verify-windows-update.cjs
+      - name: Verify Mac updater assets
+        if: matrix.platform == 'macos'
+        run: node apps/desktop/scripts/verify-mac-update.cjs
       - uses: actions/upload-artifact@v4
         with:
-          name: cardmirror-green-windows-release
+          name: cardmirror-green-${{ matrix.platform }}-release
           path: |
             apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
             apps/desktop/release/*.blockmap
-            apps/desktop/release/latest.yml
+            apps/desktop/release/latest*.yml
           if-no-files-found: error
-      - name: Publish verified Windows release
-        shell: pwsh
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cardmirror-green-*-release
+          merge-multiple: true
+          path: release-assets
+      - name: Publish both verified platforms together
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = $env:GITHUB_REF_NAME
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --draft --title "CardMirror Green $tag (Windows)" --notes-file WINDOWS_RELEASE_NOTES.md --verify-tag
-            if ($LASTEXITCODE -ne 0) { throw 'Could not create release draft' }
-          } else {
-            $draft = gh release view $tag --json isDraft --jq .isDraft
-            if ($draft -ne 'true') { throw 'Refusing to replace a published release' }
-          }
-          $assets = @(Get-ChildItem apps/desktop/release -File | Where-Object { $_.Name -match '\.(exe|blockmap)$' -or $_.Name -eq 'latest.yml' } | ForEach-Object FullName)
-          gh release upload $tag @assets --clobber
-          if ($LASTEXITCODE -ne 0) { throw 'Could not upload release assets' }
-          gh release edit $tag --draft=false --latest --notes-file WINDOWS_RELEASE_NOTES.md
-          if ($LASTEXITCODE -ne 0) { throw 'Could not publish release' }
+          set -euo pipefail
+          TAG="$GITHUB_REF_NAME"
+          test -s release-assets/latest.yml
+          test -s release-assets/latest-mac.yml
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true
+          else
+            gh release create "$TAG" --draft --title "CardMirror Green $TAG" --notes-file RELEASE_NOTES.md --verify-tag
+          fi
+          gh release upload "$TAG" release-assets/* --clobber
+          gh release edit "$TAG" --draft=false --latest --notes-file RELEASE_NOTES.md

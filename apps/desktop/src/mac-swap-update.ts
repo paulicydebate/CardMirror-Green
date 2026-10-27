@@ -1,137 +1,94 @@
-/**
- * macOS self-update by bundle swap — Tauri's update mechanism, ported
- * (2026-07-16, modeled on ebb's flow after the update-UX comparison).
- *
- * Squirrel.Mac (electron-updater's installer) refuses unsigned apps, so
- * unsigned/self-signed CardMirror builds can't use `quitAndInstall` on
- * macOS. Instead we do exactly what Tauri's updater does:
- *
- *   1. electron-updater STAGES the update (downloads the release .zip
- *      and verifies its sha512 against the release metadata) — that
- *      part works unsigned; only the Squirrel install step doesn't.
- *   2. On the user's install-confirm we spawn a tiny detached shell
- *      script and quit. The script waits for the app to exit, extracts
- *      the zip, strips any quarantine attribute (defensive — files we
- *      download ourselves never carry one, which is why Gatekeeper
- *      never re-assesses the swapped bundle), moves the old bundle
- *      aside, moves the new one in, and relaunches. Any failure
- *      restores the old bundle — the invariant is "you always have a
- *      launchable CardMirror".
- *
- * Combined with the stable self-signed release cert (see
- * scripts/setup-signing.sh), TCC grants (microphone) persist across
- * these swaps, which is one thing even ebb's ad-hoc signing loses.
- */
-
+/** Green-only macOS updater. Keep the previous app for recovery; never touch profiles/documents. */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-/** `/Applications/CardMirror.app` from the running executable path
- *  (`…/CardMirror.app/Contents/MacOS/cardmirror`), or null when the
- *  layout isn't a normal bundle. */
 export function bundlePathFromExe(exePath: string): string | null {
   const bundle = path.resolve(exePath, '..', '..', '..');
-  return bundle.endsWith('.app') ? bundle : null;
+  return bundle.endsWith('.app') && path.basename(path.dirname(exePath)) === 'MacOS' && path.basename(path.dirname(path.dirname(exePath))) === 'Contents' ? bundle : null;
 }
-
-/** Whether this install can self-update: a real .app bundle, not a
- *  Gatekeeper-translocated copy (read-only randomized mount), and both
- *  the bundle and its parent directory are writable by this user. */
 export function macBundleSelfUpdatable(exePath: string): boolean {
   const bundle = bundlePathFromExe(exePath);
-  if (!bundle) return false;
-  if (bundle.includes('/AppTranslocation/')) return false;
+  if (!bundle || bundle.includes('/AppTranslocation/')) return false;
   try {
+    if (fs.lstatSync(bundle).isSymbolicLink()) return false;
     fs.accessSync(bundle, fs.constants.W_OK);
     fs.accessSync(path.dirname(bundle), fs.constants.W_OK);
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
-
-/** Single-quote a string for safe embedding in bash. */
-function shq(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
+function shq(s: string): string { return "'" + s.replace(/'/g, "'\\''") + "'"; }
 export interface SwapArgs {
-  /** The running app's pid — the script waits for it to exit. */
   pid: number;
-  /** The staged update zip (electron-updater's verified download). */
   zipPath: string;
-  /** The installed bundle to replace (e.g. /Applications/CardMirror.app). */
   appBundlePath: string;
+  sha512: string;
+  version: string;
+  /** Only headless synthetic-bundle tests disable relaunch. Production always launches. */
+  relaunch?: boolean;
 }
-
-/** The swap helper script. Exported for tests — the script IS the
- *  safety-critical artifact, so its content is what gets asserted. */
 export function buildSwapScript(a: SwapArgs): string {
+  if (!Number.isSafeInteger(a.pid) || a.pid <= 0 || !path.isAbsolute(a.zipPath) || !path.isAbsolute(a.appBundlePath) || !a.appBundlePath.endsWith('.app') || !/^[A-Za-z0-9+/]{86}==$/.test(a.sha512) || !/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(a.version)) throw new Error('Invalid Mac update parameters.');
   return `#!/bin/bash
-# CardMirror self-update helper (generated; safe to delete).
 set -u
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 PID=${a.pid}
 ZIP=${shq(a.zipPath)}
 APP=${shq(a.appBundlePath)}
-LOG="\${TMPDIR:-/tmp}/cardmirror-update.log"
+EXPECTED_HASH=${shq(a.sha512)}
+EXPECTED_VERSION=${shq(a.version)}
+LOG="\${TMPDIR:-/tmp}/cardmirror-green-update.log"
 exec >>"$LOG" 2>&1
-echo "== $(date) swap start pid=$PID app=$APP"
-
-# Wait (up to 5 minutes) for the app to fully exit.
+echo "== $(date) Green update start"
 for _ in $(seq 1 600); do
   kill -0 "$PID" 2>/dev/null || break
   sleep 0.5
 done
-if kill -0 "$PID" 2>/dev/null; then
-  echo "app never exited; aborting"
-  exit 1
-fi
-
-STAGE=$(mktemp -d "\${TMPDIR:-/tmp}/cardmirror-update.XXXXXX") || exit 1
-
+if kill -0 "$PID" 2>/dev/null; then echo 'app never exited; aborting'; exit 1; fi
+STAGE=''
+launch_app() { ${a.relaunch === false ? ':' : 'open -n "$APP"'}; }
 fail_restore() {
   echo "$1"
-  [ -d "$STAGE/previous.app" ] && [ ! -d "$APP" ] && mv "$STAGE/previous.app" "$APP"
-  rm -rf "$STAGE"
-  open "$APP" 2>/dev/null
+  if [ -n "$STAGE" ] && [ -d "$STAGE/previous.app" ] && [ ! -e "$APP" ]; then
+    mv "$STAGE/previous.app" "$APP" || echo "RESTORE FAILED: previous app preserved at $STAGE/previous.app"
+  fi
+  echo "Recovery files retained: $STAGE"
+  [ -d "$APP" ] && launch_app
   exit 1
 }
-
-ditto -x -k "$ZIP" "$STAGE" || fail_restore "extract failed"
-NEWAPP="$STAGE/$(basename "$APP")"
-if [ ! -d "$NEWAPP" ]; then
-  NEWAPP=$(find "$STAGE" -maxdepth 1 -name "*.app" -print -quit)
+[ -d "$APP" ] && [ ! -L "$APP" ] || fail_restore 'invalid installed app'
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = 'com.paulicydebate.cardmirror.green' ] || fail_restore 'installed app is not Green'
+ACTUAL_HASH=$(openssl dgst -sha512 -binary "$ZIP" | openssl base64 -A)
+[ "$ACTUAL_HASH" = "$EXPECTED_HASH" ] || fail_restore 'update ZIP hash mismatch'
+# Stage on the same filesystem so bundle moves are atomic renames.
+STAGE=$(mktemp -d "$(dirname "$APP")/.cardmirror-green-update.XXXXXX") || fail_restore 'cannot stage update beside app'
+ditto -x -k "$ZIP" "$STAGE" || fail_restore 'extract failed'
+NEWAPP="$STAGE/cardmirror-green.app"
+[ -d "$NEWAPP" ] && [ ! -L "$NEWAPP" ] || fail_restore 'expected Green bundle missing'
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$NEWAPP/Contents/Info.plist")" = 'com.paulicydebate.cardmirror.green' ] || fail_restore 'update identity mismatch'
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$NEWAPP/Contents/Info.plist")" = "$EXPECTED_VERSION" ] || fail_restore 'update version mismatch'
+[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$NEWAPP/Contents/Info.plist")" = 'cardmirror-green' ] || fail_restore 'unexpected executable'
+codesign --verify --deep --strict "$NEWAPP" || fail_restore 'update signature invalid'
+lipo -verify_arch arm64 "$NEWAPP/Contents/MacOS/cardmirror-green" || fail_restore 'update architecture mismatch'
+# Keep quarantine attributes and let macOS enforce its normal policy.
+mv "$APP" "$STAGE/previous.app" || fail_restore 'could not back up old app'
+mv "$NEWAPP" "$APP" || fail_restore 'swap failed'
+if ! launch_app; then
+  mv "$APP" "$STAGE/failed.app" || fail_restore 'new app could not launch; backup retained'
+  fail_restore 'new app launch failed; restoring previous app'
 fi
-if [ -z "$NEWAPP" ] || [ ! -d "$NEWAPP" ]; then
-  fail_restore "no .app in update zip"
-fi
-
-# Defensive: our own download never carries quarantine, but strip it in
-# case anything upstream stamped it — a quarantined swap would send the
-# user through Gatekeeper again.
-xattr -dr com.apple.quarantine "$NEWAPP" 2>/dev/null || true
-
-mv "$APP" "$STAGE/previous.app" || fail_restore "could not move old bundle aside"
-if ! mv "$NEWAPP" "$APP"; then
-  fail_restore "swap failed"
-fi
-
-rm -rf "$STAGE"
-echo "== swap done; relaunching"
-open -n "$APP"
+echo "Update installed. Previous app retained at $STAGE/previous.app"
 `;
 }
-
-/** Write the helper to a temp file and launch it detached; the caller
- *  quits the app immediately after. */
-export function launchSwapHelper(a: SwapArgs): void {
-  const scriptPath = path.join(os.tmpdir(), `cardmirror-update-${a.pid}.sh`);
-  fs.writeFileSync(scriptPath, buildSwapScript(a), { mode: 0o755 });
-  const child = spawn('/bin/bash', [scriptPath], {
-    detached: true,
-    stdio: 'ignore',
+/** Resolve only once the helper has spawned successfully, before the caller quits. */
+export async function launchSwapHelper(a: SwapArgs): Promise<void> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cardmirror-green-update-'));
+  const scriptPath = path.join(dir, 'install.sh');
+  fs.writeFileSync(scriptPath, buildSwapScript(a), { mode: 0o700 });
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('/bin/bash', [scriptPath], { detached: true, stdio: 'ignore' });
+    child.once('error', reject);
+    child.once('spawn', () => { child.unref(); resolve(); });
   });
-  child.unref();
 }

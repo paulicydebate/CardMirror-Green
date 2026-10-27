@@ -908,14 +908,14 @@ describe('spectators through the UI flows (view-only sessions, 2026-10-24)', () 
     try {
       const joined = await collabUi.joinSessionWithCode(depsF, shareCode);
       expect(joined).toBe(true); // REST half; the stream 409s with a view pass
-      await sleep(300);
-      // The editor session is torn down and the offer is up.
-      clickPromptButton('Watch');
-      await sleep(400);
-      expect(collabCopresenceFor('doc-F')?.role).toBe('spectator');
-      expect(mock.viewerCount(decoded.roomId)).toBe(1);
-      expect(docText(viewF.state.doc)).toContain('full room, watch me');
-      expect((await loadSessionRecord(decoded.roomId))?.role).toBe('spectator');
+      // Wait for the asynchronous full-room offer instead of relying on runner speed.
+      await vi.waitFor(() => clickPromptButton('Watch'), { timeout: 5000, interval: 25 });
+      await vi.waitFor(async () => {
+        expect(collabCopresenceFor('doc-F')?.role).toBe('spectator');
+        expect(mock.viewerCount(decoded.roomId)).toBe(1);
+        expect(docText(viewF.state.doc)).toContain('full room, watch me');
+        expect((await loadSessionRecord(decoded.roomId))?.role).toBe('spectator');
+      }, { timeout: 5000, interval: 25 });
     } finally {
       mock.setViewPass(null);
       for (const ac of raws) ac.abort();

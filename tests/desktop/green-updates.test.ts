@@ -2,10 +2,11 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { manualUpdates } from '../../apps/desktop/src/app-identity.js';
-describe('Green Windows release policy', () => {
-  it('enables Windows while leaving Mac and Linux manual', () => {
+describe('Green desktop release policy', () => {
+  it('enables Windows and Apple Silicon Mac while leaving unsupported platforms manual', () => {
     expect(manualUpdates('win32')).toBe(false);
-    expect(manualUpdates('darwin')).toBe(true);
+    expect(manualUpdates('darwin', 'arm64')).toBe(false);
+    expect(manualUpdates('darwin', 'x64')).toBe(true);
     expect(manualUpdates('linux')).toBe(true);
   });
   it('keeps the release provider isolated and installs only on confirmation', () => {
