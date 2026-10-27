@@ -17296,7 +17296,7 @@ body.pmd-round-mode::after, body.pmd-prep-paused::after { border-color: var(--pm
   line-height: 1.4; list-style: none;
 }
 .pmd-prep-bar summary::-webkit-details-marker { display: none; }
-.pmd-prep-bar summary::after { content: ' ▴'; }
+.pmd-prep-bar summary::after { content: ' \25B4'; }
 .pmd-prep-bar[data-mode='prep'] summary { color: #725600; background: #fff8d7; border-color: #ba8e00; }
 .pmd-prep-bar[data-mode='round'] summary,
 .pmd-prep-bar[data-error='true'] summary { color: #480007; background: #ffe8e8; border-color: #c82229; }

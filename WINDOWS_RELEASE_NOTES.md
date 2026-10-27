@@ -1,4 +1,4 @@
-CardMirror Green 1.16.2 for Windows x64
+CardMirror Green 1.16.3 for Windows x64
 
 - Prep/Round controls now sit in the bottom status bar beside zoom, keeping the document clear.
 - Click the Prep/Round status to open session actions and logs. The menu closes after selecting an action, clicking elsewhere or pressing Escape.

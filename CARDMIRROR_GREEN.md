@@ -147,6 +147,8 @@ Windows 1.16.1 release published from commit `3cdbeacd7864ec3b4ed10d6951dc4e1094
 
 Desktop preview workflow 40444828475 verified both Windows x64 and Mac ARM64 packaging for the same release commit. The first Mac attempt failed in an existing timing-based spectator-dialog test; the unchanged job passed on retry, including the full suite and package verification. Mac remains manual; no Mac update release was published.
 
-### Prep/Round status bar (1.16.2)
+### Prep/Round status bar (1.16.3)
 
-Replaced the floating document-overlapping Prep/Round toolbar with a compact status-bar dropdown immediately beside zoom. Active mode and elapsed minutes remain visible, with existing Prep/Round colors; all session actions and logs remain in the dropdown. It closes after selecting an action, clicking outside or pressing Escape. Typecheck, renderer and desktop builds passed; only headless tests are authorized, so no app was opened for layout verification. Publish Windows v1.16.2 for the existing Green updater; Mac stays manual.
+Replaced the floating document-overlapping Prep/Round toolbar with a compact status-bar dropdown immediately beside zoom. Active mode and elapsed minutes remain visible, with existing Prep/Round colors; all session actions and logs remain in the dropdown. It closes after selecting an action, clicking outside or pressing Escape. Typecheck, renderer and desktop builds passed; only headless tests are authorized, so no app was opened for layout verification. Publish Windows v1.16.3 for the existing Green updater; Mac stays manual.
+
+The v1.16.2 attempt was stopped by the existing CSS ASCII-content check before publication. The menu arrow now uses a CSS Unicode escape; its three icon-coverage checks pass. The corrected build uses a new v1.16.3 tag, preserving the failed tag without rewriting history.
