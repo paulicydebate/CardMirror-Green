@@ -70,7 +70,7 @@ NEWAPP="$STAGE/cardmirror-green.app"
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$NEWAPP/Contents/Info.plist")" = "$EXPECTED_VERSION" ] || fail_restore 'update version mismatch'
 [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$NEWAPP/Contents/Info.plist")" = 'cardmirror-green' ] || fail_restore 'unexpected executable'
 codesign --verify --deep --strict "$NEWAPP" || fail_restore 'update signature invalid'
-lipo -verify_arch arm64 "$NEWAPP/Contents/MacOS/cardmirror-green" || fail_restore 'update architecture mismatch'
+lipo "$NEWAPP/Contents/MacOS/cardmirror-green" -verify_arch arm64 || fail_restore 'update architecture mismatch'
 # Keep quarantine attributes and let macOS enforce its normal policy.
 mv "$APP" "$STAGE/previous.app" || fail_restore 'could not back up old app'
 mv "$NEWAPP" "$APP" || fail_restore 'swap failed'
