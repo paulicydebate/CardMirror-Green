@@ -64,7 +64,7 @@ describe.skipIf(process.platform !== 'darwin')('Mac helper execution with synthe
       const result=spawnSync('/bin/bash',[script],{env:{...process.env,TMPDIR:dir},encoding:'utf8',timeout:15000});
       expect(result.error).toBeUndefined();
       if(mode==='success') {
-        expect(result.status).toBe(0);
+        expect(result.status, readFileSync(path.join(dir,'cardmirror-green-update.log'),'utf8')).toBe(0);
         const stage=readdirSync(path.dirname(installed)).find(n=>n.startsWith('.cardmirror-green-update.'))!;
         expect(readFileSync(path.join(path.dirname(installed),stage,'previous.app','old-marker'),'utf8')).toBe('previous app');
         expect(readFileSync(path.join(installed,'Contents','Info.plist'),'utf8')).toContain('1.16.4');

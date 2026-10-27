@@ -37,6 +37,9 @@ jobs:
       - run: npm ci
       - run: npm --prefix apps/desktop ci
       - run: npm run typecheck
+      - name: Check Mac updater against synthetic bundles
+        if: matrix.platform == 'macos'
+        run: npx vitest run tests/desktop/mac-swap-update.test.ts
       - run: npm test
         env:
           NODE_OPTIONS: --max-old-space-size=6144
