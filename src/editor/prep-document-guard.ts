@@ -9,6 +9,19 @@ import { isSyncOrigin } from './sync-origin.js';
 import { parseFlow } from '../flow/flow-model.js';
 import { registerPrepView, prepRuntime } from './prep-runtime.js';
 
+// A private identity marker, not a string meta that arbitrary input can set.
+// Flow NodeViews use this only when resending already accepted local cells
+// after a remote whole-workbook update. It is not new typing or clipboard input.
+const flowUpdateSources = new WeakMap<PMNode, 'remote' | 'history' | 'local'>();
+export const PREP_FLOW_RECONCILE_ORIGIN = 'cm-flow-reconcile';
+export const PREP_LOCAL_HISTORY_META = 'prepLocalHistory';
+export function flowUpdateSource(doc: PMNode): 'remote' | 'history' | 'local' | undefined { return flowUpdateSources.get(doc); }
+const flowReconciliations = new WeakSet<Transaction>();
+export function markPrepFlowReconciliation(tr: Transaction): Transaction {
+  flowReconciliations.add(tr);
+  return tr;
+}
+
 export const PREP_EXPANSION_META = 'prepExpansion';
 export const PREP_INSERT_LIMIT = 40;
 export interface PrepGuardEvent {
@@ -17,6 +30,7 @@ export interface PrepGuardEvent {
   inserted?: string[];
   deleted?: number;
   flagged?: boolean;
+  reconciliation?: boolean;
 }
 export interface PrepGuardPolicy {
   isPrepDocument(uid: string): boolean;
@@ -122,6 +136,7 @@ export function prepDocumentGuard(uid: string | null | undefined, policy: () => 
       if (['paste', 'drop', 'cut'].includes(String(tr.getMeta('uiEvent')))) {
         refuse(p, 'Clipboard and drag transfers are blocked.'); return false;
       }
+      if (flowReconciliations.has(tr)) return true;
       const expansion = tr.getMeta(PREP_EXPANSION_META);
       if (expansion === 'macro' || expansion === 'autocorrect' || isHistoryTransaction(tr)) return true;
       let added: number;
@@ -137,6 +152,7 @@ export function prepDocumentGuard(uid: string | null | undefined, policy: () => 
     state: {
       init: () => null,
       apply(tr, value) {
+        if (tr.docChanged) flowUpdateSources.set(tr.doc, isHistoryTransaction(tr) || tr.getMeta(PREP_LOCAL_HISTORY_META) === true ? 'history' : isSyncOrigin(tr) ? 'remote' : 'local');
         const p = protectedPolicy();
         if (!p || !tr.docChanged) return value;
         let changes: TextChange[];
@@ -151,9 +167,11 @@ export function prepDocumentGuard(uid: string | null | undefined, policy: () => 
         const deleted = changes.reduce((n, c) => n + c.deleted, 0);
         if (!inserted.length && !deleted) return value;
         const expansion = tr.getMeta(PREP_EXPANSION_META);
-        const kind = isSyncOrigin(tr) ? 'remote-change' : isHistoryTransaction(tr) ? 'undo-redo' :
+        const reconciliation = flowReconciliations.has(tr);
+        const kind = tr.getMeta(PREP_LOCAL_HISTORY_META) === true ? 'undo-redo' : isSyncOrigin(tr) || reconciliation ? 'remote-change' : isHistoryTransaction(tr) ? 'undo-redo' :
           expansion === 'macro' || expansion === 'autocorrect' ? expansion : 'change';
-        p.audit(uid!, { kind, inserted, deleted, flagged: inserted.join('').length > PREP_INSERT_LIMIT });
+        p.audit(uid!, { kind, inserted, deleted, flagged: !reconciliation && inserted.join('').length > PREP_INSERT_LIMIT,
+          ...(reconciliation ? { reconciliation: true, reason: 'Resynchronized previously accepted flow cells.' } : {}) });
         return value;
       },
     },

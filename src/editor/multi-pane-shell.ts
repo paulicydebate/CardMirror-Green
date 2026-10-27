@@ -3991,7 +3991,7 @@ function buildDocRecord(
       if (!mounted) return;
       // Stamp collab metas (sync-origin on the Loro binding's remote
       // transactions) BEFORE apply, mirroring the single-doc dispatch.
-      tagCollabTransaction(tx);
+      tagCollabTransaction(tx, view.state);
       // Reject a user edit inside a region an AI op has leased; flash the
       // locked region. AI writes carry a bypass tag and pass through.
       if (coordinatorBlocks(view.state, tx)) {

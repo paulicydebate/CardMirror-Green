@@ -64,6 +64,12 @@ describe('per-document Prep protection', () => {
     expect(view.state.doc.textContent).toBe('');
     expect(p.audit).toHaveBeenCalledWith('prep', expect.objectContaining({ kind: 'blocked' }));
   });
+  it('does not accept an arbitrary reconciliation string meta as permission for a large insert', () => {
+    const p = policy(), view = mount(p);
+    view.dispatch(view.state.tr.insertText('x'.repeat(100), 1).setMeta('prepFlowReconciliation', true));
+    expect(view.state.doc.textContent).toBe('');
+    expect(p.audit).toHaveBeenCalledWith('prep', expect.objectContaining({ kind: 'blocked' }));
+  });
   it('permits and logs a real keyboard macro and autocorrect expansion/revert', () => {
     const p = policy(), view = mount(p);
     const macro = buildMacroKeymap([{ id: 'prep-test-macro', key: 'F2', text: 'm'.repeat(100) }])['F2']!;

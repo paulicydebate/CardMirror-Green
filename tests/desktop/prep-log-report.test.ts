@@ -18,6 +18,17 @@ describe('readable Prep reports', () => {
     const report=createPrepLogReport(records([['input',{phase:'beforeinput',inputType:'insertText',text:'a'}],['remote-insert',{inserted:['remote']}],['input',{phase:'transaction',inserted:['a']}]]));
     expect(report.typedCharacters).toBe(1); expect(report.rows[0]!.action).toBe('Partner edit');
   });
+  it('does not double-count restored local flow cells as new partner typing or deletions', () => {
+    const report = createPrepLogReport(records([
+      ['input', { phase: 'beforeinput', inputType: 'insertText', text: 'a' }],
+      ['input', { phase: 'transaction', inserted: ['a'] }],
+      ['remote-insert', { inserted: ['partner'] }],
+      ['remote-insert', { inserted: ['a'], deleted: 1, reconciliation: true }],
+    ]));
+    expect(report.typedCharacters).toBe(1);
+    expect(report.deletedCharacters).toBe(0);
+    expect(report.rows.map(r => r.action)).toEqual(['Typed', 'Partner edit', 'Flow synchronized']);
+  });
   it('rejects malformed logs and never presents an unchecked seal as verified',()=>{
     expect(()=>createPrepLogReport('broken')).toThrow();
     const report=createPrepLogReport(records([['session-end',{}]]),{sealCode:'ABCD'});

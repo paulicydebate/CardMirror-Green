@@ -22,6 +22,8 @@ export type FlowSide = 'aff' | 'neg';
 
 export interface FlowCell {
   text: string;
+  /** Per-cell logical revision for whole-workbook collaboration merges. */
+  revision?: { clock: number; actor: string };
   crossed?: boolean;
   bold?: boolean;
   extended?: boolean;
@@ -324,6 +326,10 @@ export function cleanCell(c: FlowCell): FlowCell {
   if (c.crossed) out.crossed = true;
   if (c.bold) out.bold = true;
   if (c.extended) out.extended = true;
+  const revision = c.revision;
+  if (revision && Number.isSafeInteger(revision.clock) && revision.clock > 0 && typeof revision.actor === 'string' && revision.actor.length > 0 && revision.actor.length <= 128) {
+    out.revision = { clock: revision.clock, actor: revision.actor };
+  }
   const hl = normalizeRanges(c.hl, out.text.length);
   if (hl.length) out.hl = hl;
   return out;
@@ -405,7 +411,7 @@ export function serializeFlow(book: FlowWorkbook): string {
       columns: s.columns,
       // Every row is stored with its id (empty ones too): co-editing matches
       // rows by id, so both computers must agree on every row's identity.
-      rows: s.rows.map((r) => (isEmptyCell(r.prep)
+      rows: s.rows.map((r) => (isEmptyCell(r.prep) && !r.prep?.revision
         ? { id: r.id, cells: r.cells.map(cleanCell) }
         : { id: r.id, cells: r.cells.map(cleanCell), prep: cleanCell(r.prep!) })),
     })),
@@ -434,7 +440,7 @@ export function parseFlow(text: string, minRows = DEFAULT_ROWS): FlowWorkbook {
       while (cells.length < columns.length) cells.push({ text: '' });
       const id = typeof r['id'] === 'string' && r['id'] ? r['id'] : `${sheetId}~${ri}`;
       const prep = r['prep'] && typeof r['prep'] === 'object' ? cleanCell(r['prep'] as FlowCell) : null;
-      return prep && !isEmptyCell(prep) ? { id, cells, prep } : { id, cells };
+      return prep && (!isEmptyCell(prep) || prep.revision) ? { id, cells, prep } : { id, cells };
     });
     // Padding rows get ids derived from the sheet, so every computer that
     // opens the same file pads with identical rows.

@@ -82,6 +82,10 @@ export function createPrepLogReport(text: string, options: { timeZone?: string; 
       if (copy) report.blockedCopies++;
       report.rows.push(row(e, action, 'Prevented — no transfer was completed by this attempt.', 'clipboard', 'blocked')); continue;
     }
+    if (e.kind === 'remote-insert' && data['reconciliation'] === true) {
+      report.rows.push(row(e, 'Flow synchronized', 'Restored previously recorded local cells after a partner update; no new typing.', 'edit'));
+      continue;
+    }
     if (changes.has(e.kind)) {
       const inserted = Array.isArray(data['inserted']) ? data['inserted'].filter((v): v is string => typeof v === 'string') : [];
       const deleted = typeof data['deleted'] === 'number' && Number.isSafeInteger(data['deleted']) && data['deleted'] > 0 ? data['deleted'] : 0;

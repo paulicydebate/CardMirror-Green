@@ -60,3 +60,9 @@ The user's favorite flow app, flower (github.com/MrinalA2009/debate-flowerX), is
 - Rich text (underline/highlight) in cells and in the column document view; cells are plain text with bold/crossed/extended.
 - Excel (.xlsx) export for Google Sheets users; speech timers; arrows between arguments.
 - Highlights in document view.
+
+## Collaboration cell revisions (Green 1.16.6)
+
+All collaborators should use 1.16.6 or newer. Changed cells carry a logical clock and random editor actor ID, retained by native Flow serialization; delayed workbook snapshots merge each cell independently. Empty Prep cells retain a revision tombstone so a delayed snapshot does not restore deleted content. Simultaneous edits to one cell select a deterministic whole-cell winner; this is not character-level collaboration inside a cell. Concurrent row/sheet creation or removal is not addressed by this cell-text repair. Older builds drop revision metadata. Local undo/redo issues a newer revision for the local actor's changed cells while retaining current partner-owned cells.
+
+Rename the selected sheet by double-clicking either its sidebar tab or its name in the top row. The top-row name also accepts Enter, Space or F2 with keyboard focus.

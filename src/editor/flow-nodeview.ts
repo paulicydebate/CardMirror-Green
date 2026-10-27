@@ -32,6 +32,7 @@ import {
   FLOW_FORMATS,
   insertRows,
   newWorkbook,
+  newFlowId,
   nextOffName,
   parseFlow,
   renameSheet,
@@ -47,7 +48,8 @@ import {
   type FlowWorkbook,
 } from '../flow/flow-model.js';
 import { confirmDialog, promptForText } from './text-prompt.js';
-import { EditHistory, mergeIncoming, recordLocalEdit } from '../flow/flow-merge.js';
+import { flowUpdateSource, markPrepFlowReconciliation, PREP_FLOW_RECONCILE_ORIGIN } from './prep-document-guard.js';
+import { EditHistory, maxFlowClock, mergeIncoming, recordLocalEdit, stampFlowEdit } from '../flow/flow-merge.js';
 import {
   applyFlowTheme,
   colorwayColors,
@@ -127,6 +129,8 @@ export class FlowWorkbookView implements NodeView {
   private prepAfter: number | null = null;
   /** My recent previous cell values, to spot a partner's stale copy of them. */
   private readonly history = new EditHistory();
+  private readonly actor = newFlowId();
+  private clock = 0;
   /** Fingerprints of states I have held, so my own undo/redo is never "merged". */
   private readonly pastStates: string[] = [];
   private appearanceOpen = false;
@@ -140,6 +144,7 @@ export class FlowWorkbookView implements NodeView {
     this.dom.contentEditable = 'false';
     this.lastData = String(node.attrs['data'] ?? '');
     this.book = this.parse(this.lastData);
+    this.clock = maxFlowClock(this.book);
     this.sheetId = this.book.sheets[0]!.id;
     applyFlowTheme(this.dom, this.theme);
     this.unsubscribeTheme = onFlowThemeChange((theme) => {
@@ -223,11 +228,16 @@ export class FlowWorkbookView implements NodeView {
     if (data === this.lastData) return true;
     const incoming = this.parse(data);
     const now = Date.now();
-    // My own undo/redo brings back a state I already had: take it as is.
-    // Anything else came from a co-editing partner: merge it cell by cell,
-    // keeping my newer text where their write raced mine.
-    const own = this.pastStates.includes(fingerprint(data));
-    const { book, keptMine } = own ? { book: incoming, keptMine: false } : mergeIncoming(incoming, this.book, this.history, now);
+    // Local undo/redo reissues my changed cells with newer revisions, keeping
+    // partner-owned cells. A remote snapshot is always merged, even if its
+    // bytes happen to match one of my previous states.
+    this.clock = Math.max(this.clock, maxFlowClock(incoming));
+    const source = flowUpdateSource(this.view.state.doc);
+    const own = source === 'history' || (source !== 'remote' && this.pastStates.includes(fingerprint(data)));
+    const merged = mergeIncoming(incoming, this.book, this.history, now);
+    const { book, keptMine } = own
+      ? { book: stampFlowEdit(this.book, incoming, this.actor, ++this.clock, true), keptMine: true }
+      : merged;
     const before = this.book;
     this.book = book;
     this.lastData = data;
@@ -235,7 +245,7 @@ export class FlowWorkbookView implements NodeView {
     if (!this.book.sheets.some((s) => s.id === this.sheetId)) this.sheetId = this.book.sheets[0]!.id;
     this.refreshFrom(before);
     // Re-send my kept cells so the partner gets them too (after this update finishes).
-    if (keptMine) setTimeout(() => this.commit(this.book), 0);
+    if (keptMine) setTimeout(() => this.commit(this.book, true), 0);
     return true;
   }
 
@@ -310,7 +320,8 @@ export class FlowWorkbookView implements NodeView {
 
   // ─── Commit ───────────────────────────────────────────────────────
 
-  private commit(book: FlowWorkbook): void {
+  private commit(book: FlowWorkbook, reconciliation = false): void {
+    if (!reconciliation) book = stampFlowEdit(this.book, book, this.actor, ++this.clock);
     const data = serializeFlow(book);
     if (data === this.lastData) return;
     const pos = this.getPos();
@@ -326,7 +337,9 @@ export class FlowWorkbookView implements NodeView {
     // and is silently bundled into the next legitimate keystroke.
     this.book = book;
     this.lastData = data;
-    this.view.dispatch(this.view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, data }));
+    const tr = this.view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, data });
+    if (reconciliation) markPrepFlowReconciliation(tr).setMeta('addToHistory', false).setMeta('cmCommitOrigin', PREP_FLOW_RECONCILE_ORIGIN);
+    this.view.dispatch(tr);
     const accepted = this.view.state.doc.nodeAt(pos);
     if (accepted?.type.name !== 'flow_workbook') return;
     const acceptedData = String(accepted.attrs['data'] ?? '');
@@ -412,7 +425,16 @@ export class FlowWorkbookView implements NodeView {
   private renderTopbar(): HTMLElement {
     const sheet = this.sheet;
     const bar = el('div', 'pmd-flow-topbar');
-    bar.appendChild(el('div', `pmd-flow-title pmd-flow-side-${sheet.side}`, sheet.name));
+    const title = el('div', `pmd-flow-title pmd-flow-side-${sheet.side}`, sheet.name);
+    title.title = 'Double-click to rename';
+    title.tabIndex = 0;
+    title.setAttribute('role', 'button');
+    title.setAttribute('aria-label', `Rename sheet ${sheet.name}`);
+    title.addEventListener('dblclick', () => void this.rename(sheet));
+    title.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ' || event.key === 'F2') { event.preventDefault(); void this.rename(sheet); }
+    });
+    bar.appendChild(title);
     const tools = el('div', 'pmd-flow-tools');
     const onCell = (fn: (spot: FocusSpot) => void) => () => { if (this.lastCell) fn(this.lastCell); };
     const flag = (f: 'bold' | 'crossed' | 'extended') => onCell(({ row, col }) => {

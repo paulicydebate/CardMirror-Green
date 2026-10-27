@@ -17,6 +17,7 @@ import { prepMarkCreated, copyPrepInvite } from '../prep-controller.js';
  * the Receive pill's Join).
  */
 
+import type { EditorState } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { LoroUndoPlugin, loroSyncPluginKey, loroUndoPluginKey } from 'loro-prosemirror';
 import { createUndoGuard } from './undo-guard.js';
@@ -27,6 +28,7 @@ import { warmCausalMarkIndex } from './causal-mark-heal.js';
 import { RELAY_FIX_PATH } from '../relay-decline.js';
 import { clearNotice, postNotice } from '../status-notices.js';
 import { promptForText, promptForRouteChoice, confirmDialog } from '../text-prompt.js';
+import { PREP_LOCAL_HISTORY_META, PREP_FLOW_RECONCILE_ORIGIN } from '../prep-document-guard.js';
 import { markSyncOrigin } from '../sync-origin.js';
 import { readModePlugin } from '../read-mode-plugin.js';
 import {
@@ -416,7 +418,8 @@ let presenceTimer: ReturnType<typeof setInterval> | null = null;
  *  remote-update imports and the init-time content replace carry the
  *  binding's meta, and neither is a user edit — read mode and the AI
  *  coordinator must admit them (rejection desyncs editor from CRDT). */
-function collabTagger(tr: Parameters<typeof markSyncOrigin>[0]): void {
+function collabTagger(tr: Parameters<typeof markSyncOrigin>[0], state?: EditorState): void {
+  if (state && loroUndoPluginKey.getState(state)?.isUndoing.current) tr.setMeta(PREP_LOCAL_HISTORY_META, true);
   if (tr.getMeta(loroSyncPluginKey) !== undefined || tr.getMeta(loroUndoPluginKey) !== undefined) {
     markSyncOrigin(tr);
   }
@@ -600,7 +603,7 @@ function installSeams(
   // A session just appeared — repaint slot footers (this doc's may be visible).
   notifyCollabCopresenceChange();
   const undoManager = new UndoManager(session.loroDoc, {
-    excludeOriginPrefixes: [COMMENTS_COMMIT_ORIGIN, META_COMMIT_ORIGIN],
+    excludeOriginPrefixes: [COMMENTS_COMMIT_ORIGIN, META_COMMIT_ORIGIN, PREP_FLOW_RECONCILE_ORIGIN],
   });
   // Container-safe undo: an undo/redo that would delete a container a
   // partner edited since is reversed and explained (see undo-guard.ts).

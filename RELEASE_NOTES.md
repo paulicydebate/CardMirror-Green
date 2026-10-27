@@ -1,10 +1,10 @@
-CardMirror Green 1.16.5 — green document icons
+CardMirror Green 1.16.6 — Flow collaboration and sheet renaming
 
-- CMIR and DOCX file associations now use a white folded-page document icon with the Green folder mark, matching the original CardMirror document-icon design.
-- macOS explicitly bundles both document icons; Windows Open With registrations reference dedicated Green document icons instead of the app logo.
-- Windows keeps the existing default-app choice. This update does not change which app opens your files.
-- Existing Green Mac and Windows update mechanisms are unchanged. On 1.16.4, use Help > Check for Updates, then explicitly choose Restart to install.
+- Fix text disappearing when collaborators type on different Flow tabs, such as Gov case and Off 1. Each changed cell now carries a persistent logical revision; merging no longer relies on a 40-keystroke / 15-second history window for newly edited cells.
+- Preserve cleared cells, including empty Prep cells, against delayed stale snapshots. Preserve the other collaborator's cells during local undo/redo.
+- Allow synchronization repairs to resend previously accepted cells without tripping Prep's large-insert guard. Readable logs distinguish these repairs from new typing; partner edits remain recorded.
+- Double-click the sheet name in the top row to rename it, just like the left sidebar. Enter, Space and F2 also open renaming when the top-row name has keyboard focus.
 
-The user confirmed v1.16.4 opens and functions on their Apple Silicon Mac. The 1.16.4-to-1.16.5 in-app upgrade still needs confirmation on that real Mac. Finder/Explorer may cache document icons until refreshed.
+Update BOTH collaborators to 1.16.6 before testing Flow collaboration. Older versions discard the new cell revisions and are not covered by this fix. Existing Flow files remain readable; native saves preserve the added metadata. Simultaneous edits to the same cell choose a deterministic whole-cell winner rather than merging individual characters. Concurrent sheet/row structure edits are not the focus of this repair.
 
-Mac builds remain ad-hoc signed, not Apple-notarized; macOS may require approval again. The Mac updater keeps the previous app for recovery and does not touch documents or the Green profile. No paid Apple Developer membership is required by this updater.
+Use Help > Check for Updates, download 1.16.6, then explicitly choose Restart to install. Mac builds remain ad-hoc signed, not Apple-notarized. No app was launched or installed on the user's computer during development; real two-machine verification remains a user check.

@@ -10,6 +10,7 @@ import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { history, undo } from 'prosemirror-history';
 import { schema } from '../../src/schema/index.js';
+import { promptForText } from '../../src/editor/text-prompt.js';
 import { flowNodeViews } from '../../src/editor/flow-nodeview.js';
 import { newWorkbook, parseFlow, serializeFlow, cellAt } from '../../src/flow/flow-model.js';
 import { parseNative, serializeNative } from '../../src/native/index.js';
@@ -101,6 +102,23 @@ describe('flow NodeView', () => {
     expect(book(v).sheets.map((s) => s.name)).toEqual(['Gov case', 'Off 1']);
   });
 
+  it('renames the current sheet by double-clicking its top-row name', async () => {
+    const v = mount();
+    (v.dom.querySelectorAll('.pmd-flow-tab')[1] as HTMLButtonElement).click();
+    v.dom.querySelector('.pmd-flow-title')!.dispatchEvent(new MouseEvent('dblclick'));
+    await frame();
+    expect(book(v).sheets[0]!.name).toBe('Gov case');
+    expect(book(v).sheets[1]!.name).toBe('Politics DA');
+    expect(v.dom.querySelector('.pmd-flow-title')!.textContent).toBe('Politics DA');
+    expect(v.dom.querySelector('.pmd-flow-tab-active')!.textContent).toBe('Politics DA');
+  });
+  it('leaves the sheet name unchanged when top-row renaming is cancelled', async () => {
+    vi.mocked(promptForText).mockResolvedValueOnce(null);
+    const v = mount();
+    v.dom.querySelector('.pmd-flow-title')!.dispatchEvent(new MouseEvent('dblclick'));
+    await frame();
+    expect(book(v).sheets[0]!.name).toBe('Gov case');
+  });
   it('expands a column into a document and back, keeping rows aligned', async () => {
     const v = mount();
     type(cell(v, 0, 0), 'Adv 1');

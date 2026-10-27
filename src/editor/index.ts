@@ -6158,7 +6158,7 @@ function mountView(doc: PMNode, threads: Thread[] = []): void {
       // Stamp collab metas (sync-origin on the Loro binding's remote
       // transactions) BEFORE apply so every filterTransaction sees them.
       // No-op when no session is active.
-      tagCollabTransaction(tx);
+      tagCollabTransaction(tx, view.state);
       // A user edit inside a region an AI op has leased is rejected and the
       // locked region flashes. AI writes carry a bypass tag, so they pass.
       if (coordinatorBlocks(view.state, tx)) {
