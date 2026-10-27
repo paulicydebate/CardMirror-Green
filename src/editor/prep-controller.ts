@@ -198,18 +198,25 @@ function render(): void {
     s.session ? Math.floor((Date.now() - Date.parse(s.session.prepStartedAt)) / 60000) : 0]);
   if (signature === rendered) return;
   rendered = signature;
+  const wasOpen = bar.querySelector('details')?.open ?? false;
   bar.replaceChildren();
-  const label = document.createElement('strong');
+  const menu = document.createElement('details'); menu.open = wasOpen;
+  const label = document.createElement('summary');
   label.textContent = s.error ?? (s.transitioning ? 'Changing mode — finish save prompts in each window' : s.session ? `${s.session.mode === 'round' ? 'Round' : 'Prep'} Mode · ${Math.floor((Date.now() - Date.parse(s.session.prepStartedAt)) / 60000)} min` : 'Prep / Round');
-  bar.append(label);
+  label.title = label.textContent;
+  menu.append(label);
+  const actions = document.createElement('div'); actions.className = 'pmd-prep-actions';
+  actions.setAttribute('role', 'group'); actions.setAttribute('aria-label', 'Prep and Round actions');
   const commands: Array<[string, Parameters<typeof runPrepCommand>[0]]> = s.session ?
     [...(s.session.mode === 'prep' ? [['New prep doc', 'newPrep'], ['New prep flow', 'newPrepFlow'], ['Mark as prep', 'markPrep'], ['Start Round', 'startRound']] as Array<[string, Parameters<typeof runPrepCommand>[0]]> : []), ['End session', 'endPrep'], ['Logs', 'prepLogs']] : [['Start Prep', 'startPrep'], ['Logs', 'prepLogs']];
   for (const [text, command] of commands) {
     const button = document.createElement('button'); button.type = 'button'; button.textContent = text;
     button.disabled = busy || s.transitioning || (!!s.error && command !== 'prepLogs');
-    button.addEventListener('click', () => void runPrepCommand(command)); bar.append(button);
+    button.addEventListener('click', () => { menu.open = false; void runPrepCommand(command); }); actions.append(button);
   }
+  menu.append(actions); bar.append(menu);
   bar.dataset['mode'] = s.session?.mode ?? '';
+  bar.dataset['error'] = String(!!s.error);
 }
 
 async function openLogs(): Promise<void> {
@@ -283,7 +290,15 @@ export async function initPrepController(hostAdapter: PrepAdapter): Promise<void
     } catch (error) { showToast(String(error)); }
     api!.prepared(req.requestId, ok);
   })());
-  bar = document.createElement('div'); bar.className = 'pmd-prep-bar'; bar.setAttribute('aria-label', 'Prep and Round Modes'); document.body.append(bar);
+  bar = document.createElement('div'); bar.className = 'pmd-prep-bar'; bar.setAttribute('aria-label', 'Prep and Round Modes'); const statusBar = document.getElementById('status-bar');
+  statusBar?.insertBefore(bar, statusBar.querySelector('.zoom-controls'));
+  document.addEventListener('pointerdown', event => {
+    if (event.target instanceof Node && !bar?.contains(event.target)) { const menu = bar?.querySelector('details'); if (menu) menu.open = false; }
+  });
+  document.addEventListener('keydown', event => {
+    const menu = bar?.querySelector('details');
+    if (event.key === 'Escape' && menu?.open) { menu.open = false; menu.querySelector('summary')?.focus(); event.stopPropagation(); }
+  });
   try { update(await api.ready()); } catch (error) { update({ session: null, transitioning: false, error: String(error) }); }
   setInterval(() => { void flush().catch(() => {}); render(); prepInventoryChanged(); }, 500);
   // Direct Clipboard API calls (read-mode copy, cite/reference commands, etc.)

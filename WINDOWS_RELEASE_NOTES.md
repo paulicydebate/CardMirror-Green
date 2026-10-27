@@ -1,9 +1,7 @@
-CardMirror Green 1.16.1 for Windows x64
+CardMirror Green 1.16.2 for Windows x64
 
-- Prep/Round logs now show readable timestamps, document names, grouped typing, deletions and clearly labeled blocked copy/paste attempts.
-- Export readable saves a text report. Original JSONL exports remain available for audit verification.
-- Windows can check and download future updates from this CardMirror Green repository. Click the update button to restart and install; ordinary quitting does not install an update.
+- Prep/Round controls now sit in the bottom status bar beside zoom, keeping the document clear.
+- Click the Prep/Round status to open session actions and logs. The menu closes after selecting an action, clicking elsewhere or pressing Escape.
+- Prep/Round status, elapsed minutes and mode colors remain visible in the status bar.
 
-Install this version once using the Windows installer below to enable in-app updates in older preview installations. Your existing Green profile remains in use. This does not install or update upstream CardMirror.
-
-macOS remains on manual preview downloads for now.
+If you installed 1.16.1, use Help > Check for Updates, then click Restart to install when the update is ready. Older previews need one manual installer download. Mac updates remain manual.

@@ -146,3 +146,7 @@ Windows now enables the existing Green GitHub updater. Downloads stage in the ba
 Windows 1.16.1 release published from commit `3cdbeacd7864ec3b4ed10d6951dc4e10949cedd6`: https://github.com/paulicydebate/CardMirror-Green/releases/tag/v1.16.1 . Release run 40444844503 passed all 4,343 Windows tests (47 skipped), packaged resources, Green feed identity, installer SHA-512 and blockmap checks. Public latest.yml and release Atom feed were accessible after publishing. CI and both CardMirror checks passed. No local apps or installer were run. Full installation and upgrade on a real desktop remain untested for this release.
 
 Desktop preview workflow 40444828475 verified both Windows x64 and Mac ARM64 packaging for the same release commit. The first Mac attempt failed in an existing timing-based spectator-dialog test; the unchanged job passed on retry, including the full suite and package verification. Mac remains manual; no Mac update release was published.
+
+### Prep/Round status bar (1.16.2)
+
+Replaced the floating document-overlapping Prep/Round toolbar with a compact status-bar dropdown immediately beside zoom. Active mode and elapsed minutes remain visible, with existing Prep/Round colors; all session actions and logs remain in the dropdown. It closes after selecting an action, clicking outside or pressing Escape. Typecheck, renderer and desktop builds passed; only headless tests are authorized, so no app was opened for layout verification. Publish Windows v1.16.2 for the existing Green updater; Mac stays manual.
