@@ -1753,6 +1753,11 @@ export interface Settings {
    *  selection (presence). Off = the doc still syncs, just without
    *  the cursor overlay. */
   collabShowCursors: boolean;
+  /** Round Mode for prep docs you share. Off (Isolation): Round ends
+   *  co-editing and closes your partner's copy. On (Co-Flowing): co-editing
+   *  of shared prep docs continues through the round. Stored in each shared
+   *  prep doc when you start sharing it. */
+  prepRoundCoflow: boolean;
   /** Pairing: machines you can send to (their code + your nickname). */
   pairingPartners: PairingPartner[];
   /** Pairing: named groups of partners for one-drop fan-out sends. */
@@ -2131,6 +2136,7 @@ const DEFAULTS: Settings = {
   pairingOwnCode: '',
   pairingDisplayName: '',
   collabShowCursors: true,
+  prepRoundCoflow: false,
   pairingPartners: [],
   pairingGroups: [],
   pairingBlockedCodes: [],
@@ -2370,6 +2376,17 @@ export const SETTING_METADATA: SettingMeta[] = [
     category: 'general',
     section: 'Workspace',
     aliases: ['split view', 'split screen', 'multi pane', 'multi-doc'],
+  },
+  {
+    key: 'prepRoundCoflow',
+    label: 'Round Mode: Co-Flowing',
+    description:
+      "Off by default (Isolation): when Round Mode starts, co-editing ends and your partner's copy of each prep doc you shared closes on their computer, without saving. Their own prep docs stay open. On (Co-Flowing): you and your partner keep co-editing shared prep docs and flows through the round, as you could on paper; copy, paste and opening files stay blocked. The choice is saved into a prep doc when you start sharing it, so change it before sharing. Desktop only.",
+    kind: 'toggle',
+    category: 'general',
+    section: 'Prep / Round',
+    electronOnly: true,
+    aliases: ['round mode', 'isolation', 'co-flowing', 'coflow', 'lockdown', 'prep mode', 'partner'],
   },
   {
     key: 'lastWorkspaceEnabled',
@@ -5434,6 +5451,7 @@ function sanitize(s: Settings): Settings {
     pairingDisplayName:
       typeof s.pairingDisplayName === 'string' ? s.pairingDisplayName.trim().slice(0, 80) : '',
     collabShowCursors: s.collabShowCursors !== false,
+    prepRoundCoflow: s.prepRoundCoflow === true,
     pairingPartners: sanitizePairingPartners(s.pairingPartners),
     pairingGroups: sanitizePairingGroups(s.pairingGroups, s.pairingPartners),
     pairingBlockedCodes: Array.isArray(s.pairingBlockedCodes)

@@ -80,7 +80,37 @@ export function verifyPrepLog(text: string, expectedFinalHash?: string): PrepLog
   return { entries, finalHash: prev, sealCode: sealCode(prev) };
 }
 
-const INTERNAL_EVENTS = new Set(['prep-start', 'round-start', 'session-end', 'document-created', 'prep-document-marked', 'prep-identity-bound', 'prep-document-reopened', 'app-restart']);
+/** One prep doc's content fingerprint, sealed at End. `persistentId` is the
+ * id saved in the .cmir file, which "Check Prep Document" matches on. */
+export interface PrepFingerprint { document: string; persistentId: string | null; name: string; fingerprint: string }
+/** The last log entries: the sealed fingerprints and the session end. Their
+ * hashes chain into the seal code, so the file can be checked on its own. */
+export interface PrepSealCertificate { format: 'cardmirror.prep-seal'; version: 1; entries: PrepLogEntry[] }
+
+/** Check a seal certificate against a seal code (16 hex digits, any case or
+ * dashes) or the full final hash, and look up one document's fingerprint. */
+export function checkPrepSeal(certificate: unknown, code: string, persistentId: string | null, fingerprint: string):
+  { status: 'unchanged' | 'modified' | 'wrong-code' | 'damaged' | 'not-in-seal'; prepStartedAt?: string; roundStartedAt?: string | null; endedAt?: string; name?: string; sealCode?: string } {
+  const cert = certificate as PrepSealCertificate | null;
+  if (!cert || cert.format !== 'cardmirror.prep-seal' || cert.version !== 1 || !Array.isArray(cert.entries) || cert.entries.length !== 2) return { status: 'damaged' };
+  const [fp, end] = cert.entries as [PrepLogEntry, PrepLogEntry];
+  for (const entry of [fp, end]) {
+    if (!entry || typeof entry !== 'object') return { status: 'damaged' };
+    const { hash, ...body } = entry;
+    if (Object.keys(body).sort().join(',') !== 'data,document,kind,prev,seq,time,window') return { status: 'damaged' };
+    try { if (hash !== hashEntry(body)) return { status: 'damaged' }; } catch { return { status: 'damaged' }; }
+  }
+  if (fp.kind !== 'document-fingerprints' || end.kind !== 'session-end' || end.prev !== fp.hash || end.seq !== fp.seq + 1) return { status: 'damaged' };
+  const wanted = code.replace(/[^0-9a-f]/gi, '').toLowerCase();
+  if (!(wanted.length === 16 && end.hash.startsWith(wanted)) && wanted !== end.hash) return { status: 'wrong-code' };
+  const data = fp.data as { docs?: PrepFingerprint[]; prepStartedAt?: string; roundStartedAt?: string | null } | null;
+  const times = { prepStartedAt: data?.prepStartedAt, roundStartedAt: data?.roundStartedAt ?? null, endedAt: end.time, sealCode: sealCode(end.hash) };
+  const doc = Array.isArray(data?.docs) ? data!.docs.find(d => !!persistentId && d.persistentId === persistentId) : undefined;
+  if (!doc) return { status: 'not-in-seal', ...times };
+  return { status: doc.fingerprint === fingerprint ? 'unchanged' : 'modified', name: doc.name, ...times };
+}
+
+const INTERNAL_EVENTS = new Set(['prep-start', 'round-start', 'session-end', 'document-fingerprints', 'document-created', 'prep-document-marked', 'prep-identity-bound', 'prep-document-reopened', 'app-restart']);
 
 export class PrepSession {
   private state: PrepSessionState | null = null;
@@ -220,16 +250,23 @@ export class PrepSession {
     return this.snapshot()!;
   }
   /** Content belongs in the audit log only when its target is a prep doc. */
-  record(kind: 'input' | 'macro' | 'autocorrect' | 'undo' | 'redo' | 'blocked' | 'focus' | 'blur' | 'document-opened' | 'document-closed' | 'document-saved' | 'collaboration-ended' | 'remote-insert' | 'app-quit',
+  record(kind: 'input' | 'macro' | 'autocorrect' | 'undo' | 'redo' | 'blocked' | 'focus' | 'blur' | 'document-opened' | 'document-closed' | 'document-saved' | 'collaboration-ended' | 'collaboration-kept' | 'remote-insert' | 'app-quit',
     data: unknown, window: number, document: string | null = null): void {
     const state = this.requireActive();
     if (INTERNAL_EVENTS.has(kind)) throw new Error('Reserved session event.');
     if (['input', 'macro', 'autocorrect', 'undo', 'redo', 'remote-insert'].includes(kind) && (!document || !state.prepDocIds.includes(document))) throw new Error('Typing is logged only for prep documents.');
     this.append(kind, data, window, document);
   }
-  /** Call only after the user's explicit end confirmation. */
-  end(): { state: PrepSessionState; finalHash: string; sealCode: string } {
-    this.requireActive();
+  /** Call only after the user's explicit end confirmation. `fingerprints`
+   * are the open prep docs' contents, sealed just before the end entry. */
+  end(fingerprints: PrepFingerprint[] = []): { state: PrepSessionState; finalHash: string; sealCode: string; certificate: PrepSealCertificate } {
+    const active = this.requireActive();
+    const docs = fingerprints.map(f => {
+      if (!f || !active.prepDocIds.includes(f.document) || typeof f.fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(f.fingerprint) ||
+          !(f.persistentId === null || (typeof f.persistentId === 'string' && f.persistentId.length > 0 && f.persistentId.length <= 150))) throw new Error('Invalid document fingerprint.');
+      return { document: f.document, persistentId: f.persistentId, name: String(f.name ?? '').slice(0, 200), fingerprint: f.fingerprint };
+    });
+    const sealed = this.append('document-fingerprints', { docs, prepStartedAt: active.prepStartedAt, roundStartedAt: active.roundStartedAt });
     const entry = this.append('session-end', null);
     this.replay(entry);
     const state = this.snapshot()!;
@@ -237,6 +274,7 @@ export class PrepSession {
     try { unlinkSync(join(this.dir, 'state.json')); }
     catch (error) { this.failed = true; throw error; }
     this.state = null;
-    return { state, finalHash: entry.hash, sealCode: sealCode(entry.hash) };
+    return { state, finalHash: entry.hash, sealCode: sealCode(entry.hash),
+      certificate: { format: 'cardmirror.prep-seal', version: 1, entries: [sealed, entry] } };
   }
 }

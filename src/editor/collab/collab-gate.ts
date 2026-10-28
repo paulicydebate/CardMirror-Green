@@ -45,8 +45,10 @@ function isMobileShell(): boolean {
   return mobileShellMemo;
 }
 
-export function collabEnabled(): boolean {
-  if (prepRound()) return false;
+/** `duringRound`: Round Mode closes the gate except where the caller handles
+ *  Co-Flowing prep docs itself (reconnecting, the session menu). */
+export function collabEnabled(opts?: { duringRound?: boolean }): boolean {
+  if (prepRound() && !opts?.duringRound) return false;
   // Lite builds have no collaboration at all — closing this gate is
   // what removes the pills, sessions list, join links, web account
   // wiring, and every collab command in one move.

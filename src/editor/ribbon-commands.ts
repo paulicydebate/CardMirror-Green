@@ -4640,6 +4640,7 @@ export type RibbonCommandId =
   | 'startRound'
   | 'endPrep'
   | 'prepLogs'
+  | 'checkPrepDoc'
   | 'popOutPane'
   | 'arrangeWindows'
   | 'toggleCommentsVisible'
@@ -4935,6 +4936,7 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'startRound',
   'endPrep',
   'prepLogs',
+  'checkPrepDoc',
   'popOutPane',
   'arrangeWindows',
   'toggleCommentsVisible',
@@ -5175,6 +5177,7 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   startRound: 'Start Round Mode',
   endPrep: 'End Prep / Round Session',
   prepLogs: 'Prep / Round Logs',
+  checkPrepDoc: 'Check Prep Document',
   popOutPane: 'Pop Out Pane to New Window',
   arrangeWindows: 'Arrange Windows',
   toggleCommentsVisible: 'Show / Hide Comments',
@@ -5625,6 +5628,7 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   startRound: '',
   endPrep: '',
   prepLogs: '',
+  checkPrepDoc: '',
   popOutPane: '',
   arrangeWindows: '',
   toggleCommentsVisible: '',
@@ -5928,6 +5932,8 @@ export interface RibbonContext {
   startRound: () => void;
   endPrep: () => void;
   prepLogs: () => void;
+  /** Compare the focused prep doc with the seal stored in its file. */
+  checkPrepDoc: () => void;
   /** Three-pane: move the focused pane's doc into its own window. */
   popOutPane: () => void;
   /** Arrange Windows: speech doc on one side, everything else on the
@@ -6176,6 +6182,7 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   startRound: () => {},
   endPrep: () => {},
   prepLogs: () => {},
+  checkPrepDoc: () => {},
   popOutPane: () => {},
   arrangeWindows: () => {},
   openShortcutsReference: () => {},
@@ -6488,6 +6495,7 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
     case 'startRound': return (_state, dispatch) => { if (dispatch) ctx.startRound(); return true; };
     case 'endPrep': return (_state, dispatch) => { if (dispatch) ctx.endPrep(); return true; };
     case 'prepLogs': return (_state, dispatch) => { if (dispatch) ctx.prepLogs(); return true; };
+    case 'checkPrepDoc': return (_state, dispatch) => { if (dispatch) ctx.checkPrepDoc(); return true; };
     case 'newFlow':
       return (_state, dispatch) => {
         if (!dispatch) return true;

@@ -266,6 +266,8 @@ function scheduleJournalForRecord(record: DocRecord): void {
 async function runJournalForRecord(record: DocRecord): Promise<boolean> {
   const host = getHost();
   if (!host.journalsSupported) return true;
+  // A partner's copy of an Isolation prep doc keeps no recovery file.
+  if (prepRuntime.isolationCopies.has(record.uid)) return true;
   try {
     const state = record.view.state;
     const bytes = await serializeNativeAsync(state.doc, {
@@ -1583,6 +1585,17 @@ class MultiPaneShell {
     const slot = this.slots[target];
     const record = buildDocRecord(doc ? 'Prep flow' : 'Prep document', doc ?? makeBlankDoc(), slot, { handle: null, format: null });
     slot.push(record); record.view.focus(); prepInventoryChanged(); return record.uid;
+  }
+  /** Close the doc with `uid` without saving or prompting (its recovery
+   *  journal is cleared by the normal close path). For a partner's copy of
+   *  an Isolation prep doc once co-editing ends. */
+  async discardDoc(uid: string): Promise<void> {
+    for (const slot of Object.values(this.slots)) for (const rec of [...slot.stack]) {
+      if (rec.uid !== uid) continue;
+      rec.dirty = false;
+      await slot.closeRecord(rec);
+    }
+    prepInventoryChanged();
   }
   async closeNonPrep(): Promise<boolean> {
     for (const slot of Object.values(this.slots)) for (const rec of [...slot.stack]) {
@@ -4248,7 +4261,7 @@ export function mountMultiPaneShell(): void {
   shell = new MultiPaneShell();
   setMultiDocReloadFromDisk((handle) => shell!.reloadFromDisk(handle));
   enableMultiDocMode({
-    prep: { documents: () => shell!.prepDocuments(), create: doc => shell!.createPrepDocument(doc), closeNonPrep: () => shell!.closeNonPrep() },
+    prep: { documents: () => shell!.prepDocuments(), create: doc => shell!.createPrepDocument(doc), closeNonPrep: () => shell!.closeNonPrep(), discard: uid => shell!.discardDoc(uid) },
     onFileOpen: (file) => shell!.onFileOpen(file),
     onFilesOpen: (files) => shell!.onFilesOpen(files),
     showInContext: (req) => shell!.showInContext(req),

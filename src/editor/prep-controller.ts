@@ -1,7 +1,9 @@
 import { configurePrepGuards } from './prep-document-guard.js';
 import { createPrepLogReport, formatPrepTimeRange, prepReportSummary, type PrepLogReport } from '../../apps/desktop/src/prep-log-report.js';
 import { prepDoc, prepRound, prepRuntime, prepTransferBlocked, type PrepStatus } from './prep-runtime.js';
-import { confirmDialog, alertDialog } from './text-prompt.js';
+import { confirmDialog, alertDialog, promptForText } from './text-prompt.js';
+import { prepFingerprint } from './prep-fingerprint.js';
+import { prepSealFor, setPrepSeal } from '../native/index.js';
 import { showToast } from './toast.js';
 import { newWorkbook, serializeFlow, parseFlow } from '../flow/flow-model.js';
 import { schema } from '../schema/index.js';
@@ -13,11 +15,14 @@ export interface PrepAdapter {
   focused(): string | null;
   create(doc?: PMNode): Promise<string | null>;
   closeNonPrep(): Promise<boolean>;
-  endCollaboration(onlyPrep: boolean): Promise<boolean>;
+  /** round: keep Co-Flowing prep docs; end: prep docs only; failure: everything. */
+  endCollaboration(action: 'round' | 'end' | 'failure'): Promise<boolean>;
   hasCollaboration(uid: string): boolean;
   identity(uid: string): string;
 }
 interface Audit { kind: string; uid: string | null; data: unknown }
+interface PrepDocFingerprint { document: string; persistentId: string | null; name: string; fingerprint: string }
+interface SealCheck { status: 'unchanged' | 'modified' | 'wrong-code' | 'damaged' | 'not-in-seal'; prepStartedAt?: string; roundStartedAt?: string | null; endedAt?: string; name?: string; sealCode?: string }
 interface LogSummary { id: string; valid: boolean; start?: string; end?: string | null; round?: string | null; finalHash?: string; sealCode?: string; events?: number; blocked?: number;
   characters?: number; outsideMs?: number; flagged?: number; typingByMinute?: Array<{ minute: number; characters: number; wpm: number }> }
 interface PrepApi {
@@ -28,7 +33,9 @@ interface PrepApi {
   logs(): Promise<LogSummary[]>;
   readLog(id: string): Promise<string>;
   exportLog(id: string, format?: 'raw' | 'readable', timeZone?: string): Promise<boolean>;
-  prepared(requestId: string, ok: boolean): void;
+  prepared(requestId: string, ok: boolean, fingerprints?: PrepDocFingerprint[]): void;
+  checkSeal?(payload: { certificate: unknown; code: string; persistentId: string | null; fingerprint: string }): Promise<SealCheck>;
+  onSealed?(fn: (sealed: { certificate: unknown; persistentIds: string[] }) => void): () => void;
   onState(fn: (state: PrepStatus) => void): () => void;
   onPrepare(fn: (req: { requestId: string; action: 'round' | 'end' }) => void): () => void;
 }
@@ -88,7 +95,7 @@ function update(status: PrepStatus): void {
   document.body.classList.toggle('pmd-round-mode', status.session?.mode === 'round');
   document.body.classList.toggle('pmd-prep-paused', !!status.error);
   render(); prepInventoryChanged();
-  if (failedNow && adapter) void adapter.endCollaboration(false).catch(() => {});
+  if (failedNow && adapter) void adapter.endCollaboration('failure').catch(() => {});
 }
 function record(kind: string, uid: string | null, data: unknown): void {
   if (!prepRuntime.status.session) return;
@@ -157,12 +164,13 @@ async function action(name: string, uid?: string): Promise<void> {
   await api.action(name, uid);
   update(await api.ready());
 }
-export async function runPrepCommand(command: 'startPrep' | 'newPrep' | 'newPrepFlow' | 'markPrep' | 'startRound' | 'endPrep' | 'prepLogs'): Promise<void> {
+export async function runPrepCommand(command: 'startPrep' | 'newPrep' | 'newPrepFlow' | 'markPrep' | 'startRound' | 'endPrep' | 'prepLogs' | 'checkPrepDoc'): Promise<void> {
   if (!api || !adapter) { showToast('Prep / Round Modes require the desktop app.'); return; }
   if (busy) return;
   busy = true;
   try {
     if (command === 'prepLogs') { await openLogs(); return; }
+    if (command === 'checkPrepDoc') { await checkPrepDocument(); return; }
     if (prepRuntime.status.transitioning) throw new Error('A mode transition is already in progress.');
     if (command === 'startPrep') {
       if (await confirmDialog('New prep documents will block clipboard and drag transfers. Their typing stays in a local log until you export it. Other documents stay unrestricted during Prep Mode.', { title: 'Start Prep Mode?', okLabel: 'Start Prep' })) await action('start');
@@ -186,11 +194,51 @@ export async function runPrepCommand(command: 'startPrep' | 'newPrep' | 'newPrep
       await flush();
       const result = await api.action('end') as { state: { prepStartedAt: string; roundStartedAt: string | null; endedAt: string }; sealCode: string; finalHash: string };
       update(await api.ready());
-      await alertDialog(`Prep started: ${new Date(result.state.prepStartedAt).toLocaleString()}\nRound started: ${result.state.roundStartedAt ? new Date(result.state.roundStartedAt).toLocaleString() : 'Not started'}\nEnded: ${new Date(result.state.endedAt).toLocaleString()}\n\nSeal code: ${result.sealCode}\nFinal SHA-256: ${result.finalHash}\n\nHave the judge record the seal independently. The local log can be edited by someone controlling this computer; its chain alone does not prove authenticity.`);
+      await alertDialog(`Prep started: ${new Date(result.state.prepStartedAt).toLocaleString()}\nRound started: ${result.state.roundStartedAt ? new Date(result.state.roundStartedAt).toLocaleString() : 'Not started'}\nEnded: ${new Date(result.state.endedAt).toLocaleString()}\n\nSeal code: ${result.sealCode}\nFinal SHA-256: ${result.finalHash}\n\nHave the judge record the seal independently. The local log can be edited by someone controlling this computer; its chain alone does not prove authenticity.\n\nSave each prep doc as a CardMirror file (.cmir) now: the seal is stored inside it, and Check Prep Document can then tell whether it changed after the round.`);
     }
   } catch (error) { await alertDialog(error instanceof Error ? error.message : String(error)); }
   finally { busy = false; render(); }
 }
+/** Fingerprints of this window's open prep docs, sealed at End. */
+async function openPrepFingerprints(): Promise<PrepDocFingerprint[]> {
+  const out: PrepDocFingerprint[] = [];
+  for (const { uid, name } of adapter!.documents()) {
+    const view = prepRuntime.views.get(uid);
+    if (!prepDoc(uid) || !view) continue;
+    out.push({ document: uid, persistentId: adapter!.identity(uid), name, fingerprint: await prepFingerprint(view.state.doc) });
+  }
+  return out;
+}
+
+const CHECK_RESULTS: Record<SealCheck['status'], [string, string]> = {
+  unchanged: ['Unchanged since the round', 'This document matches the copy sealed when the session ended.'],
+  modified: ['Changed after the round', 'This document is different from the copy sealed when the session ended. Its text or formatting was edited afterward.'],
+  'wrong-code': ['Code does not match', 'This seal code does not match the seal stored in this document. Check the code, or this is not the document that was sealed with it.'],
+  damaged: ['Seal damaged', 'The seal stored in this document has been altered or is unreadable, so it cannot be checked.'],
+  'not-in-seal': ['Not in this seal', 'The seal code matches, but this document was not one of the prep docs sealed in that session.'],
+};
+
+/** Check Prep Document: compare the focused document with the seal stored
+ *  in its file, using the seal code the judge wrote down. */
+async function checkPrepDocument(): Promise<void> {
+  const uid = adapter!.focused();
+  const view = uid ? prepRuntime.views.get(uid) : undefined;
+  if (!uid || !view) throw new Error('Open the prep document (.cmir) you want to check, click into it, then run Check Prep Document again.');
+  const persistentId = adapter!.identity(uid);
+  const certificate = prepSealFor(persistentId);
+  if (certificate === undefined) {
+    throw new Error('This document has no prep seal. A seal is stored when a prep doc is saved as a CardMirror file (.cmir) after its Prep / Round session ends. Word (.docx) copies do not carry it.');
+  }
+  if (!api!.checkSeal) throw new Error('This version cannot check prep seals.');
+  const code = await promptForText({ message: 'Enter the seal code shown when the session ended (16 characters, e.g. 7F3A-91C2-0B4D-E8A1).', placeholder: 'XXXX-XXXX-XXXX-XXXX', okLabel: 'Check' });
+  if (!code) return;
+  const result = await api!.checkSeal({ certificate, code, persistentId, fingerprint: await prepFingerprint(view.state.doc) });
+  const [title, detail] = CHECK_RESULTS[result.status];
+  const when = (iso: string | null | undefined): string => (iso ? new Date(iso).toLocaleString() : 'Not started');
+  const times = result.endedAt ? `\n\nPrep started: ${when(result.prepStartedAt)}\nRound started: ${when(result.roundStartedAt)}\nEnded: ${when(result.endedAt)}` : '';
+  await alertDialog(`${detail}${result.name ? `\n\nSealed as: ${result.name}` : ''}${times}`, { title });
+}
+
 function render(): void {
   if (!bar) return;
   const s = prepRuntime.status;
@@ -208,7 +256,7 @@ function render(): void {
   const actions = document.createElement('div'); actions.className = 'pmd-prep-actions';
   actions.setAttribute('role', 'group'); actions.setAttribute('aria-label', 'Prep and Round actions');
   const commands: Array<[string, Parameters<typeof runPrepCommand>[0]]> = s.session ?
-    [...(s.session.mode === 'prep' ? [['New prep doc', 'newPrep'], ['New prep flow', 'newPrepFlow'], ['Mark as prep', 'markPrep'], ['Start Round', 'startRound']] as Array<[string, Parameters<typeof runPrepCommand>[0]]> : []), ['End session', 'endPrep'], ['Logs', 'prepLogs']] : [['Start Prep', 'startPrep'], ['Logs', 'prepLogs']];
+    [...(s.session.mode === 'prep' ? [['New prep doc', 'newPrep'], ['New prep flow', 'newPrepFlow'], ['Mark as prep', 'markPrep'], ['Start Round', 'startRound']] as Array<[string, Parameters<typeof runPrepCommand>[0]]> : []), ['End session', 'endPrep'], ['Logs', 'prepLogs']] : [['Start Prep', 'startPrep'], ['Logs', 'prepLogs'], ['Check prep doc', 'checkPrepDoc']];
   for (const [text, command] of commands) {
     const button = document.createElement('button'); button.type = 'button'; button.textContent = text;
     button.disabled = busy || s.transitioning || (!!s.error && command !== 'prepLogs');
@@ -281,14 +329,17 @@ export async function initPrepController(hostAdapter: PrepAdapter): Promise<void
         ...(event.kind === 'remote-change' ? { partners: collabCopresenceFor(uid)?.peers.filter(p => !p.self).map(p => p.name) ?? [] } : {}) }); },
   });
   api.onState(update);
+  api.onSealed?.(sealed => { for (const id of sealed.persistentIds) setPrepSeal(id, sealed.certificate); });
   api.onPrepare(req => void (async () => {
     let ok = false;
+    let fingerprints: PrepDocFingerprint[] = [];
     try {
-      ok = await adapter!.endCollaboration(req.action === 'end');
+      ok = await adapter!.endCollaboration(req.action);
       if (ok && req.action === 'round') ok = await adapter!.closeNonPrep();
       await flush(); prepInventoryChanged();
-    } catch (error) { showToast(String(error)); }
-    api!.prepared(req.requestId, ok);
+      if (ok && req.action === 'end') fingerprints = await openPrepFingerprints();
+    } catch (error) { ok = false; showToast(String(error)); }
+    api!.prepared(req.requestId, ok, fingerprints);
   })());
   bar = document.createElement('div'); bar.className = 'pmd-prep-bar'; bar.setAttribute('aria-label', 'Prep and Round Modes'); const statusBar = document.getElementById('status-bar');
   statusBar?.insertBefore(bar, statusBar.querySelector('.zoom-controls'));

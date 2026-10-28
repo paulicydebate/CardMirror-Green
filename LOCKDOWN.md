@@ -136,6 +136,15 @@ So protection is **per document**, not per window.
   - The `filterTransaction` plugin is active only on prep-doc editor states.
 - Main's clipboard refusals are no longer global. The clipboard-read IPC refuses only when the requesting window's focused doc is a prep doc; the renderer must send the doc id, or the check moves into the renderer.
 
+## Round Mode options and Check Prep Document (user, 2026-10-28; built)
+
+- **Settings → "Round Mode: Co-Flowing" (off = Isolation).**
+  - **Isolation:** Round ends co-editing and closes the partner's copy of shared prep docs without saving. The partner keeps their own prep docs.
+  - **Co-Flowing:** shared prep docs stay co-edited through the round, as on paper.
+  - The host's choice is stored in the shared doc.
+- **Check Prep Document:** the seal now covers each open prep doc's content fingerprint, and the seal is stored inside the saved .cmir. Enter the 16-character code to learn whether the doc changed after the round. Codes stay 16 characters for anti-forgery.
+- See CARDMIRROR_GREEN.md "Round Mode options and Check Prep Document".
+
 ## Suggested build order
 
 1. Main-process state, broadcast, border and banner, commands.

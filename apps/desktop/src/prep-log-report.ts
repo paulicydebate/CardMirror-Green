@@ -113,7 +113,7 @@ export function createPrepLogReport(text: string, options: { timeZone?: string; 
       r.target = typeof inputData['target'] === 'string' ? inputData['target'] : '';
       report.rows.push(r); continue;
     }
-    const labels: Record<string, string> = { 'prep-start': 'Prep started', 'round-start': 'Round started', 'session-end': 'Session ended', 'app-restart': 'App restarted', 'app-quit': 'App quit', 'collaboration-ended': 'Collaboration ended' };
+    const labels: Record<string, string> = { 'prep-start': 'Prep started', 'round-start': 'Round started', 'session-end': 'Session ended', 'app-restart': 'App restarted', 'app-quit': 'App quit', 'collaboration-ended': 'Collaboration ended', 'collaboration-kept': 'Co-editing kept (Co-Flowing)', 'document-fingerprints': 'Prep docs sealed' };
     if (labels[e.kind]) report.rows.push(row(e, labels[e.kind]!, '', 'session'));
     else report.rows.push(row(e, 'Other event', e.kind, 'other'));
   }

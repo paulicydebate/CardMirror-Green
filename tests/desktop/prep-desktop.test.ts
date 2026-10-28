@@ -7,6 +7,7 @@ import { join } from 'node:path';
 const mock = vi.hoisted(() => ({
   dir: '', handlers: new Map<string, (...args: any[]) => any>(), listeners: new Map<string, (...args: any[]) => any>(),
   sent: [] as Array<{ channel: string; value: any }>, allow: true, onPrepare: null as null | ((id: number, request: any) => void),
+  fingerprints: [] as any[],
 }));
 vi.mock('electron', () => ({
   app: { getPath: () => mock.dir, on: vi.fn() },
@@ -24,14 +25,14 @@ function win(id: number): any {
     mock.sent.push({ channel, value });
     if (channel === 'prep:prepare') queueMicrotask(() => {
       mock.onPrepare?.(id, value);
-      mock.listeners.get('prep:prepared')!({ sender: { id } }, { requestId: value.requestId, ok: mock.allow });
+      mock.listeners.get('prep:prepared')!({ sender: { id } }, { requestId: value.requestId, ok: mock.allow, fingerprints: mock.fingerprints });
     });
   } } };
 }
 beforeEach(async () => {
   vi.resetModules();
   mock.dir = mkdtempSync(join(tmpdir(), 'cm-prep-native-')); mock.handlers.clear(); mock.listeners.clear(); mock.sent.length = 0;
-  mock.allow = true; mock.onPrepare = null;
+  mock.allow = true; mock.onPrepare = null; mock.fingerprints = [];
   desktop = await import('../../apps/desktop/src/prep-desktop.js');
   desktop.registerPrepDesktop(() => {}); desktop.trackPrepWindow(win(1));
   await invoke('prep:ready');
@@ -135,5 +136,21 @@ describe('desktop Prep controller boundary', () => {
     const closed = testWindow.on.mock.calls.find((call: any[]) => call[0] === 'closed')[1];
     Object.defineProperty(testWindow, 'webContents', { get: () => { throw new Error('destroyed'); } });
     expect(() => closed()).not.toThrow();
+  });
+  it('seals only this window\'s prep docs at End, tells every window, and checks a seal', async () => {
+    await prepDoc();
+    const fp = 'a'.repeat(64);
+    mock.fingerprints = [
+      { document: 'prep', persistentId: 'file-prep', name: 'Gov case', fingerprint: fp },
+      { document: 'strategy', persistentId: 'file-strategy', name: 'Doc 1', fingerprint: 'b'.repeat(64) },
+    ];
+    const result = await invoke('prep:action', 'end');
+    expect(result.certificate.entries[0].data.docs.map((d: any) => d.persistentId)).toEqual(['file-prep']);
+    const sealed = mock.sent.find(e => e.channel === 'prep:sealed')!.value;
+    expect(sealed.persistentIds).toEqual(['file-prep']);
+    const check = (code: string, fingerprint: string) => invoke('prep:check-seal', { certificate: sealed.certificate, code, persistentId: 'file-prep', fingerprint });
+    expect(check(result.sealCode, fp)).toMatchObject({ status: 'unchanged', name: 'Gov case' });
+    expect(check(result.sealCode, 'c'.repeat(64)).status).toBe('modified');
+    expect(() => invoke('prep:check-seal', { certificate: null, code: 5, persistentId: null, fingerprint: fp })).toThrow('Invalid check');
   });
 });

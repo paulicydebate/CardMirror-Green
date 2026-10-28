@@ -188,3 +188,29 @@ Previous 1.16.5 release did publish successfully: https://github.com/paulicydeba
 [Three-platform CI 40604928632](https://github.com/paulicydebate/CardMirror-Green/actions/runs/40604928632) passed Mac and Windows; Linux attempt 1 hit the previously documented intermittent spectator Watch-dialog failure (`no prompt button labeled "Watch"`, collab-ui-flows.test.ts:912). Its failed job was retried; attempt 2 was still running at this note. Do not describe all CI as green until checking the retry. The published Mac/Windows release runs passed the full configured suites independently. Real two-machine Gov case / Off 1 behavior and the user's update installation are still pending user confirmation. Both collaborators must install 1.16.6 or later. No personal desktop app was launched or controlled.
 
 Final CI result: run 40604928632 attempt 2 completed successfully on Linux, Mac and Windows. The unchanged Linux retry passed; all configured release, preview and CI checks are now green for implementation 19cd2271. Real two-machine confirmation remains the next user check.
+
+### Round Mode options and Check Prep Document (Claude, 2026-10-28)
+
+**Round Mode setting.** Settings → General → Prep / Round → "Round Mode: Co-Flowing" (`prepRoundCoflow`, off by default).
+- **Off (Isolation, the default and the earlier behavior):** Round ends all co-editing. A partner's copy of a shared prep doc closes on their computer without saving: no save prompt, no recovery journal, no session record, no session history, and it drops off recent rooms. While shared, that copy refuses Save, Save As and preset exports. The partner's own prep docs stay open. The host ending the shared doc at any time also closes the partner's copy, including for a partner who was offline and reconnects later.
+- **On (Co-Flowing):** Round keeps co-editing shared prep docs and flows. Non-prep sessions still end, and starting or joining new sessions stays blocked; reconnecting to a Co-Flowing prep doc is allowed. End session disconnects as before, and the partner keeps their copy.
+- **Where the choice lives:** the host's setting is written into the shared doc (`cardmirrorGreenRoundMode` in the encrypted room meta) when sharing starts. Both computers follow that per doc; docs shared before this change act as Isolation.
+- **Logging:** kept sessions are logged as `collaboration-kept`, and closed copies as `collaboration-ended` with `closedCopy`.
+- **Limit:** a modified client could ignore the close.
+
+**Check Prep Document.** At End, each window sends a content fingerprint of every open prep doc (`src/editor/prep-fingerprint.ts`). The fingerprint is a SHA-256 of text, structure, formatting values, flow cells and images; it leaves out ids, comment anchors, reading markers and column widths. Main appends a `document-fingerprints` entry just before `session-end`, so the 16-hex-digit seal code covers it.
+- **Certificate:** those two entries form a small certificate. It is broadcast to every window and saved inside each sealed prep doc's .cmir file (`prepSeal`, keyed by the file's docId), and it survives reopen and save.
+- **The command:** "Check Prep Document" (command bar, File group, status-bar menu when no session is running). It asks for the seal code and reports one of: unchanged, changed after the round, code doesn't match, seal damaged, or not in this seal. It also shows the prep, round and end times.
+- **Why the code can't be faked:** forging a matching seal means finding a 64-bit hash match, which is why the code stays 16 characters.
+- **Limits:**
+  - Word (.docx) saves don't carry the seal.
+  - Prep docs closed before End are not fingerprinted.
+  - The debater must save the .cmir after End, and the end dialog says so.
+
+**Tests:**
+- `tests/desktop/prep-session.test.ts`: seal and check statuses, including a forged fingerprint.
+- `tests/desktop/prep-desktop.test.ts`: only a window's own prep docs get sealed, plus the broadcast and the check IPC.
+- `tests/editor/prep-fingerprint.test.ts`: stable through save and reopen, changes on edits, and the seal stored in and restored from the .cmir.
+- `tests/collab/prep-round-mode.test.ts`, with a real relay mock: Isolation Round closes the partner copy and blocks saving it; the host ending the doc closes the partner copy; Co-Flowing keeps the session through Round.
+
+No desktop app was launched.

@@ -10,7 +10,7 @@
 import { EditorState, Plugin, Selection, TextSelection, type Command } from 'prosemirror-state';
 import { prepDocumentGuard } from './prep-document-guard.js';
 import { initPrepController, prepCreated, prepMarkCreated, prepCreateBlank, prepRestoreIdentity, prepFlush, prepOpened, prepInventoryChanged, prepOpenAllowed, runPrepCommand } from './prep-controller.js';
-import { prepDoc, prepRound, prepRuntime } from './prep-runtime.js';
+import { prepDoc, prepIsolationCopyBlocked, prepRound, prepRuntime } from './prep-runtime.js';
 import { serializeRangesForClipboard, serializeNodesForClipboard } from './clipboard-slice.js';
 import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
@@ -1114,7 +1114,7 @@ let multiDocSetFilenameForUid: ((uid: string, name: string) => void) | null = nu
 /** App-quit path: the shell prompts to save every unsaved pane, returning false
  *  if the user cancels (abort the quit). null in single-doc mode. */
 let multiDocPromptSaveAllForQuit: (() => Promise<boolean>) | null = null;
-let multiDocPrep: { documents(): Array<{ uid: string; name: string }>; create(doc?: PMNode): Promise<string | null>; closeNonPrep(): Promise<boolean> } | null = null;
+let multiDocPrep: { documents(): Array<{ uid: string; name: string }>; create(doc?: PMNode): Promise<string | null>; closeNonPrep(): Promise<boolean>; discard(uid: string): Promise<void> } | null = null;
 
 /** Full focused-file plumbing for the Save / Save-As flow — reads
  *  the filename plus the on-disk handle and on-disk format. */
@@ -1533,6 +1533,7 @@ const collabDeps = {
   // registered here). Lets a session bind to its OWNER's view, not the focused
   // one — so each doc's presence/comments render in its own pane.
   getViewForUid: (uid: string) => getSpeechDocResolver().viewForUid(uid),
+  discardDoc: (uid: string) => discardDocByUid(uid),
   // The blessed same-view plugin swap (same pattern as the keybinding
   // settings subscriber): a session starting/ending changes the plugin
   // stack, and buildEditorPlugins consults the collab plugin source. Pass the
@@ -1626,6 +1627,7 @@ function makeMultiPaneSessionDeps(existingUid?: string) {
     getView: () => viewFor(uid) ?? getActiveView(),
     getOwnerUid: () => uid,
     getViewForUid: (u: string) => getSpeechDocResolver().viewForUid(u),
+    discardDoc: (u: string) => discardDocByUid(u),
     refreshPlugins: () => {
       const v = viewFor(uid);
       if (v) v.updateState(v.state.reconfigure({ plugins: buildEditorPlugins(uid) }));
@@ -1817,6 +1819,7 @@ const ribbonContext: RibbonContext = {
   startRound: () => void runPrepCommand('startRound'),
   endPrep: () => void runPrepCommand('endPrep'),
   prepLogs: () => void runPrepCommand('prepLogs'),
+  checkPrepDoc: () => void runPrepCommand('checkPrepDoc'),
   popOutPane: () => {
     if (!multiDocActive) {
       showToast('Pop out works in three-pane mode: it moves a pane into its own window.');
@@ -4630,7 +4633,7 @@ document.addEventListener('keydown', suppressGuiSelectAll, true);
  *  view-ful by the time this fires, but multi-doc with no panes
  *  open hits this path. */
 const VIEWLESS_RIBBON_COMMANDS = new Set<AnyCommandId>([
-  'startPrep', 'newPrep', 'newPrepFlow', 'markPrep', 'startRound', 'endPrep', 'prepLogs',
+  'startPrep', 'newPrep', 'newPrepFlow', 'markPrep', 'startRound', 'endPrep', 'prepLogs', 'checkPrepDoc',
   'newDocument',
   // Settings-only; no doc needed.
   'resetDefaultColors',
@@ -4702,7 +4705,7 @@ const VIEWLESS_RIBBON_COMMANDS = new Set<AnyCommandId>([
 ]);
 
 function runViewlessRibbon(id: AnyCommandId): void {
-  if (['startPrep', 'newPrep', 'newPrepFlow', 'markPrep', 'startRound', 'endPrep', 'prepLogs'].includes(id)) {
+  if (['startPrep', 'newPrep', 'newPrepFlow', 'markPrep', 'startRound', 'endPrep', 'prepLogs', 'checkPrepDoc'].includes(id)) {
     void runPrepCommand(id as Parameters<typeof runPrepCommand>[0]); return;
   }
   switch (id) {
@@ -7486,6 +7489,18 @@ function mountFreshBlankDoc(): void {
  *  prompt as the window-close flow). From home itself (no doc
  *  open) this is a no-op — the OS close button / quit path owns
  *  actually closing the window. */
+/** Close the doc with `uid` without saving or prompting, dropping its
+ *  recovery journal: a partner's copy of an Isolation prep doc. */
+async function discardDocByUid(uid: string): Promise<void> {
+  if (multiDocActive && multiDocPrep) { await multiDocPrep.discard(uid); return; }
+  if (uid !== currentDocUid || prepClosedToHome) return;
+  await clearCurrentJournal().catch(() => {});
+  mountFreshBlankDoc();
+  homeScreen.show();
+  prepClosedToHome = true;
+  prepInventoryChanged();
+}
+
 async function handleCloseDocToHome(): Promise<void> {
   try {
     await handleCloseDocToHomeInner();
@@ -8470,6 +8485,10 @@ export async function runSaveAsFlow(): Promise<boolean> {
 }
 
 async function runSaveAsFlowInner(): Promise<boolean> {
+  if (prepIsolationCopyBlocked(activeDocIdentity().sessionUid)) {
+    showToast("This is your partner's shared prep doc (Isolation Round Mode). It can't be saved or exported here.");
+    return false;
+  }
   const file = activeFile();
   // The doc this save is FOR, fixed now: every later step commits to it
   // by uid, whatever is focused when the awaits return.
@@ -8626,6 +8645,10 @@ interface SilentExportSpec {
   };
 }
 async function runSilentExportFlow(spec: SilentExportSpec): Promise<boolean> {
+  if (prepIsolationCopyBlocked(activeDocIdentity().sessionUid)) {
+    showToast("This is your partner's shared prep doc (Isolation Round Mode). It can't be saved or exported here.");
+    return false;
+  }
   const file = activeFile();
   const format: 'cmir' | 'docx' = effectiveDocTypeFormat(spec.formatKey);
   const base = basenameWithoutExt(file.filename ?? 'untitled');
@@ -9042,6 +9065,10 @@ function ensureDiskBadge(): void {
 }
 
 async function runSaveFlowInner(): Promise<boolean> {
+  if (prepIsolationCopyBlocked(activeDocIdentity().sessionUid)) {
+    showToast("This is your partner's shared prep doc (Isolation Round Mode). It can't be saved or exported here.");
+    return false;
+  }
   const file = activeFile();
   // Captured before any await: a keep-both copy commits to THIS doc.
   const saveUid = activeDocIdentity().sessionUid;
@@ -9368,6 +9395,8 @@ async function runJournalWrite(): Promise<boolean> {
   const handle = currentDocHandle;
   const format = currentDocFormat;
   const docId = currentDocId;
+  // A partner's copy of an Isolation prep doc keeps no recovery file.
+  if (prepRuntime.isolationCopies.has(uid)) return true;
   try {
     const bytes = await serializeNativeAsync(view.state.doc, {
       threads: Array.from(getCommentsState(view.state).threads.values()),
@@ -10540,9 +10569,9 @@ const prepBoot = initPrepController({
     if (uid === activeDocIdentity().sessionUid) return ensureActiveDocId();
     const id = resolveDocPersistentId(uid) ?? crypto.randomUUID(); setDocIdFor(uid, id); return id;
   },
-  endCollaboration: async onlyPrep => {
+  endCollaboration: async action => {
     const m = await loadCollabUi();
-    const ok = await m.disconnectForPrep(onlyPrep, !!prepRuntime.status.error);
+    const ok = await m.disconnectForPrep(action, !!prepRuntime.status.error);
     // Reconfiguration destroys/re-registers the guard's view entry. Iterate a
     // snapshot so deleting/reinserting a Map key cannot repeat it forever.
     for (const [uid, v] of [...prepRuntime.views]) v.updateState(v.state.reconfigure({ plugins: buildEditorPlugins(uid) }));

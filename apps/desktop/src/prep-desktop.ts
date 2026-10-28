@@ -3,7 +3,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, type IpcMainInvokeEvent
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { PrepSession, verifyPrepLog, type PrepSessionState } from './prep-session.js';
+import { PrepSession, checkPrepSeal, verifyPrepLog, type PrepFingerprint, type PrepSessionState } from './prep-session.js';
 import { createPrepLogReport, exportPrepLogReport } from './prep-log-report.js';
 
 export interface PrepStatus { session: PrepSessionState | null; transitioning: boolean; error: string | null }
@@ -11,7 +11,7 @@ let owner: PrepSession | null = null;
 let error: string | null = null;
 let transitioning = false;
 const windows = new Map<number, { win: BrowserWindow; ready: boolean; docs: Set<string>; focused: string | null }>();
-const waiters = new Map<string, { sender: number; resolve: (ok: boolean) => void }>();
+const waiters = new Map<string, { sender: number; resolve: (ok: boolean, fingerprints: PrepFingerprint[]) => void }>();
 let onRound: (() => void) | null = null;
 
 function service(): PrepSession {
@@ -105,16 +105,24 @@ export const prepHandle: typeof ipcMain.handle = (channel, listener) => {
   });
 };
 
-async function prepareAll(action: 'round' | 'end'): Promise<boolean> {
+/** Ask every editor window to get ready for the transition. For End, each
+ * window also returns the fingerprints of its open prep docs. */
+async function prepareAll(action: 'round' | 'end'): Promise<{ ok: boolean; fingerprints: PrepFingerprint[] }> {
   const targets = [...windows.values()].filter(w => !w.win.isDestroyed());
   if (targets.some(w => !w.ready)) throw new Error('An editor window is still loading. Try again once it is ready.');
-  const results = await Promise.all(targets.map(({ win }) => new Promise<boolean>(resolve => {
+  const results = await Promise.all(targets.map(({ win, docs }) => new Promise<{ ok: boolean; fingerprints: PrepFingerprint[] }>(resolve => {
     const requestId = randomUUID();
-    const timer = setTimeout(() => { waiters.delete(requestId); resolve(false); }, 180_000);
-    waiters.set(requestId, { sender: win.webContents.id, resolve: ok => { clearTimeout(timer); resolve(ok); } });
+    const timer = setTimeout(() => { waiters.delete(requestId); resolve({ ok: false, fingerprints: [] }); }, 180_000);
+    waiters.set(requestId, { sender: win.webContents.id, resolve: (ok, fingerprints) => {
+      clearTimeout(timer);
+      // A window may only fingerprint its own prep docs.
+      resolve({ ok, fingerprints: fingerprints.filter(f => f && typeof f.document === 'string' && docs.has(f.document) && prepIsProtected(f.document)) });
+    } });
     win.webContents.send('prep:prepare', { requestId, action });
   })));
-  return results.every(Boolean);
+  const seen = new Set<string>();
+  const fingerprints = results.flatMap(r => r.fingerprints).filter(f => !seen.has(f.document) && !!seen.add(f.document));
+  return { ok: results.every(r => r.ok), fingerprints };
 }
 function assertReady(event: IpcMainInvokeEvent): NonNullable<ReturnType<typeof windows.get>> {
   const w = windows.get(event.sender.id);
@@ -133,10 +141,19 @@ export function registerPrepDesktop(roundCallback: () => void): void {
     w.docs = new Set(payload.docs.filter(id => typeof id === 'string' && id.length <= 150));
     w.focused = w.docs.has(payload.focused ?? '') ? payload.focused : null;
   });
-  ipcMain.on('prep:prepared', (e, payload: { requestId: string; ok: boolean }) => {
+  ipcMain.on('prep:prepared', (e, payload: { requestId: string; ok: boolean; fingerprints?: unknown }) => {
     const pending = waiters.get(payload?.requestId);
     if (!pending || pending.sender !== e.sender.id) return;
-    waiters.delete(payload.requestId); pending.resolve(payload.ok === true);
+    const fingerprints = Array.isArray(payload.fingerprints) ? payload.fingerprints.slice(0, 200) as PrepFingerprint[] : [];
+    waiters.delete(payload.requestId); pending.resolve(payload.ok === true, fingerprints);
+  });
+  // Check Prep Document: works with no session running (e.g. on a judge's
+  // computer); the renderer computes the open document's fingerprint.
+  ipcMain.handle('prep:check-seal', (e, payload: { certificate: unknown; code: unknown; persistentId: unknown; fingerprint: unknown }) => {
+    assertReady(e);
+    if (typeof payload?.code !== 'string' || payload.code.length > 200 || typeof payload.fingerprint !== 'string' ||
+        !(payload.persistentId === null || typeof payload.persistentId === 'string')) throw new Error('Invalid check request.');
+    return checkPrepSeal(payload.certificate, payload.code, payload.persistentId, payload.fingerprint);
   });
   ipcMain.handle('prep:ready', e => { assertReady(e).ready = true; return prepStatus(); });
   ipcMain.handle('prep:action', async (e, action: string, uid?: unknown) => {
@@ -171,13 +188,18 @@ export function registerPrepDesktop(roundCallback: () => void): void {
     if (!service().snapshot()) throw new Error('Start Prep Mode first.');
     transitioning = true; broadcast();
     try {
-      if (!(await prepareAll(action))) throw new Error('Mode change canceled. Prep Mode remains active; documents already closed stay closed.');
+      const prepared = await prepareAll(action);
+      if (!prepared.ok) throw new Error('Mode change canceled. Prep Mode remains active; documents already closed stay closed.');
       if (action === 'round') {
         for (const w of windows.values()) if ([...w.docs].some(id => !prepIsProtected(id))) throw new Error('A non-prep document is still open. Close it and try again.');
         run(() => service().startRound()); onRound?.();
         return prepStatus();
       }
-      return run(() => service().end());
+      const ended = run(() => service().end(prepared.fingerprints));
+      // Every window stores the seal with its prep docs, so their next save carries it.
+      const sealed = { certificate: ended.certificate, persistentIds: prepared.fingerprints.map(f => f.persistentId).filter((id): id is string => !!id) };
+      for (const { win } of windows.values()) if (!win.isDestroyed()) win.webContents.send('prep:sealed', sealed);
+      return ended;
     } finally { transitioning = false; broadcast(); }
   });
   ipcMain.handle('prep:events', (e, events: Array<{ kind: Parameters<PrepSession['record']>[0]; uid: string | null; data: unknown }>) => {
@@ -185,10 +207,10 @@ export function registerPrepDesktop(roundCallback: () => void): void {
     if (!Array.isArray(events) || events.length > 2000) throw new Error('Invalid audit batch.');
     return run(() => {
       for (const event of events) {
-        if (!['input', 'macro', 'autocorrect', 'undo', 'redo', 'blocked', 'focus', 'blur', 'document-opened', 'document-closed', 'document-saved', 'collaboration-ended', 'remote-insert', 'app-quit'].includes(event.kind)) throw new Error('Invalid audit event.');
+        if (!['input', 'macro', 'autocorrect', 'undo', 'redo', 'blocked', 'focus', 'blur', 'document-opened', 'document-closed', 'document-saved', 'collaboration-ended', 'collaboration-kept', 'remote-insert', 'app-quit'].includes(event.kind)) throw new Error('Invalid audit event.');
         // Closing a non-prep doc queues its metadata event after it has left
         // inventory. Content events are independently restricted by PrepSession.
-        if (event.uid && !w.docs.has(event.uid) && !prepIsProtected(event.uid) && !['document-opened', 'document-closed', 'document-saved', 'collaboration-ended', 'blocked'].includes(event.kind)) throw new Error('Unknown audit document.');
+        if (event.uid && !w.docs.has(event.uid) && !prepIsProtected(event.uid) && !['document-opened', 'document-closed', 'document-saved', 'collaboration-ended', 'collaboration-kept', 'blocked'].includes(event.kind)) throw new Error('Unknown audit document.');
         service().record(event.kind, event.data, w.win.id, event.uid);
       }
     });
