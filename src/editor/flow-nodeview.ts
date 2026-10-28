@@ -33,6 +33,7 @@ import {
   insertRows,
   newWorkbook,
   newFlowId,
+  moveSheet,
   nextOffName,
   parseFlow,
   renameSheet,
@@ -47,6 +48,7 @@ import {
   type FlowSheet,
   type FlowWorkbook,
 } from '../flow/flow-model.js';
+import { flowKeyForEvent, validFlowShortcut, displayFlowShortcut } from './flow-shortcuts.js';
 import { confirmDialog, promptForText } from './text-prompt.js';
 import { flowUpdateSource, markPrepFlowReconciliation, PREP_FLOW_RECONCILE_ORIGIN } from './prep-document-guard.js';
 import { EditHistory, maxFlowClock, mergeIncoming, recordLocalEdit, stampFlowEdit } from '../flow/flow-merge.js';
@@ -133,6 +135,10 @@ export class FlowWorkbookView implements NodeView {
   private clock = 0;
   /** Fingerprints of states I have held, so my own undo/redo is never "merged". */
   private readonly pastStates: string[] = [];
+  private selectedCells = new Set<string>();
+  private rangeSelection = false;
+  private selectionAnchor: { rowId: string; col: ColKey } | null = null;
+  private draggedSheet: string | null = null;
   private appearanceOpen = false;
   private theme: FlowTheme = loadFlowTheme();
   private readonly unsubscribeTheme: () => void;
@@ -183,6 +189,7 @@ export class FlowWorkbookView implements NodeView {
    *  reaches the bottom and scrolls inside itself like a spreadsheet. */
   private fitHeight(): void {
     if (!this.dom.isConnected) return;
+    if (this.view.dom.classList.contains('pmd-flow-workspace')) { this.dom.style.height = '100%'; return; }
     const sc = this.scroller();
     const visible = sc ? sc.clientHeight : window.innerHeight;
     const style = getComputedStyle(this.dom);
@@ -242,7 +249,7 @@ export class FlowWorkbookView implements NodeView {
     this.book = book;
     this.lastData = data;
     this.remember(data);
-    if (!this.book.sheets.some((s) => s.id === this.sheetId)) this.sheetId = this.book.sheets[0]!.id;
+    if (!this.book.sheets.some((s) => s.id === this.sheetId)) { this.sheetId = this.book.sheets[0]!.id; this.resetCellSelection(); }
     this.refreshFrom(before);
     // Re-send my kept cells so the partner gets them too (after this update finishes).
     if (keptMine) setTimeout(() => this.commit(this.book, true), 0);
@@ -371,6 +378,7 @@ export class FlowWorkbookView implements NodeView {
     const main = el('div', 'pmd-flow-main');
     main.append(this.renderTopbar(), this.expandedCol === null ? this.renderGrid() : this.renderColumnDoc());
     this.dom.replaceChildren(this.renderSidebar(), main);
+    this.paintSelection();
     if (this.appearanceOpen) this.dom.appendChild(this.renderAppearance());
     requestAnimationFrame(() => {
       this.dom.querySelectorAll('textarea').forEach((t) => autoGrow(t));
@@ -387,14 +395,41 @@ export class FlowWorkbookView implements NodeView {
       tab.type = 'button';
       tab.setAttribute('role', 'tab');
       tab.setAttribute('aria-selected', String(s.id === this.sheetId));
-      tab.title = 'Double-click to rename';
+      tab.title = 'Drag to reorder. Double-click to rename. Alt+Up/Down also reorders.';
       tab.addEventListener('click', () => {
         if (this.sheetId === s.id) return;
         this.sheetId = s.id;
+        this.resetCellSelection();
         this.expandedCol = null;
         this.render({ row: 0, col: 0, caret: 'end' });
       });
       tab.addEventListener('dblclick', () => void this.rename(s));
+      tab.dataset['flowSheetId'] = s.id;
+      tab.draggable = true;
+      tab.addEventListener('dragstart', event => {
+        this.draggedSheet = s.id;
+        if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('application/x-cardmirror-flow-sheet', s.id); }
+      });
+      tab.addEventListener('dragend', () => { this.draggedSheet = null; });
+      tab.addEventListener('dragover', event => { if (this.draggedSheet) { event.preventDefault(); tab.classList.add('pmd-flow-drop-target'); if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'; } });
+      tab.addEventListener('dragleave', () => tab.classList.remove('pmd-flow-drop-target'));
+      tab.addEventListener('drop', event => {
+        tab.classList.remove('pmd-flow-drop-target');
+        if (!this.draggedSheet) return;
+        event.preventDefault(); event.stopPropagation();
+        const from = this.book.sheets.findIndex(sheet => sheet.id === this.draggedSheet);
+        const to = this.book.sheets.findIndex(sheet => sheet.id === s.id);
+        if (from >= 0 && to >= 0) { this.commit(moveSheet(this.book, this.draggedSheet, to)); this.render(); }
+        this.draggedSheet = null;
+      });
+      tab.addEventListener('keydown', event => {
+        if (!event.altKey || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
+        event.preventDefault();
+        const index = this.book.sheets.findIndex(sheet => sheet.id === s.id);
+        this.commit(moveSheet(this.book, s.id, index + (event.key === 'ArrowUp' ? -1 : 1)));
+        this.render();
+        this.dom.querySelector<HTMLButtonElement>(`[data-flow-sheet-id="${s.id}"]`)?.focus();
+      });
       bar.appendChild(tab);
     }
     const adds = el('div', 'pmd-flow-adds');
@@ -447,7 +482,7 @@ export class FlowWorkbookView implements NodeView {
       this.tool('B', `Bold (${isMac ? 'Cmd' : 'Ctrl'}+B)`, flag('bold'), !inGrid),
       this.tool('S\u0336', `Cross out (${isMac ? 'Cmd' : 'Ctrl'}+Shift+X)`, flag('crossed'), !inGrid),
       this.tool('\u21A6', `Extend (${isMac ? 'Cmd' : 'Ctrl'}+Shift+L)`, flag('extended'), !inGrid),
-      this.tool('Highlight', `Highlight the selected text, or the whole cell (${isMac ? 'Cmd' : 'Ctrl'}+Shift+H)`, onCell(({ row, col }) => {
+      this.tool('Highlight', `Highlight selected text or cells (${displayFlowShortcut(this.theme.highlightKey, isMac)})`, onCell(({ row, col }) => {
         this.toggleHighlight(row, col, this.lastSel.start, this.lastSel.end);
       }), !inGrid),
       this.tool(this.prepAfter === null ? 'Prep' : 'Close prep', `Thumpers / prepped answers next to the current speech (${isMac ? 'Cmd' : 'Ctrl'}+Shift+P)`, () => {
@@ -470,6 +505,13 @@ export class FlowWorkbookView implements NodeView {
         this.appearanceOpen = !this.appearanceOpen;
         this.render();
       }),
+      this.tool('Select all cells', 'Select every cell in this sheet', () => {
+        this.selectedCells.clear(); this.rangeSelection = true;
+        for (let row = 0; row < this.sheet.rows.length; row++) for (const col of this.visibleColumns()) this.selectedCells.add(this.cellKey(row, col));
+        this.paintSelection();
+        this.focusCell({row: 0, col: 0, caret: 'end'});
+      }, !inGrid),
+      this.tool('Clear cells', 'Clear selected cell contents (Delete or Backspace for a selection)', () => this.clearSelectedCells(), !inGrid),
       this.tool('Delete sheet', 'Delete this sheet', () => void this.removeSheet(), this.book.sheets.length < 2),
     );
     bar.appendChild(tools);
@@ -542,6 +584,27 @@ export class FlowWorkbookView implements NodeView {
     }
     panel.appendChild(custom);
 
+    section('Highlight');
+    const highlight = el('label', 'pmd-flow-colorpick');
+    const color = el('input'); color.type = 'color'; color.value = this.theme.highlightColor ?? '#22e650';
+    color.setAttribute('aria-label', 'Highlight color');
+    color.addEventListener('change', () => saveFlowTheme({ ...this.theme, highlightColor: color.value }));
+    highlight.append(color, el('span', undefined, 'Highlight color'));
+    panel.append(highlight);
+    const shortcutLabel = el('label', 'pmd-flow-colorpick');
+    const shortcut = el('input'); shortcut.type = 'text'; shortcut.readOnly = true;
+    shortcut.value = displayFlowShortcut(this.theme.highlightKey, isMac);
+    shortcut.setAttribute('aria-label', 'Highlight shortcut');
+    shortcut.title = 'Focus here and press a function key or a modified key. Escape cancels.';
+    shortcut.addEventListener('keydown', event => {
+      event.preventDefault(); event.stopPropagation();
+      if (event.key === 'Escape') { shortcut.blur(); return; }
+      const key = flowKeyForEvent(event);
+      if (!key || !validFlowShortcut(key)) { shortcut.value = 'Use an F-key or modifier chord'; return; }
+      saveFlowTheme({ ...this.theme, highlightKey: key });
+    });
+    shortcutLabel.append(el('span', undefined, 'Highlight shortcut'), shortcut); panel.append(shortcutLabel);
+
     section('Text');
     const sizes = el('div', 'pmd-flow-segment');
     for (const [v, l] of [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']] as const) {
@@ -575,6 +638,7 @@ export class FlowWorkbookView implements NodeView {
     const sheet = this.sheet;
     const wrap = el('div', 'pmd-flow-gridwrap');
     const table = el('table', 'pmd-flow-grid');
+    table.setAttribute('role', 'grid'); table.setAttribute('aria-multiselectable', 'true');
     const prepAfter = this.prepAfter !== null && this.prepAfter < sheet.columns.length ? this.prepAfter : null;
     if (prepAfter === null) this.prepAfter = null;
     const head = el('tr');
@@ -628,6 +692,7 @@ export class FlowWorkbookView implements NodeView {
     box.append(backdrop, area);
     this.styleCell(area, cell);
     area.addEventListener('input', () => {
+      this.selectSingleCell(row, col);
       autoGrow(area);
       const old = this.cellOf(row, col);
       const next = this.withCell(row, col, { text: area.value, hl: shiftRanges(old.hl, old.text, area.value) });
@@ -635,7 +700,24 @@ export class FlowWorkbookView implements NodeView {
       this.styleCell(area, this.cellOf(row, col));
     });
     area.addEventListener('keydown', (e) => this.onCellKey(e, area, row, col));
-    area.addEventListener('focus', () => { this.lastCell = { row, col, caret: 'end' }; });
+    area.addEventListener('mousedown', event => {
+      if (event.button !== 0) return;
+      if (event.shiftKey) {
+        event.preventDefault(); this.extendCellSelection(row, col); area.focus();
+      } else if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        this.rangeSelection = true;
+        const key = this.cellKey(row, col);
+        if (this.selectedCells.has(key)) this.selectedCells.delete(key); else this.selectedCells.add(key);
+        this.selectionAnchor ??= {rowId: this.sheet.rows[row]!.id, col};
+        this.paintSelection(); area.focus();
+      } else this.selectSingleCell(row, col);
+    });
+    area.addEventListener('focus', () => {
+      this.lastCell = { row, col, caret: 'end' };
+      this.lastSel = {start: area.selectionStart, end: area.selectionEnd};
+      if (!this.rangeSelection) this.selectSingleCell(row, col);
+    });
     const trackSel = (): void => {
       if (document.activeElement === area) this.lastSel = { start: area.selectionStart, end: area.selectionEnd };
     };
@@ -657,6 +739,18 @@ export class FlowWorkbookView implements NodeView {
   /** Highlight the selected text of a cell (or the whole cell when nothing is
    *  selected); highlighting already-highlighted text removes it. */
   private toggleHighlight(row: number, col: ColKey, start: number, end: number): void {
+    if (this.selectedCells.size > 1) {
+      const targets = this.selectionTargets();
+      const allOn = targets.every(spot => !!this.cellOf(spot.row, spot.col).hl?.length);
+      let book = this.book;
+      for (const spot of targets) {
+        const cell = this.cellOf(spot.row, spot.col);
+        const patch = {hl: allOn || !cell.text.length ? [] : [[0, cell.text.length]] as Array<[number, number]>};
+        book = spot.col === 'prep' ? setPrep(book, this.sheetId, spot.row, patch) : setCell(book, this.sheetId, spot.row, spot.col, patch);
+      }
+      const focus = this.currentFocus() ?? this.lastCell;
+      this.commit(book); this.render(focus ?? undefined); return;
+    }
     const cell = this.cellOf(row, col);
     const len = cell.text.length;
     let hl: Array<[number, number]>;
@@ -862,6 +956,60 @@ export class FlowWorkbookView implements NodeView {
     this.commit({ ...this.book, sheets: this.book.sheets.map((s) => (s.id === next.id ? next : s)) });
   }
 
+  // Selection is local UI state keyed by stable row id, never cell text offsets.
+  private visibleColumns(): ColKey[] {
+    const cols: ColKey[] = [];
+    for (let col = 0; col < this.sheet.columns.length; col++) { cols.push(col); if (col === this.prepAfter) cols.push('prep'); }
+    return cols;
+  }
+  private cellKey(row: number, col: ColKey): string { return `${this.sheet.rows[row]!.id}\u0000${col}`; }
+  private resetCellSelection(): void { this.selectedCells.clear(); this.rangeSelection = false; this.selectionAnchor = null; this.lastCell = null; this.lastSel = {start: 0, end: 0}; }
+  private selectSingleCell(row: number, col: ColKey): void {
+    const key = this.cellKey(row, col);
+    if (!this.rangeSelection && this.selectedCells.size === 1 && this.selectedCells.has(key)) return;
+    this.rangeSelection = false;
+    this.selectedCells = new Set([key]);
+    this.selectionAnchor = {rowId: this.sheet.rows[row]!.id, col}; this.paintSelection();
+  }
+  private extendCellSelection(row: number, col: ColKey): void {
+    this.rangeSelection = true;
+    this.selectionAnchor ??= {rowId: this.sheet.rows[row]!.id, col};
+    const anchor = Math.max(0, this.sheet.rows.findIndex(r => r.id === this.selectionAnchor!.rowId));
+    const cols = this.visibleColumns(), a = Math.max(0, cols.indexOf(this.selectionAnchor.col)), b = cols.indexOf(col);
+    this.selectedCells.clear();
+    for (let r = Math.min(row, anchor); r <= Math.max(row, anchor); r++) for (let c = Math.min(a, b); c <= Math.max(a, b); c++) this.selectedCells.add(this.cellKey(r, cols[c]!));
+    this.paintSelection();
+  }
+  private selectionTargets(): Array<{row: number; col: ColKey}> {
+    const targets: Array<{row: number; col: ColKey}> = [];
+    this.sheet.rows.forEach((_row, row) => { for (const col of this.visibleColumns()) if (this.selectedCells.has(this.cellKey(row, col))) targets.push({row, col}); });
+    return targets;
+  }
+  private paintSelection(): void {
+    const hadSelection = this.selectedCells.size > 0;
+    this.selectedCells = new Set(this.selectionTargets().map(spot => this.cellKey(spot.row, spot.col)));
+    if (hadSelection && !this.selectedCells.size) this.resetCellSelection();
+    for (const area of Array.from(this.dom.querySelectorAll<HTMLTextAreaElement>('textarea.pmd-flow-cell'))) {
+      const row = Number(area.dataset['row']), col = parseCol(area.dataset['col']);
+      const selected = !!this.sheet.rows[row] && this.selectedCells.has(this.cellKey(row, col));
+      const td = area.closest('td'); td?.classList.toggle('pmd-flow-cell-selected', selected);
+      if (td && td.getAttribute('role') !== 'gridcell') td.setAttribute('role', 'gridcell');
+      if (td && td.getAttribute('aria-selected') !== String(selected)) td.setAttribute('aria-selected', String(selected));
+    }
+  }
+  private clearSelectedCells(): void {
+    const targets = this.selectionTargets();
+    if (!targets.length && !this.selectedCells.size && this.lastCell && this.lastCell.row < this.sheet.rows.length) targets.push(this.lastCell);
+    if (!targets.length) return;
+    let book = this.book;
+    for (const {row, col} of targets) {
+      const patch = {text: '', hl: []};
+      book = col === 'prep' ? setPrep(book, this.sheetId, row, patch) : setCell(book, this.sheetId, row, col, patch);
+    }
+    this.commit(book); this.render();
+    this.focusCell({...targets[0]!, caret: 'end'});
+  }
+
   // ─── Cell keys ────────────────────────────────────────────────────
 
   private onCellKey(e: KeyboardEvent, area: HTMLTextAreaElement, row: number, col: ColKey): void {
@@ -869,6 +1017,23 @@ export class FlowWorkbookView implements NodeView {
     const mod = modKey(e);
     const key = e.key;
     const k = key.toLowerCase();
+    if (this.selectedCells.size > 1 && (key === 'Delete' || key === 'Backspace') && !mod && !e.altKey) {
+      e.preventDefault(); e.stopPropagation(); this.clearSelectedCells(); return;
+    }
+    if (e.shiftKey && !mod && !e.altKey && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key) &&
+        (this.rangeSelection || area.selectionStart === area.selectionEnd && (['ArrowUp', 'ArrowLeft'].includes(key) ? area.selectionStart === 0 : area.selectionEnd === area.value.length))) {
+      const columns = this.visibleColumns();
+      const nextRow = Math.max(0, Math.min(this.sheet.rows.length - 1, row + (key === 'ArrowDown' ? 1 : key === 'ArrowUp' ? -1 : 0)));
+      const nextCol = columns[Math.max(0, Math.min(columns.length - 1, columns.indexOf(col) + (key === 'ArrowRight' ? 1 : key === 'ArrowLeft' ? -1 : 0)))]!;
+      e.preventDefault();
+      this.selectionAnchor ??= {rowId: this.sheet.rows[row]!.id, col};
+      this.extendCellSelection(nextRow, nextCol);
+      this.focusCell({row: nextRow, col: nextCol, caret: 'end'}); return;
+    }
+    if (key === 'Escape' && this.selectedCells.size > 1) { e.preventDefault(); this.selectSingleCell(row, col); return; }
+    if (flowKeyForEvent(e) === this.theme.highlightKey) {
+      e.preventDefault(); e.stopPropagation(); this.toggleHighlight(row, col, area.selectionStart, area.selectionEnd); return;
+    }
     const toggle = (flag: 'bold' | 'crossed' | 'extended'): void => {
       e.preventDefault();
       const cell = this.cellOf(row, col);
@@ -878,11 +1043,6 @@ export class FlowWorkbookView implements NodeView {
     if (mod && !e.shiftKey && k === 'b') return toggle('bold');
     if (mod && e.shiftKey && k === 'x') return toggle('crossed');
     if (mod && e.shiftKey && k === 'l') return toggle('extended');
-    if (mod && e.shiftKey && k === 'h') {
-      e.preventDefault();
-      this.toggleHighlight(row, col, area.selectionStart, area.selectionEnd);
-      return;
-    }
     if (mod && e.shiftKey && k === 'p') {
       e.preventDefault();
       this.togglePrep(col === 'prep' ? this.prepAfter ?? 0 : col);
@@ -937,6 +1097,7 @@ export class FlowWorkbookView implements NodeView {
 
   /** Focus a cell, adding rows when moving past the bottom. */
   private move(row: number, col: ColKey): void {
+    this.resetCellSelection();
     if (row >= this.sheet.rows.length) {
       this.commit(insertRows(this.book, this.sheetId, this.sheet.rows.length, row - this.sheet.rows.length + 1));
       this.render({ row, col, caret: 'end' });
@@ -965,6 +1126,7 @@ export class FlowWorkbookView implements NodeView {
     const name = side === 'neg' ? nextOffName(this.book) : `${sideName(this.book.event, 'aff')} ${this.book.sheets.filter((s) => s.side === 'aff').length + 1}`;
     const { book, sheetId } = addSheet(this.book, name, side, this.sheetId);
     this.sheetId = sheetId;
+    this.resetCellSelection();
     this.expandedCol = null;
     this.commit(book);
     this.render({ row: 0, col: 0, caret: 'end' });
@@ -980,11 +1142,12 @@ export class FlowWorkbookView implements NodeView {
   private async removeSheet(): Promise<void> {
     if (this.book.sheets.length < 2) return;
     const sheet = this.sheet;
-    const hasText = sheet.rows.some((r) => r.cells.some((c) => c.text.trim()));
+    const hasText = sheet.rows.some((r) => r.cells.some((c) => c.text.trim()) || !!r.prep?.text.trim());
     if (hasText && !(await confirmDialog(`Delete the sheet “${sheet.name}”? Undo (Ctrl+Z / Cmd+Z) brings it back.`))) return;
     const index = this.book.sheets.findIndex((s) => s.id === sheet.id);
     const next = deleteSheet(this.book, sheet.id);
     this.sheetId = next.sheets[Math.max(0, index - 1)]!.id;
+    this.resetCellSelection();
     this.expandedCol = null;
     this.commit(next);
     this.render();

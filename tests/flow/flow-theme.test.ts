@@ -1,3 +1,4 @@
+import { flowKeyForEvent, validFlowShortcut } from '../../src/editor/flow-shortcuts.js';
 import { describe, expect, it } from 'vitest';
 import { FLOW_COLORWAYS, normalizeTheme, themeSideColors } from '../../src/editor/flow-theme.js';
 
@@ -14,6 +15,13 @@ describe('flow theme', () => {
     }
   });
 
+  it('validates Flow highlight preferences without stealing editing and file shortcuts', () => {
+    expect(normalizeTheme({highlightColor: '#ffe100', highlightKey: 'F8'})).toMatchObject({highlightColor: '#ffe100', highlightKey: 'F8'});
+    expect(normalizeTheme({highlightColor: 'red', highlightKey: 'Mod-v'})).toMatchObject({highlightColor: null, highlightKey: 'Mod-Shift-h'});
+    for (const key of ['a', 'Shift-a', 'Mod-c', 'Mod-v', 'Mod-z', 'Mod-s', 'Mod-w']) expect(validFlowShortcut(key)).toBe(false);
+    expect(validFlowShortcut('Mod-Alt-h')).toBe(true);
+    expect(flowKeyForEvent({key: 'H', code: 'KeyH', metaKey: true, shiftKey: true} as KeyboardEvent)).toBe('Mod-Shift-h');
+  });
   it('normalizes stored values, migrating the earlier single-preset format', () => {
     expect(normalizeTheme(null)).toMatchObject({ base: 'dark', colorway: 'green-pink', size: 'medium' });
     expect(normalizeTheme({ preset: 'classic' })).toMatchObject({ base: 'classic', colorway: 'ink' });

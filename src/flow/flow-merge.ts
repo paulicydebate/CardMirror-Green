@@ -119,7 +119,17 @@ export function mergeIncoming(
     });
     return { ...sheet, rows };
   });
-  return { book: { ...incoming, sheets }, keptMine };
+  let ordered = sheets;
+  let orderRevision = incoming.orderRevision;
+  if (compareCellRevisions({text:'', revision: mine.orderRevision}, {text:'', revision: incoming.orderRevision}) > 0) {
+    const byId = new Map(sheets.map(sheet => [sheet.id, sheet]));
+    ordered = mine.sheets.map(sheet => byId.get(sheet.id)).filter((sheet): sheet is typeof sheets[number] => !!sheet);
+    const known = new Set(ordered.map(sheet => sheet.id));
+    ordered.push(...sheets.filter(sheet => !known.has(sheet.id)));
+    orderRevision = mine.orderRevision;
+    keptMine = true;
+  }
+  return { book: { ...incoming, sheets: ordered, ...(orderRevision ? {orderRevision} : {}) }, keptMine };
 }
 
 /** Total order for a cell register; no computer wall-clock dependency. */
@@ -131,7 +141,7 @@ export function compareCellRevisions(a: FlowCell | undefined, b: FlowCell | unde
 }
 
 export function maxFlowClock(book: FlowWorkbook): number {
-  let clock = 0;
+  let clock = book.orderRevision?.clock ?? 0;
   for (const sheet of book.sheets) for (const row of sheet.rows) eachCell(row, sheet.columns.length, (_col, cell) => {
     clock = Math.max(clock, cell?.revision?.clock ?? 0);
   });
@@ -141,7 +151,15 @@ export function maxFlowClock(book: FlowWorkbook): number {
 /** Stamp only genuinely edited cells; a merged resend must keep its revisions. */
 export function stampFlowEdit(before: FlowWorkbook, after: FlowWorkbook, actor: string, clock: number, preservePartners = false): FlowWorkbook {
   const revision = { actor, clock };
-  return { ...after, sheets: after.sheets.map(sheet => {
+  if (preservePartners && before.orderRevision && before.orderRevision.actor !== actor) {
+    const byId = new Map(after.sheets.map(sheet => [sheet.id, sheet]));
+    const sheets = before.sheets.map(sheet => byId.get(sheet.id)).filter((sheet): sheet is FlowWorkbook['sheets'][number] => !!sheet);
+    const known = new Set(sheets.map(sheet => sheet.id));
+    sheets.push(...after.sheets.filter(sheet => !known.has(sheet.id)));
+    after = {...after, sheets, orderRevision: before.orderRevision};
+  }
+  const orderChanged = JSON.stringify(before.sheets.map(s => s.id)) !== JSON.stringify(after.sheets.map(s => s.id));
+  return { ...after, ...(orderChanged ? {orderRevision: revision} : {}), sheets: after.sheets.map(sheet => {
     const old = before.sheets.find(s => s.id === sheet.id);
     const rows = new Map(old?.rows.map(r => [r.id, r]) ?? []);
     return { ...sheet, rows: sheet.rows.map(row => {

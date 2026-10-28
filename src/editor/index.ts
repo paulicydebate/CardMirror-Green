@@ -8,6 +8,7 @@
  */
 
 import { EditorState, Plugin, Selection, TextSelection, type Command } from 'prosemirror-state';
+import { flowWorkspacePlugin } from './flow-workspace.js';
 import { prepDocumentGuard } from './prep-document-guard.js';
 import { initPrepController, prepCreated, prepMarkCreated, prepCreateBlank, prepRestoreIdentity, prepFlush, prepOpened, prepInventoryChanged, prepOpenAllowed, runPrepCommand } from './prep-controller.js';
 import { prepDoc, prepIsolationCopyBlocked, prepRound, prepRuntime } from './prep-runtime.js';
@@ -3494,6 +3495,8 @@ function updateZoomStatus(pct: number): void {
  *  so panes don't share the window-level `--editor-zoom` var. */
 export function applyZoomToTarget(editorEl: HTMLElement, pct: number): void {
   editorEl.style.zoom = String(pct / 100);
+  // Flow workspaces keep their frame at pane size and use this for cell text.
+  editorEl.style.setProperty('--editor-zoom', String(pct / 100));
 }
 
 /** Replace the resolver behind the status-bar zoom readout. The multi-pane shell
@@ -5765,6 +5768,7 @@ installCutInPlaceContext({
 
 export function buildEditorPlugins(targetUid?: string | null): Plugin[] {
   const plugins: Plugin[] = [
+    flowWorkspacePlugin(),
     prepDocumentGuard(targetUid),
     // First so its `editable` / read-mode tap-marker props win on the
     // mobile shell; a no-op everywhere else (the active flag is set

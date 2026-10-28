@@ -600,7 +600,7 @@ export const nodes: { [name: string]: NodeSpec } = {
    */
   flow_workbook: {
     atom: true,
-    selectable: true,
+    selectable: false,
     draggable: false,
     attrs: {
       data: {

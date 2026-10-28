@@ -39,6 +39,21 @@ describe('flow co-editing', () => {
     }
   });
 
+  it('keeps a sheet reorder while a collaborator concurrently types', async () => {
+    const peers = await createLoroPeers(seed(), 2, undefined, flowNodeViews);
+    const [a,b] = peers;
+    try {
+      for (let i = 0; i < 60; i++) typeInto(cellEl(a!,0,0), 'G'.repeat(i+1));
+      const tab = b!.view.dom.querySelectorAll<HTMLElement>('.pmd-flow-tab')[1]!;
+      tab.dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowUp',altKey:true,bubbles:true,cancelable:true}));
+      await syncAll(peers); await settle(6); await syncAll(peers); await settle(6);
+      for (const p of peers) {
+        expect(flowOf(p).sheets.map(s => s.name)).toEqual(['Off 1','Gov case']);
+        expect(flowOf(p).sheets.find(s => s.name === 'Gov case')!.rows[0]!.cells[0]!.text).toBe('G'.repeat(60));
+      }
+    } finally { peers.forEach(p => p.destroy()); }
+  });
+
   it('does not replace or reset the cell someone is typing in when a partner edits', async () => {
     const [a, b] = await createLoroPeers(seed(), 2, undefined, flowNodeViews);
     await settle();

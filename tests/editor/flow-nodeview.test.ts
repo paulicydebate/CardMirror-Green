@@ -11,22 +11,26 @@ import { EditorView } from 'prosemirror-view';
 import { history, undo } from 'prosemirror-history';
 import { schema } from '../../src/schema/index.js';
 import { promptForText } from '../../src/editor/text-prompt.js';
+import { flowWorkspacePlugin } from '../../src/editor/flow-workspace.js';
+import { prepDocumentGuard } from '../../src/editor/prep-document-guard.js';
+import { loadFlowTheme } from '../../src/editor/flow-theme.js';
+import type { Plugin } from 'prosemirror-state';
 import { flowNodeViews } from '../../src/editor/flow-nodeview.js';
 import { newWorkbook, parseFlow, serializeFlow, cellAt } from '../../src/flow/flow-model.js';
 import { parseNative, serializeNative } from '../../src/native/index.js';
 
 let view: EditorView | null = null;
-afterEach(() => { view?.destroy(); view = null; document.body.replaceChildren(); });
+afterEach(() => { view?.destroy(); view = null; document.body.replaceChildren(); localStorage.clear(); });
 
 const frame = (): Promise<void> => new Promise((r) => setTimeout(r, 30));
 
-function mount(): EditorView {
+function mount(extra: Plugin[] = []): EditorView {
   const doc = schema.nodes.doc!.create(null, [
     schema.nodes.flow_workbook!.create({ data: serializeFlow(newWorkbook('npda')) }),
     schema.nodes.paragraph!.create(),
   ]);
   view = new EditorView(document.body.appendChild(document.createElement('div')), {
-    state: EditorState.create({ doc, plugins: [history()] }),
+    state: EditorState.create({ doc, plugins: [flowWorkspacePlugin(), history(), ...extra] }),
     nodeViews: flowNodeViews,
   });
   return view;
@@ -51,7 +55,7 @@ describe('flow NodeView', () => {
     const heads = Array.from(v.dom.querySelectorAll('.pmd-flow-head'));
     expect(heads.map((h) => h.textContent)).toEqual(['PMC', 'LOC', 'MG', 'MO', 'LOR', 'PMR']);
     expect(heads.map((h) => h.classList.contains('pmd-flow-side-aff'))).toEqual([true, false, true, false, false, true]);
-    expect(v.dom.querySelectorAll('textarea.pmd-flow-cell')).toHaveLength(6 * 20);
+    expect(v.dom.querySelectorAll('textarea.pmd-flow-cell')).toHaveLength(6 * 50);
   });
 
   it('commits typing to the document, survives save/load, and undoes', () => {
@@ -75,12 +79,12 @@ describe('flow NodeView', () => {
     expect(document.activeElement).toBe(cell(v, 0, 1));
     key(cell(v, 0, 1), 'Enter');
     expect(document.activeElement).toBe(cell(v, 1, 1));
-    const last = cell(v, 19, 2);
+    const last = cell(v, 49, 2);
     last.focus();
     key(last, 'Enter');
     await frame();
     // A new empty row appears on screen (empty trailing rows are not saved).
-    expect(document.activeElement).toBe(cell(v, 20, 2));
+    expect(document.activeElement).toBe(cell(v, 50, 2));
     const c = cell(v, 2, 3);
     type(c, 'Turn');
     key(c, 'X', { ctrlKey: true, metaKey: true, shiftKey: true });
@@ -119,6 +123,78 @@ describe('flow NodeView', () => {
     await frame();
     expect(book(v).sheets[0]!.name).toBe('Gov case');
   });
+  it('reorders sheets by drag and by Alt+arrow without changing their data', () => {
+    const v = mount(); type(cell(v, 0, 0), 'Gov claim');
+    const tabs = v.dom.querySelectorAll('.pmd-flow-tab');
+    tabs[1]!.dispatchEvent(new Event('dragstart', {bubbles: true, cancelable: true}));
+    tabs[0]!.dispatchEvent(new Event('drop', {bubbles: true, cancelable: true}));
+    expect(book(v).sheets.map(s => s.name)).toEqual(['Off 1', 'Gov case']);
+    expect(book(v).sheets[1]!.rows[0]!.cells[0]!.text).toBe('Gov claim');
+    key(v.dom.querySelectorAll<HTMLElement>('.pmd-flow-tab')[0]!, 'ArrowDown', {altKey: true});
+    expect(book(v).sheets.map(s => s.name)).toEqual(['Gov case', 'Off 1']);
+  });
+
+  it('selects a rectangle with Shift-click and clears only its cells', () => {
+    const v = mount();
+    type(cell(v, 0, 0), 'A'); type(cell(v, 0, 1), 'B'); type(cell(v, 1, 0), 'C'); type(cell(v, 1, 1), 'D'); type(cell(v, 2, 2), 'Keep');
+    cell(v, 0, 0).dispatchEvent(new MouseEvent('mousedown', {button: 0, bubbles: true}));
+    cell(v, 1, 1).dispatchEvent(new MouseEvent('mousedown', {button: 0, bubbles: true, shiftKey: true}));
+    expect(v.dom.querySelectorAll('td[aria-selected="true"]')).toHaveLength(4);
+    key(cell(v, 1, 1), 'Delete');
+    for (const [r,c] of [[0,0],[0,1],[1,0],[1,1]]) expect(cellAt(book(v).sheets[0]!, r!, c!).text).toBe('');
+    expect(cellAt(book(v).sheets[0]!, 2, 2).text).toBe('Keep');
+    expect(v.state.doc.firstChild!.type.name).toBe('flow_workbook');
+    expect(v.dom.classList.contains('pmd-flow-workspace')).toBe(true);
+  });
+
+  it('clears separate modifier-clicked cells and supports Shift-arrow ranges', () => {
+    const v = mount(); type(cell(v, 0, 0), 'A'); type(cell(v, 1, 1), 'Keep'); type(cell(v, 2, 2), 'B');
+    cell(v, 0, 0).dispatchEvent(new MouseEvent('mousedown', {button: 0, bubbles: true}));
+    cell(v, 2, 2).dispatchEvent(new MouseEvent('mousedown', {button: 0, bubbles: true, ctrlKey: true}));
+    expect(v.dom.querySelectorAll('td[aria-selected="true"]')).toHaveLength(2);
+    key(cell(v, 2, 2), 'Backspace');
+    expect(cellAt(book(v).sheets[0]!, 1, 1).text).toBe('Keep');
+    cell(v, 3, 0).dispatchEvent(new MouseEvent('mousedown', {button: 0, bubbles: true}));
+    key(cell(v, 3, 0), 'ArrowRight', {shiftKey: true}); key(cell(v, 3, 1), 'ArrowDown', {shiftKey: true});
+    expect(v.dom.querySelectorAll('td[aria-selected="true"]')).toHaveLength(4);
+    key(cell(v, 4, 1), 'Escape'); expect(v.dom.querySelectorAll('td[aria-selected="true"]')).toHaveLength(1);
+  });
+
+  it('keeps normal Shift-left text selection inside an edited cell', () => {
+    const v = mount(); type(cell(v, 0, 0), 'Text');
+    const area = cell(v, 0, 0); area.setSelectionRange(4,4);
+    const event = new KeyboardEvent('keydown', {key: 'ArrowLeft', shiftKey: true, cancelable: true, bubbles: true});
+    area.dispatchEvent(event); expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('lets Appearance configure the highlight color and key for this computer', async () => {
+    const v = mount(); type(cell(v, 0, 0), 'Highlight me');
+    Array.from(v.dom.querySelectorAll<HTMLButtonElement>('.pmd-flow-tool')).find(b => b.textContent === 'Appearance')!.click();
+    const color = v.dom.querySelector<HTMLInputElement>('input[aria-label="Highlight color"]')!;
+    color.value = '#ffcc00'; color.dispatchEvent(new Event('change'));
+    const shortcut = v.dom.querySelector<HTMLInputElement>('input[aria-label="Highlight shortcut"]')!;
+    key(shortcut, 'F9'); await frame();
+    expect(loadFlowTheme()).toMatchObject({highlightColor: '#ffcc00', highlightKey: 'F9'});
+    expect((v.dom.querySelector('.pmd-flow-root') as HTMLElement).style.getPropertyValue('--flow-hl')).toBe('#ffcc00');
+    key(cell(v, 0, 0), 'F9');
+    expect(cellAt(book(v).sheets[0]!,0,0).hl).toEqual([[0,12]]);
+    key(cell(v, 0, 0), 'H', {ctrlKey: true, shiftKey: true});
+    expect(cellAt(book(v).sheets[0]!,0,0).hl).toEqual([[0,12]]);
+  });
+
+  it('reorders internal tabs during Prep but still refuses external drops', () => {
+    const audit = vi.fn();
+    const v = mount([prepDocumentGuard('prep', () => ({isPrepDocument: () => true, loggingFailed: () => false, audit, notify: () => {}}))]);
+    const tabs = v.dom.querySelectorAll('.pmd-flow-tab');
+    const start = new Event('dragstart', {bubbles:true,cancelable:true}); tabs[1]!.dispatchEvent(start);
+    expect(start.defaultPrevented).toBe(false);
+    const drop = new Event('drop', {bubbles:true,cancelable:true}); tabs[0]!.dispatchEvent(drop);
+    expect(book(v).sheets[0]!.name).toBe('Off 1');
+    const external = new Event('drop', {bubbles:true,cancelable:true}); cell(v,0,0).dispatchEvent(external);
+    expect(external.defaultPrevented).toBe(true);
+    expect(audit).toHaveBeenCalledWith('prep', expect.objectContaining({kind:'blocked'}));
+  });
+
   it('expands a column into a document and back, keeping rows aligned', async () => {
     const v = mount();
     type(cell(v, 0, 0), 'Adv 1');

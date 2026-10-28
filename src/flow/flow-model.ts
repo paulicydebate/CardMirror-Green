@@ -50,6 +50,8 @@ export interface FlowSheet {
 }
 
 export interface FlowWorkbook {
+  /** Revision of the sheet ordering, independent of concurrent cell edits. */
+  orderRevision?: {clock: number; actor: string};
   format: typeof FLOW_FORMAT;
   version: typeof FLOW_VERSION;
   /** Key into FLOW_FORMATS, or 'custom'. */
@@ -104,7 +106,7 @@ export const FLOW_FORMATS: Record<string, FlowFormatPreset> = {
   },
 };
 
-const DEFAULT_ROWS = 20;
+export const DEFAULT_FLOW_ROWS = 50;
 const MAX_TEXT = 100_000;
 const MAX_ROWS = 5_000;
 const MAX_COLUMNS = 40;
@@ -123,7 +125,7 @@ export function emptyRow(columns: number): FlowRow {
   return { id: newFlowId(), cells: Array.from({ length: columns }, () => ({ text: '' })) };
 }
 
-export function newSheet(name: string, side: FlowSide, columns: string[], rows = DEFAULT_ROWS): FlowSheet {
+export function newSheet(name: string, side: FlowSide, columns: string[], rows = DEFAULT_FLOW_ROWS): FlowSheet {
   return { id: newFlowId(), name, side, columns: [...columns], rows: Array.from({ length: rows }, () => emptyRow(columns.length)) };
 }
 
@@ -404,6 +406,7 @@ export function serializeFlow(book: FlowWorkbook): string {
     format: FLOW_FORMAT,
     version: FLOW_VERSION,
     event: book.event,
+    ...(book.orderRevision ? {orderRevision: book.orderRevision} : {}),
     sheets: book.sheets.map((s) => ({
       id: s.id,
       name: s.name,
@@ -422,7 +425,7 @@ export function serializeFlow(book: FlowWorkbook): string {
 export class FlowParseError extends Error {}
 
 /** Parse and validate a saved flow. Pads each sheet to a minimum row count. */
-export function parseFlow(text: string, minRows = DEFAULT_ROWS): FlowWorkbook {
+export function parseFlow(text: string, minRows = DEFAULT_FLOW_ROWS): FlowWorkbook {
   let data: unknown;
   try { data = JSON.parse(text); } catch { throw new FlowParseError('Not a CardMirror flow file (unreadable JSON).'); }
   const o = data as Record<string, unknown> | null;
@@ -454,5 +457,8 @@ export function parseFlow(text: string, minRows = DEFAULT_ROWS): FlowWorkbook {
     };
   });
   const event = typeof o['event'] === 'string' && (FLOW_FORMATS[o['event']] || o['event'] === 'custom') ? o['event'] : 'npda';
-  return { format: FLOW_FORMAT, version: FLOW_VERSION, event, sheets };
+  const rawOrder = o['orderRevision'] as {clock?: unknown; actor?: unknown} | undefined;
+  const orderRevision = rawOrder && typeof rawOrder.clock === 'number' && Number.isSafeInteger(rawOrder.clock) && rawOrder.clock > 0 && typeof rawOrder.actor === 'string' && rawOrder.actor.length > 0 && rawOrder.actor.length <= 128
+    ? {clock: rawOrder.clock, actor: rawOrder.actor} : undefined;
+  return { format: FLOW_FORMAT, version: FLOW_VERSION, event, sheets, ...(orderRevision ? {orderRevision} : {}) };
 }

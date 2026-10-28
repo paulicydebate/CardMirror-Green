@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EditHistory, maxFlowClock, mergeIncoming, stampFlowEdit } from '../../src/flow/flow-merge.js';
-import { newWorkbook, parseFlow, serializeFlow, setCell, setPrep } from '../../src/flow/flow-model.js';
+import { newWorkbook, parseFlow, serializeFlow, setCell, setPrep, moveSheet } from '../../src/flow/flow-model.js';
 
 describe('versioned flow cell merges', () => {
   it('converges on different-sheet edits regardless of receive order or delay', () => {
@@ -12,6 +12,25 @@ describe('versioned flow cell merges', () => {
     expect(serializeFlow(ab)).toBe(serializeFlow(ba));
     expect(ab.sheets[0]!.rows[0]!.cells[0]!.text).toBe('Gov');
     expect(ab.sheets[1]!.rows[0]!.cells[0]!.text).toBe('Off');
+  });
+  it('retains sheet-order revisions through saving and independent cell updates', () => {
+    const base = newWorkbook();
+    const reordered = stampFlowEdit(base, moveSheet(base, base.sheets[1]!.id,0), 'a', 1);
+    const saved = parseFlow(serializeFlow(reordered));
+    const typed = stampFlowEdit(base, setCell(base,base.sheets[0]!.id,0,0,{text:'Gov'}), 'b',2);
+    const merged = mergeIncoming(typed, saved, new EditHistory(),0).book;
+    expect(merged.sheets.map(s => s.name)).toEqual(['Off 1','Gov case']);
+    expect(merged.sheets[1]!.rows[0]!.cells[0]!.text).toBe('Gov');
+    expect(merged.orderRevision).toEqual({actor:'a',clock:1});
+  });
+  it('does not undo a partner sheet reorder while reverting a local cell edit', () => {
+    const base = newWorkbook();
+    const typed = stampFlowEdit(base,setCell(base,base.sheets[0]!.id,0,0,{text:'Gov'}),'a',1);
+    const reordered = stampFlowEdit(typed,moveSheet(typed,typed.sheets[1]!.id,0),'b',2);
+    const undone = stampFlowEdit(reordered,base,'a',3,true);
+    expect(undone.sheets.map(s => s.name)).toEqual(['Off 1','Gov case']);
+    expect(undone.orderRevision).toEqual(reordered.orderRevision);
+    expect(undone.sheets[1]!.rows[0]!.cells[0]!.text).toBe('');
   });
   it('orders same-cell conflicts deterministically and accepts a later deliberate edit', () => {
     const base = newWorkbook(), sheet = base.sheets[0]!.id;

@@ -17321,3 +17321,51 @@ body.pmd-round-mode::after, body.pmd-prep-paused::after { border-color: var(--pm
 .pmd-prep-timeline { width: 100%; border-collapse: collapse; margin-top: 12px; }
 .pmd-prep-timeline th, .pmd-prep-timeline td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid #8885; }
 .pmd-prep-timeline td:last-child { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Standalone Flow documents own their editor surface; mixed documents keep
+   ordinary page layout. The blank schema cursor paragraph stays in the file. */
+:is(#editor, .pmd-pane-editor):has(.ProseMirror.pmd-flow-workspace) {
+  display: flex; flex-direction: column; overflow: hidden;
+  padding: 0 !important; min-height: 0; background: transparent;
+}
+:is(#editor, .pmd-pane-editor) .ProseMirror.pmd-flow-workspace {
+  display: flex; flex-direction: column; flex: 1 1 0;
+  padding: 0 !important; margin: 0 !important; max-width: none !important;
+  min-height: 0; height: 100%; overflow: hidden; background: transparent;
+}
+.ProseMirror.pmd-flow-workspace > p { display: none; }
+.ProseMirror.pmd-flow-workspace > .pmd-flow-root {
+  flex: 1 1 0; width: 100%; height: 100% !important; min-height: 0;
+  margin: 0; border: 0; border-radius: 0; box-shadow: none;
+}
+.pmd-pane-body:has(.ProseMirror.pmd-flow-workspace) { overflow: hidden; }
+body:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) .pmd-nav-panel,
+body:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) #nav-pane-pull-tab { display: none; }
+body:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) :is(#app, #status-bar, #speech-doc-banner) { left: 0; margin-left: 0; }
+/* Cells have their own z-index for the highlight mirror. Headers must sit
+   above all cells and paint an opaque layer, including in striped themes. */
+.pmd-flow-root .pmd-flow-grid .pmd-flow-head {
+  z-index: 5; isolation: isolate; background-color: var(--flow-bg) !important;
+}
+.pmd-flow-usefills .pmd-flow-grid .pmd-flow-head.pmd-flow-fill-0 { background-color: var(--flow-fill-0) !important; }
+.pmd-flow-usefills .pmd-flow-grid .pmd-flow-head.pmd-flow-fill-1 { background-color: var(--flow-fill-1) !important; }
+.pmd-flow-usefills .pmd-flow-grid .pmd-flow-head.pmd-flow-fill-2 { background-color: var(--flow-fill-2) !important; }
+.pmd-flow-usefills .pmd-flow-grid .pmd-flow-head.pmd-flow-fill-3 { background-color: var(--flow-fill-3) !important; }
+.pmd-flow-td.pmd-flow-cell-selected { box-shadow: inset 0 0 0 2px var(--flow-accent); }
+.pmd-flow-td.pmd-flow-cell-selected .pmd-flow-cell { background: color-mix(in srgb, var(--flow-accent) 13%, transparent); }
+.pmd-flow-tab[draggable='true'] { cursor: grab; }
+.pmd-flow-tab[draggable='true']:active { cursor: grabbing; }
+.pmd-flow-tab.pmd-flow-drop-target { box-shadow: inset 0 3px 0 var(--flow-accent); }
+/* Keep sticky headers inside the grid's stacking layer so they cannot cover
+   the Appearance popover or other Flow controls. */
+.pmd-flow-gridwrap { position: relative; z-index: 0; isolation: isolate; }
+/* Spreadsheet chrome stays within its pane when document text zoom changes;
+   zoom scales cell text rather than enlarging the entire scrolling widget. */
+:is(#editor, .pmd-pane-editor):has(.ProseMirror.pmd-flow-workspace) { zoom: 1 !important; }
+.pmd-flow-workspace .pmd-flow-cell { font-size: calc(var(--flow-size) * var(--editor-zoom, 1)); }
+.pmd-flow-workspace .pmd-flow-docsec { font-size: calc(var(--flow-size) * 1.15 * var(--editor-zoom, 1)); }
+@supports (field-sizing: content) {
+  .pmd-flow-workspace textarea:is(.pmd-flow-cell, .pmd-flow-docsec) { field-sizing: content; height: auto !important; }
+}
+body.pmd-recovery-active:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) #app { left: var(--pmd-recovery-width); }
+body:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) .pmd-recovery-sidebar { left: 0; }

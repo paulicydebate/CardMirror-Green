@@ -37,7 +37,7 @@ describe('flow workbook', () => {
       ['Gov case', 'aff', 'PMC LOC MG MO LOR PMR'],
       ['Off 1', 'neg', 'LOC MG MO LOR PMR'],
     ]);
-    expect(book.sheets[0]!.rows).toHaveLength(20);
+    expect(book.sheets[0]!.rows).toHaveLength(50);
     expect(newWorkbook('policy').sheets[1]!.columns[0]).toBe('1NC');
     expect(newWorkbook('nope').event).toBe('npda');
     const gov = book.sheets[0]!;
@@ -52,8 +52,8 @@ describe('flow workbook', () => {
     const edited = setCell(book, id, 0, 1, { text: 'T - we meet', bold: true });
     expect(cellAt(edited.sheets[0]!, 0, 1)).toEqual({ text: 'T - we meet', bold: true });
     expect(cellAt(book.sheets[0]!, 0, 1)).toEqual({ text: '' });
-    const grown = setCell(book, id, 30, 0, { text: 'far down' });
-    expect(grown.sheets[0]!.rows).toHaveLength(31);
+    const grown = setCell(book, id, 60, 0, { text: 'far down' });
+    expect(grown.sheets[0]!.rows).toHaveLength(61);
     expect(setCell(book, id, 0, 99, { text: 'x' })).toEqual(book);
 
     const withRow = insertRows(edited, id, 0, 2);
@@ -72,10 +72,10 @@ describe('flow workbook', () => {
     let book = newWorkbook('policy');
     book = setCell(book, book.sheets[0]!.id, 2, 0, { text: 'Adv 1 — econ', crossed: true });
     const saved = serializeFlow(book);
-    expect(JSON.parse(saved).sheets[0].rows).toHaveLength(20);
+    expect(JSON.parse(saved).sheets[0].rows).toHaveLength(50);
     const loaded = parseFlow(saved);
     expect(loaded.event).toBe('policy');
-    expect(loaded.sheets[0]!.rows).toHaveLength(20);
+    expect(loaded.sheets[0]!.rows).toHaveLength(50);
     expect(cellAt(loaded.sheets[0]!, 2, 0)).toEqual({ text: 'Adv 1 — econ', crossed: true });
     expect(loaded.sheets[0]!.rows[2]!.id).toBe(book.sheets[0]!.rows[2]!.id);
   });
@@ -86,7 +86,7 @@ describe('flow workbook', () => {
     const b = parseFlow(data).sheets[0]!.rows.map((r) => r.id);
     expect(a).toEqual(b);
     expect(a[0]).toBe('s1~0');
-    expect(a).toHaveLength(20);
+    expect(a).toHaveLength(50);
   });
 
   it('keeps highlight ranges and prep cells through save/load and edits', () => {

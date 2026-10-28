@@ -181,9 +181,19 @@ export function prepDocumentGuard(uid: string | null | undefined, policy: () => 
       // handlers. Each instance only handles its own root, so another pane's
       // strategy doc and unrelated UI fields stay unrestricted.
       const win = view.dom.ownerDocument.defaultView;
+      let internalSheetDrag = false;
       const capture = (event: Event): void => {
+        if (event.type === 'dragend') { internalSheetDrag = false; return; }
         const p = protectedPolicy();
         if (!p || !event.composedPath().includes(view.dom)) return;
+        const target = event.target instanceof Element ? event.target : null;
+        // Reordering the same workbook's sheet tabs transfers no text or files.
+        // The NodeView also requires a drag that originated in that instance.
+        if (event.type === 'dragstart' && target?.closest('button[data-flow-sheet-id]')) { internalSheetDrag = true; return; }
+        if (internalSheetDrag && ['dragover', 'drop'].includes(event.type) && target?.closest('.pmd-flow-tabs')) {
+          if (event.type === 'drop') internalSheetDrag = false;
+          return;
+        }
         if (event.type === 'beforeinput') {
           const input = event as InputEvent;
           if (!blockedInputTypes.has(input.inputType) && !p.loggingFailed()) {
@@ -197,7 +207,7 @@ export function prepDocumentGuard(uid: string | null | undefined, policy: () => 
         if (event.type === 'dragover') return; // avoid flooding the log on every pointer move
         refuse(p, event.type === 'beforeinput' ? 'This input method is blocked.' : `${event.type} is blocked.`);
       };
-      const types = ['copy', 'cut', 'paste', 'dragstart', 'dragover', 'drop', 'beforeinput'];
+      const types = ['copy', 'cut', 'paste', 'dragstart', 'dragover', 'drop', 'dragend', 'beforeinput'];
       for (const type of types) win?.addEventListener(type, capture, true);
       return { destroy() { unregister(); for (const type of types) win?.removeEventListener(type, capture, true); } };
     },

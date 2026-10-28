@@ -66,3 +66,15 @@ The user's favorite flow app, flower (github.com/MrinalA2009/debate-flowerX), is
 All collaborators should use 1.16.6 or newer. Changed cells carry a logical clock and random editor actor ID, retained by native Flow serialization; delayed workbook snapshots merge each cell independently. Empty Prep cells retain a revision tombstone so a delayed snapshot does not restore deleted content. Simultaneous edits to one cell select a deterministic whole-cell winner; this is not character-level collaboration inside a cell. Concurrent row/sheet creation or removal is not addressed by this cell-text repair. Older builds drop revision metadata. Local undo/redo issues a newer revision for the local actor's changed cells while retaining current partner-owned cells.
 
 Rename the selected sheet by double-clicking either its sidebar tab or its name in the top row. The top-row name also accepts Enter, Space or F2 with keyboard focus.
+
+## Workspace controls (1.16.8)
+
+A standalone Flow fills its window or editor pane, with no ordinary paper or cursor paragraph around it. Text zoom changes cell text size without pushing the Flow outside its pane. Speech headers stay opaque while scrolling. New sheets have 50 rows; short older sheets display at least 50.
+
+Drag a sheet tab in the left sidebar onto another tab to change its position. With a tab focused, Alt+Up/Down also reorders it. Rename by double-clicking its sidebar tab or top-row name. Both collaborators should update to 1.16.8 so saved order revisions survive concurrent cell edits.
+
+Select several cells with Shift-click on two corners, Cmd/Ctrl-click for separate cells, or Shift+arrows at a cell boundary (or while already selecting a range). Normal Shift+arrow text selection still works inside cell text. Delete/Backspace clears a multi-cell selection; Select all cells and Clear cells are also in the toolbar. Escape leaves range selection. Selection tracks stable row IDs and stays local to the viewer.
+
+In Flow Appearance, pick a highlight color and focus the highlight-shortcut field to press a function key or modifier chord. The default is Cmd/Ctrl+Shift+H. Ordinary typing and common clipboard/file shortcuts are reserved. Highlight selected text, the whole cell when no text is selected, or all selected cells. These appearance preferences apply to this computer, not the shared file.
+
+Clicking or selecting the surrounding document can no longer accidentally delete the Flow object. Cell clearing remains available, and a nonempty sheet deletion uses its existing confirmation. The last sheet cannot be removed. Closing a document and normal file operations are unaffected.

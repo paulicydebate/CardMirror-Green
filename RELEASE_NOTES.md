@@ -1,9 +1,13 @@
-CardMirror Green 1.16.7 — Round Mode options and Check Prep Document
+CardMirror Green 1.16.8 — Flow workspace improvements
 
-- New setting: Settings > General > Prep / Round > "Round Mode: Co-Flowing".
-  - Off (Isolation, the default): when Round Mode starts, co-editing ends and your partner's copy of each prep doc you shared closes on their computer without saving, with nothing left behind. Their own prep docs stay open. While shared, the partner's copy cannot be saved or exported. If the host ends the shared doc at any time, the partner's copy closes too.
-  - On (Co-Flowing): you and your partner keep co-editing shared prep docs and flows through the round, as you could on paper. Copy, paste and opening files stay blocked.
-  - The host's setting is saved into a prep doc when sharing starts, so choose it before sharing.
-- New command: Check Prep Document. Ending a session now seals each open prep doc's content into the 16-character seal code. Save each prep doc as a CardMirror file (.cmir) afterward. Later, on any computer with 1.16.7 or newer, open the file, run Check Prep Document and enter the judge's code. It reports whether the document is unchanged since the round, changed after it, or does not match the code, along with the prep, round and end times. Word (.docx) copies do not carry the seal.
+- Standalone Flows fill the editor window or pane instead of sitting on a white document page. Cell text zoom stays within the pane; normal documents retain their own layout.
+- Drag sheet tabs in the left sidebar to reorder them. Alt+Up/Down on a focused tab also changes its position. Sheet order is saved and synchronized independently of concurrent cell typing.
+- Speech headers now paint an opaque layer above scrolling cells in every Flow theme. They remain below the Appearance panel.
+- New Flow sheets start with 50 rows. Older short sheets display at least 50 rows too.
+- Flow Appearance now includes a highlight color picker and a configurable highlight shortcut. The default remains Cmd/Ctrl+Shift+H. Changes apply to Flows on this computer.
+- The Flow itself is no longer a selectable page object, and normal page deletion/replacement cannot accidentally remove it. Closing a document and editing cells continue normally.
+- Select a rectangle with Shift-click, extend a range with Shift+arrows at cell boundaries, or Cmd/Ctrl-click separate cells. Delete/Backspace clears a multi-cell selection. Select all cells and Clear cells are available in the Flow toolbar. Escape returns to a single cell.
 
-Update BOTH partners to 1.16.7 before using these features. Use Help > Check for Updates, download 1.16.7, then explicitly choose Restart to install. Mac builds remain ad-hoc signed, not Apple-notarized. These features passed automated tests; they have not yet been tried in the desktop app on a real computer.
+Both collaborators should update to 1.16.8 for sheet-order synchronization. Prior 1.16.7 Prep/Round options and Check Prep Document are preserved. Existing same-cell conflict behavior remains a deterministic whole-cell winner; concurrent row/sheet creation or deletion is not a character-level collaboration feature.
+
+Use Help > Check for Updates, download 1.16.8, then explicitly choose Restart to install. Mac builds remain ad-hoc signed, not Apple-notarized. No visible desktop app or personal profile was used for validation.

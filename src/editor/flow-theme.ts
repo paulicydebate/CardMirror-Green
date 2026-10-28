@@ -1,3 +1,4 @@
+import { DEFAULT_FLOW_HIGHLIGHT_KEY, normalizeFlowShortcut } from './flow-shortcuts.js';
 /**
  * Flow appearance (CardMirror Green): a base style (background, lines,
  * panels) combined with a colorway (the two sides' text colors), plus
@@ -22,6 +23,8 @@ export interface FlowTheme {
   negText: string | null;
   size: FlowTextSize;
   font: FlowFont | null;
+  highlightColor: string | null;
+  highlightKey: string;
 }
 
 interface BaseSpec {
@@ -125,7 +128,7 @@ const FONT_STACKS: Record<FlowFont, string> = {
 };
 const SIZES: Record<FlowTextSize, string> = { small: '0.8rem', medium: '0.9rem', large: '1.05rem' };
 
-export const DEFAULT_FLOW_THEME: FlowTheme = { base: 'dark', colorway: 'green-pink', affText: null, negText: null, size: 'medium', font: null };
+export const DEFAULT_FLOW_THEME: FlowTheme = { base: 'dark', colorway: 'green-pink', affText: null, negText: null, size: 'medium', font: null, highlightColor: null, highlightKey: DEFAULT_FLOW_HIGHLIGHT_KEY };
 
 const STORAGE_KEY = 'cmg-flow-theme';
 const CHANGE_EVENT = 'cmg-flow-theme-change';
@@ -143,6 +146,8 @@ export function normalizeTheme(value: unknown): FlowTheme {
   return {
     base,
     colorway,
+    highlightColor: typeof v['highlightColor'] === 'string' && HEX.test(v['highlightColor']) ? v['highlightColor'] : null,
+    highlightKey: normalizeFlowShortcut(v['highlightKey']),
     affText: typeof v['affText'] === 'string' && HEX.test(v['affText']) ? v['affText'] : null,
     negText: typeof v['negText'] === 'string' && HEX.test(v['negText']) ? v['negText'] : null,
     size: v['size'] === 'small' || v['size'] === 'large' ? v['size'] : 'medium',
@@ -195,6 +200,7 @@ export function applyFlowTheme(root: HTMLElement, theme: FlowTheme): void {
   for (const n of [0, 1, 2, 3]) root.style.removeProperty(`--flow-fill-${n}`);
   for (const [name, value] of Object.entries(base.vars)) root.style.setProperty(name, value);
   const colors = themeSideColors(theme);
+  if (theme.highlightColor) root.style.setProperty('--flow-hl', theme.highlightColor);
   root.style.setProperty('--flow-aff', colors.aff);
   root.style.setProperty('--flow-neg', colors.neg);
   root.style.setProperty('--flow-accent', colors.aff);
