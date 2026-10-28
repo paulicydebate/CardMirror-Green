@@ -1,10 +1,9 @@
-CardMirror Green 1.16.6 — Flow collaboration and sheet renaming
+CardMirror Green 1.16.7 — Round Mode options and Check Prep Document
 
-- Fix text disappearing when collaborators type on different Flow tabs, such as Gov case and Off 1. Each changed cell now carries a persistent logical revision; merging no longer relies on a 40-keystroke / 15-second history window for newly edited cells.
-- Preserve cleared cells, including empty Prep cells, against delayed stale snapshots. Preserve the other collaborator's cells during local undo/redo.
-- Allow synchronization repairs to resend previously accepted cells without tripping Prep's large-insert guard. Readable logs distinguish these repairs from new typing; partner edits remain recorded.
-- Double-click the sheet name in the top row to rename it, just like the left sidebar. Enter, Space and F2 also open renaming when the top-row name has keyboard focus.
+- New setting: Settings > General > Prep / Round > "Round Mode: Co-Flowing".
+  - Off (Isolation, the default): when Round Mode starts, co-editing ends and your partner's copy of each prep doc you shared closes on their computer without saving, with nothing left behind. Their own prep docs stay open. While shared, the partner's copy cannot be saved or exported. If the host ends the shared doc at any time, the partner's copy closes too.
+  - On (Co-Flowing): you and your partner keep co-editing shared prep docs and flows through the round, as you could on paper. Copy, paste and opening files stay blocked.
+  - The host's setting is saved into a prep doc when sharing starts, so choose it before sharing.
+- New command: Check Prep Document. Ending a session now seals each open prep doc's content into the 16-character seal code. Save each prep doc as a CardMirror file (.cmir) afterward. Later, on any computer with 1.16.7 or newer, open the file, run Check Prep Document and enter the judge's code. It reports whether the document is unchanged since the round, changed after it, or does not match the code, along with the prep, round and end times. Word (.docx) copies do not carry the seal.
 
-Update BOTH collaborators to 1.16.6 before testing Flow collaboration. Older versions discard the new cell revisions and are not covered by this fix. Existing Flow files remain readable; native saves preserve the added metadata. Simultaneous edits to the same cell choose a deterministic whole-cell winner rather than merging individual characters. Concurrent sheet/row structure edits are not the focus of this repair.
-
-Use Help > Check for Updates, download 1.16.6, then explicitly choose Restart to install. Mac builds remain ad-hoc signed, not Apple-notarized. No app was launched or installed on the user's computer during development; real two-machine verification remains a user check.
+Update BOTH partners to 1.16.7 before using these features. Use Help > Check for Updates, download 1.16.7, then explicitly choose Restart to install. Mac builds remain ad-hoc signed, not Apple-notarized. These features passed automated tests; they have not yet been tried in the desktop app on a real computer.
