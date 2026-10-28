@@ -658,23 +658,31 @@ export class FlowWorkbookView implements NodeView {
     });
     table.appendChild(el('thead')).appendChild(head);
     const body = el('tbody');
-    sheet.rows.forEach((row, r) => {
-      const tr = el('tr');
-      sheet.columns.forEach((_, col) => {
-        const td = el('td', `pmd-flow-td pmd-flow-side-${columnSide(this.book.event, sheet, col)} pmd-flow-fill-${speechFillSlot(sheet.columns[col]!, col)}${col % 2 ? ' pmd-flow-odd' : ''}`);
-        td.appendChild(this.renderCell(cellAt(sheet, r, col), r, col));
-        tr.appendChild(td);
-        if (col === prepAfter) {
-          const ptd = el('td', 'pmd-flow-td pmd-flow-prep');
-          ptd.appendChild(this.renderCell(row.prep ?? { text: '' }, r, 'prep'));
-          tr.appendChild(ptd);
-        }
-      });
-      body.appendChild(tr);
-    });
+    sheet.rows.forEach((_row, r) => body.appendChild(this.renderRow(r, prepAfter)));
     table.appendChild(body);
     wrap.appendChild(table);
     return wrap;
+  }
+
+  private renderRow(r: number, prepAfter: number | null): HTMLTableRowElement {
+    const sheet = this.sheet;
+    const row = sheet.rows[r]!;
+    const tr = el('tr');
+    sheet.columns.forEach((_, col) => {
+      const td = el('td', `pmd-flow-td pmd-flow-side-${columnSide(this.book.event, sheet, col)} pmd-flow-fill-${speechFillSlot(sheet.columns[col]!, col)}${col % 2 ? ' pmd-flow-odd' : ''}`);
+      td.setAttribute('role', 'gridcell');
+      td.setAttribute('aria-selected', 'false');
+      td.appendChild(this.renderCell(cellAt(sheet, r, col), r, col));
+      tr.appendChild(td);
+      if (col === prepAfter) {
+        const ptd = el('td', 'pmd-flow-td pmd-flow-prep');
+        ptd.setAttribute('role', 'gridcell');
+        ptd.setAttribute('aria-selected', 'false');
+        ptd.appendChild(this.renderCell(row.prep ?? { text: '' }, r, 'prep'));
+        tr.appendChild(ptd);
+      }
+    });
+    return tr;
   }
 
   /** A cell: a textarea over a backdrop that paints its highlighted ranges. */
@@ -1099,8 +1107,17 @@ export class FlowWorkbookView implements NodeView {
   private move(row: number, col: ColKey): void {
     this.resetCellSelection();
     if (row >= this.sheet.rows.length) {
-      this.commit(insertRows(this.book, this.sheetId, this.sheet.rows.length, row - this.sheet.rows.length + 1));
-      this.render({ row, col, caret: 'end' });
+      const oldLength = this.sheet.rows.length;
+      const body = this.dom.querySelector<HTMLTableSectionElement>('.pmd-flow-grid tbody');
+      this.commit(insertRows(this.book, this.sheetId, oldLength, row - oldLength + 1));
+      // A rejected transaction can re-render or leave the old model unchanged.
+      if (!body?.isConnected || this.sheet.rows.length <= oldLength) return;
+      if (body.rows.length !== oldLength) { this.render({ row, col, caret: 'end' }); return; }
+      const prepAfter = this.prepAfter !== null && this.prepAfter < this.sheet.columns.length ? this.prepAfter : null;
+      const added = document.createDocumentFragment();
+      for (let r = oldLength; r < this.sheet.rows.length; r++) added.appendChild(this.renderRow(r, prepAfter));
+      body.appendChild(added);
+      this.focusCell({ row, col, caret: 'end' });
       return;
     }
     this.focusCell({ row, col, caret: 'end' });

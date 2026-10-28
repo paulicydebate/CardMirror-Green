@@ -81,15 +81,38 @@ describe('flow NodeView', () => {
     expect(document.activeElement).toBe(cell(v, 1, 1));
     const last = cell(v, 49, 2);
     last.focus();
+    const originalFirst = cell(v, 0, 0);
     key(last, 'Enter');
-    await frame();
-    // A new empty row appears on screen (empty trailing rows are not saved).
+    // Existing rows stay mounted, and the new cell is immediately ready for typing.
+    expect(cell(v, 0, 0)).toBe(originalFirst);
     expect(document.activeElement).toBe(cell(v, 50, 2));
+    type(cell(v, 50, 2), 'New argument');
+    expect(cellAt(book(v).sheets[0]!, 50, 2).text).toBe('New argument');
+    key(cell(v, 50, 2), 'Enter');
+    expect(document.activeElement).toBe(cell(v, 51, 2));
+    expect(cell(v, 0, 0)).toBe(originalFirst);
+    await frame();
     const c = cell(v, 2, 3);
     type(c, 'Turn');
     key(c, 'X', { ctrlKey: true, metaKey: true, shiftKey: true });
     expect(cellAt(book(v).sheets[0]!, 2, 3)).toMatchObject({ text: 'Turn', crossed: true });
     expect(c.classList.contains('pmd-flow-crossed')).toBe(true);
+  });
+
+  it('appends a row in the Prep column and keeps its content on save', async () => {
+    const v = mount();
+    const last = cell(v, 49, 1);
+    last.focus();
+    key(last, 'P', { ctrlKey: true, metaKey: true, shiftKey: true });
+    await frame();
+    const prep = v.dom.querySelector<HTMLTextAreaElement>('textarea[data-row="49"][data-col="prep"]')!;
+    prep.focus();
+    key(prep, 'Enter');
+    const next = v.dom.querySelector<HTMLTextAreaElement>('textarea[data-row="50"][data-col="prep"]')!;
+    expect(document.activeElement).toBe(next);
+    type(next, 'Next answer');
+    const reopened = parseNative(serializeNative(v.state.doc)).doc;
+    expect(parseFlow(String(reopened.firstChild!.attrs['data'])).sheets[0]!.rows[50]!.prep?.text).toBe('Next answer');
   });
 
   it('adds, renames and deletes sheets', async () => {
