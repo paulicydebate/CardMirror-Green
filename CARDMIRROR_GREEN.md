@@ -220,4 +220,4 @@ No desktop app was launched.
 - Public latest.yml and latest-mac.yml serve 1.16.7.
 - The cloud Claude session cannot create tags (the proxy refuses git tag pushes and the refs API), so the user pushes the `vX.Y.Z` tag from their own computer.
 - An old preview run, 40247901117 from 2026-10-26, is still stuck queued.
-- Open decision: the user wants beta numbering (0.x, with 1.0.0 for the public launch). Going from 1.16.x to 0.x is a downgrade for electron-updater and the Mac helper, so it needs either a bridge release that allows one 1.x→0.x move, or a display-only "Beta" label.
+- Decided (user, 2026-10-28): keep the 1.16.x version numbers. Do not switch to 0.x numbering or change the updater; going to 0.x would be a downgrade the updater refuses.
