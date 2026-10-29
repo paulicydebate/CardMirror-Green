@@ -50,9 +50,9 @@ describe('pill popup CSS contract', () => {
     expect(popup).toMatch(/bottom: calc\(100% \+ var\(--pmd-pill-popup-gap/u);
     expect(popup).toMatch(/border: 1px solid var\(--pmd-c-border\);/u);
     const hover = [...css.matchAll(/(\.pmd-dropzone-bar:hover[^{}]*)\{([^}]*)\}/gu)]
-      .find(rule => rule[1].split(',').map(s => s.trim()).includes('.pmd-coedit-with:hover'));
+      .find(rule => (rule[1] ?? '').split(',').map(s => s.trim()).includes('.pmd-coedit-with:hover'));
     for (const selector of ['.pmd-dropzone-bar:hover', '.pmd-send-bar:hover', '.pmd-receive-bar:hover', '.pmd-coedit-with:hover']) {
-      expect(hover?.[1].split(',').map(s => s.trim())).toContain(selector);
+      expect((hover?.[1] ?? '').split(',').map(s => s.trim())).toContain(selector);
     }
     expect(hover?.[2]).toMatch(/border-color: var\(--pmd-c-accent\);/u);
   });

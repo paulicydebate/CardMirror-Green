@@ -1,4 +1,4 @@
-CardMirror Green 1.16.12 — Match the collaboration pills
+CardMirror Green 1.16.13 — Match the collaboration pills
 
 Co-edit with… now uses the same UI font, label weight, theme colors, size, spacing, border, shadow and hover treatment as Send and Receive. This fixes the mismatched font and white button in the desktop interface. Collaboration behavior is unchanged.
 
