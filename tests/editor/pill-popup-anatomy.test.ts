@@ -43,13 +43,18 @@ describe('pill popup CSS contract', () => {
     expect(rule).toMatch(/min-width: 100%;/u);
     expect(rule).toMatch(/--pmd-pill-popup-max/u);
   });
-  it('the open bar keeps its own accent outline, the popup floats a gap above the row, and all three bars share the hover border', () => {
+  it('the open bar keeps its own accent outline, the popup floats a gap above the row, and all pill actions share the hover border', () => {
     expect(css).toMatch(/\[data-open="true"\] > \.pmd-dropzone-bar,\n\[data-open="true"\] > \.pmd-pill-bar \{[^}]*border-color: var\(--pmd-c-accent\);/u);
     expect(css).not.toMatch(/\[data-open="true"\] > \.pmd-pill-bar::after/u);
     const popup = css.match(/\n\.pmd-pill-popup \{\n([^}]*)\}/u)?.[1] ?? '';
     expect(popup).toMatch(/bottom: calc\(100% \+ var\(--pmd-pill-popup-gap/u);
     expect(popup).toMatch(/border: 1px solid var\(--pmd-c-border\);/u);
-    expect(css).toMatch(/\.pmd-dropzone-bar:hover,\n\.pmd-send-bar:hover,\n\.pmd-receive-bar:hover \{\n\s*border-color: var\(--pmd-c-accent\);/u);
+    const hover = [...css.matchAll(/(\.pmd-dropzone-bar:hover[^{}]*)\{([^}]*)\}/gu)]
+      .find(rule => rule[1].split(',').map(s => s.trim()).includes('.pmd-coedit-with:hover'));
+    for (const selector of ['.pmd-dropzone-bar:hover', '.pmd-send-bar:hover', '.pmd-receive-bar:hover', '.pmd-coedit-with:hover']) {
+      expect(hover?.[1].split(',').map(s => s.trim())).toContain(selector);
+    }
+    expect(hover?.[2]).toMatch(/border-color: var\(--pmd-c-accent\);/u);
   });
   it('one badge rule for both counts, with no display of its own so hidden works at zero', () => {
     const badge = css.match(/\n\.pmd-pill-badge \{\n([^}]*)\}/u)?.[1] ?? '';
