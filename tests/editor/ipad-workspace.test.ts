@@ -9,11 +9,24 @@ import { tabletDevice, resolveMobileLayout } from '../../src/editor/mobile-layou
 import { tabletViewportInsets, installTabletViewport } from '../../src/editor/tablet-viewport.js';
 import { settings } from '../../src/editor/settings.js';
 import { BrowserHost } from '../../src/editor/host/browser-host.js';
+import { prepRuntime } from '../../src/editor/prep-runtime.js';
 const properties: Array<() => void> = [];
 function property(object: object, key: string, value: unknown): void { const before=Object.getOwnPropertyDescriptor(object,key); Object.defineProperty(object,key,{configurable:true,value}); properties.push(()=>{if(before)Object.defineProperty(object,key,before);else Reflect.deleteProperty(object,key);}); }
 const ipad = { userAgent: 'Mozilla/5.0 Macintosh', platform: 'MacIntel', maxTouchPoints: 5, coarsePointer: false, screenWidth: 1366, screenHeight: 1024 };
-afterEach(() => { setMobileShellActive(false); while(properties.length) properties.pop()!(); vi.restoreAllMocks(); vi.useRealTimers(); localStorage.clear(); document.body.replaceChildren(); });
+afterEach(() => { prepRuntime.status={session:null,transitioning:false,error:null}; setMobileShellActive(false); while(properties.length) properties.pop()!(); vi.restoreAllMocks(); vi.useRealTimers(); localStorage.clear(); document.body.replaceChildren(); });
 describe('iPad workspace', () => {
+  it('refuses file imports during Round, including a picker opened before the transition', async () => {
+    let finish!: (handles: unknown[]) => void;
+    const pick=vi.fn(()=>new Promise(resolve=>{finish=resolve;}));
+    property(window,'showOpenFilePicker',pick);
+    const host=new BrowserHost();
+    const pending=host.openFile();
+    prepRuntime.status.transitioning=true;
+    finish([{getFile:async()=>({name:'synthetic.cmir',size:1,lastModified:0,arrayBuffer:async()=>new ArrayBuffer(1)})}]);
+    await expect(pending).rejects.toThrow('Round Mode');
+    await expect(host.openFile()).rejects.toThrow('Round Mode');
+    expect(pick).toHaveBeenCalledTimes(1);
+  });
   it('recognizes iPad desktop identification and keeps tablet chrome in landscape or split view', () => {
     expect(tabletDevice(ipad)).toBe(true);
     expect(tabletDevice({...ipad,maxTouchPoints:0})).toBe(false);

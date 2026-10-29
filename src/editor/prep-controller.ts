@@ -8,6 +8,7 @@ import { showToast } from './toast.js';
 import { newWorkbook, serializeFlow, parseFlow } from '../flow/flow-model.js';
 import { schema } from '../schema/index.js';
 import { collabCopresenceFor } from './collab/collab-hooks.js';
+import { settings } from './settings.js';
 import type { Node as PMNode } from 'prosemirror-model';
 
 export interface PrepAdapter {
@@ -20,12 +21,12 @@ export interface PrepAdapter {
   hasCollaboration(uid: string): boolean;
   identity(uid: string): string;
 }
-interface Audit { kind: string; uid: string | null; data: unknown }
-interface PrepDocFingerprint { document: string; persistentId: string | null; name: string; fingerprint: string }
+export interface Audit { kind: string; uid: string | null; data: unknown }
+export interface PrepDocFingerprint { document: string; persistentId: string | null; name: string; fingerprint: string }
 interface SealCheck { status: 'unchanged' | 'modified' | 'wrong-code' | 'damaged' | 'not-in-seal'; prepStartedAt?: string; roundStartedAt?: string | null; endedAt?: string; name?: string; sealCode?: string }
 interface LogSummary { id: string; valid: boolean; start?: string; end?: string | null; round?: string | null; finalHash?: string; sealCode?: string; events?: number; blocked?: number;
   characters?: number; outsideMs?: number; flagged?: number; typingByMinute?: Array<{ minute: number; characters: number; wpm: number }> }
-interface PrepApi {
+export interface PrepApi {
   ready(): Promise<PrepStatus>;
   action(action: string, uid?: string | { uid: string; persistentId: string }): Promise<unknown>;
   inventory(docs: string[], focused: string | null): void;
@@ -100,7 +101,7 @@ function update(status: PrepStatus): void {
 function record(kind: string, uid: string | null, data: unknown): void {
   if (!prepRuntime.status.session) return;
   queue.push({ kind, uid, data });
-  if (queue.length >= 200) void flush();
+  if (queue.length >= 200) void flush().catch(() => {});
 }
 async function flush(): Promise<void> {
   if (!api || !queue.length) return writes;
@@ -173,7 +174,8 @@ export async function runPrepCommand(command: 'startPrep' | 'newPrep' | 'newPrep
     if (command === 'checkPrepDoc') { await checkPrepDocument(); return; }
     if (prepRuntime.status.transitioning) throw new Error('A mode transition is already in progress.');
     if (command === 'startPrep') {
-      if (await confirmDialog('New prep documents will block clipboard and drag transfers. Their typing stays in a local log until you export it. Other documents stay unrestricted during Prep Mode.', { title: 'Start Prep Mode?', okLabel: 'Start Prep' })) await action('start');
+      const browser = (await import('./host/index.js')).getHost().kind === 'browser';
+      if (await confirmDialog('New prep documents block copy, paste and outside drag transfers. Their typing stays in a local log until you export it. Strategy documents stay unrestricted during Prep.\n\n' + (browser ? 'iPad/browser session: use one Green workspace at a time. Logs stay in this browser; export copies before clearing website data. ' : '') + 'This records activity inside CardMirror only. Other apps, devices and outside help are not monitored.', { title: 'Start Prep Mode?', okLabel: 'Start Prep' })) await action('start');
     } else if (command === 'newPrep' || command === 'newPrepFlow') {
       if (prepRuntime.status.session?.mode !== 'prep') throw new Error('Start Prep Mode first.');
       const doc = command === 'newPrepFlow' ? schema.nodes.doc!.create(null, [schema.nodes.flow_workbook!.create({ data: serializeFlow(newWorkbook('npda')) }), schema.nodes.paragraph!.create()]) : undefined;
@@ -188,7 +190,20 @@ export async function runPrepCommand(command: 'startPrep' | 'newPrep' | 'newPrep
       await action('mark', uid);
       await api.action('bind', { uid, persistentId: adapter.identity(uid) });
     } else if (command === 'startRound') {
-      if (await confirmDialog('All co-editing will stop. Every non-prep document will close with a save prompt, and existing files cannot be opened. New blank documents remain allowed.', { title: 'Start Round Mode?', okLabel: 'Start Round' })) await action('round');
+      const docs = adapter.documents();
+      const protectedDocs = docs.filter(d => prepDoc(d.uid));
+      if (!protectedDocs.length) throw new Error('Create or open a prep document before starting Round.');
+      const closing = docs.filter(d => !prepDoc(d.uid));
+      const coflow = settings.get('prepRoundCoflow');
+      const checklist = [
+        `Keep protected: ${protectedDocs.map(d => d.name).join(', ')}`,
+        closing.length ? `Close with save prompts: ${closing.map(d => d.name).join(', ')}` : 'No strategy documents need closing in this workspace.',
+        'Block opening existing files. New blank documents and saving remain allowed.',
+        coflow ? 'Co-Flowing is selected for new shared prep sessions. Existing sessions keep the host’s chosen rule: Co-Flowing stays connected; Isolation disconnects and closes partner copies.' : 'Isolation is selected for new shared prep sessions. Existing sessions keep the host’s chosen rule: Isolation disconnects and closes partner copies; Co-Flowing stays connected.',
+        'Continue the typing log. End Session is available and records when restrictions ended.',
+        'Confirm that these collaboration rules match your event’s rules. This checklist does not monitor other apps or devices.',
+      ].map(line => '• ' + line).join('\n\n');
+      if (await confirmDialog(checklist, { title: 'Round checklist', okLabel: 'Start Round' })) await action('round');
     } else {
       if (!(await confirmDialog('This ends document restrictions and seals the typing log. Prep co-editing sessions will disconnect first.', { title: 'End Prep / Round session?', okLabel: 'End Session' }))) return;
       await flush();
@@ -272,7 +287,7 @@ async function openLogs(): Promise<void> {
   const overlay = document.createElement('div'); overlay.className = 'pmd-prep-log-overlay';
   const panel = document.createElement('section'); panel.className = 'pmd-prep-log-panel'; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true');
   const heading = document.createElement('h2'); heading.textContent = 'Prep / Round typing logs'; panel.append(heading);
-  const note = document.createElement('p'); note.textContent = 'Logs include prep-document text. They stay on this computer unless exported. Compare a completed log’s seal with the code recorded independently by the judge.'; panel.append(note);
+  const note = document.createElement('p'); note.textContent = 'Logs include prep-document text and timestamps. Typed, paste attempts and partner edits are listed separately; an unconfirmed insertion is not proof of cheating. Logs stay on this device unless exported. Compare the final seal with the code recorded independently by the judge. Other apps and devices are not monitored.'; panel.append(note);
   const close = document.createElement('button'); close.textContent = 'Close'; close.onclick = () => { overlay.remove(); document.removeEventListener('keydown', escape); }; panel.append(close);
   const escape = (event: KeyboardEvent): void => { if (event.key === 'Escape') { event.stopImmediatePropagation(); close.click(); } };
   document.addEventListener('keydown', escape);
@@ -318,6 +333,10 @@ async function openLogs(): Promise<void> {
 export async function initPrepController(hostAdapter: PrepAdapter): Promise<void> {
   adapter = hostAdapter;
   api = (window as unknown as { electronAPI?: { prep?: PrepApi } }).electronAPI?.prep;
+  if (!api && (await import('./host/index.js')).getHost().kind === 'browser' &&
+      (await import('./mobile-layout.js')).mobileLayoutEnv('browser').tablet) {
+    api = await (await import('./prep-browser.js')).createBrowserPrepApi();
+  }
   if (!api) return;
   prepRuntime.record = record;
   prepRuntime.changed = () => queueMicrotask(prepInventoryChanged);
@@ -352,6 +371,10 @@ export async function initPrepController(hostAdapter: PrepAdapter): Promise<void
   });
   try { update(await api.ready()); } catch (error) { update({ session: null, transitioning: false, error: String(error) }); }
   setInterval(() => { void flush().catch(() => {}); render(); prepInventoryChanged(); }, 500);
+  // Best effort before iPad suspension. Sudden termination can still lose the
+  // final uncommitted batch; exports must never claim uninterrupted monitoring.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) void flush().catch(() => {}); });
+  window.addEventListener('pagehide', () => { void flush().catch(() => {}); });
   // Direct Clipboard API calls (read-mode copy, cite/reference commands, etc.)
   // do not fire DOM clipboard events. Keep the focused document sticky while
   // toolbar/dialog buttons are used, so those paths cannot bypass protection.

@@ -12,6 +12,7 @@ import { flowWorkspacePlugin } from './flow-workspace.js';
 import { prepDocumentGuard } from './prep-document-guard.js';
 import { initPrepController, prepCreated, prepMarkCreated, prepCreateBlank, prepRestoreIdentity, prepFlush, prepOpened, prepInventoryChanged, prepOpenAllowed, runPrepCommand } from './prep-controller.js';
 import { prepDoc, prepIsolationCopyBlocked, prepRound, prepRuntime } from './prep-runtime.js';
+import { prepSealFor } from '../native/index.js';
 import { serializeRangesForClipboard, serializeNodesForClipboard } from './clipboard-slice.js';
 import { EditorView } from 'prosemirror-view';
 import { keymap } from 'prosemirror-keymap';
@@ -8528,7 +8529,10 @@ async function runSaveAsFlowInner(): Promise<boolean> {
     // A full Save As is a distinct logical doc → fork a new docId (the
     // original file keeps its own). Derived/lossy exports get no docId
     // (clean copies). Works in both layouts via the focused-doc identity.
-    const forkDocId = prepDoc(sessionUid) ? srcDocId ?? ensureActiveDocId() : isFullSave ? crypto.randomUUID() : undefined;
+    // A sealed full copy keeps the identity referenced by its certificate,
+    // including after End Session has removed the active Prep designation.
+    const forkDocId = prepDoc(sessionUid) || (isFullSave && prepSealFor(srcDocId) !== undefined)
+      ? srcDocId ?? ensureActiveDocId() : isFullSave ? crypto.randomUUID() : undefined;
     // Before serializing, same as runSaveFlowInner — mid-write edits
     // must keep the doc dirty. Only consumed on the full-save path.
     const commitClean = captureActiveDocCleanToken();
@@ -10546,6 +10550,21 @@ const prepBoot = initPrepController({
   create: async (doc?: PMNode) => {
     if (multiDocActive && multiDocPrep) return multiDocPrep.create(doc);
     const host = getHost();
+    if (host.kind === 'browser' && !host.canSpawnWindow) {
+      await handleCloseDocToHome();
+      if (!homeScreen.isVisible()) return null; // canceled save/close
+      prepClosedToHome = false;
+      mountFreshBlankDoc();
+      // Protection must precede exposing the new textarea: durable marking is
+      // asynchronous in the browser and fast typing can beat its completion.
+      prepRuntime.pending.add(currentDocUid);
+      if (doc) mountView(doc);
+      currentDocFilename = doc ? 'Prep flow.cmir' : 'Prep document.cmir';
+      currentDocFormat = 'cmir';
+      homeScreen.hide(); markNonPristineStarter(); updateWindowTitle();
+      await prepCreated(currentDocUid);
+      return currentDocUid;
+    }
     if (!host.canSpawnWindow) return null;
     await host.spawnWindow({ filename: doc ? 'Prep flow.cmir' : 'Prep document.cmir', bytes: serializeNative(doc ?? makeBlankDoc()), handle: null,
       format: 'cmir', uid: newSessionDocUid(), prepBlank: true, prepMark: true, popout: true });

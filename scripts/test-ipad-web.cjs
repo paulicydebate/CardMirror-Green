@@ -35,8 +35,9 @@ async function run() {
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const address=`http://127.0.0.1:${server.address().port}/CardMirror-Green/`;
   relayMock = await startRoomsMock(); relayMock.setGuestPass('synthetic-browser-guest');
-  const browser=await webkit.launch({headless:true});
+  const browser=await (process.env.PREP_CHROMIUM ? require('playwright').chromium : webkit).launch({headless:true});
   try {
+    if (!process.env.PREP_ONLY) {
     for(const width of [1024,1366,600]) {
       const context=await browser.newContext({...devices['iPad Pro 11'], viewport:{width,height:768},acceptDownloads:true});
       await context.route('**/registerSW.js',route=>route.fulfill({status:200,contentType:'text/javascript',body:'/* Service-worker tests run separately in Chromium. */'}));
@@ -112,6 +113,70 @@ async function run() {
     await page.locator('.pmd-mobile-mode-edit').click();assert.equal(await editor.getAttribute('contenteditable'),'true');
     await page.locator('.pmd-mobile-mode-move').click();assert.equal(await editor.getAttribute('contenteditable'),'false');
     console.log('WebKit ordinary document Edit/Read/Move behavior passed.');await context.close();
+    }
+    const prepContext = await browser.newContext({...devices['iPad Pro 11'],viewport:{width:1024,height:768},acceptDownloads:true});
+    await prepContext.route('**/registerSW.js',route=>route.fulfill({status:200,contentType:'text/javascript',body:'/* Offline PWA tested separately. */'}));
+    await prepContext.addInitScript(()=>{
+      localStorage.setItem('pmd-settings',JSON.stringify({showOnboardingStarter:false,multiDocWorkspace:false,aiFeaturesEnabled:false}));
+      // Exercise Safari's download/input path, including in Chromium's restart test.
+      Object.defineProperty(window,'showSaveFilePicker',{configurable:true,value:undefined});
+      Object.defineProperty(window,'showOpenFilePicker',{configurable:true,value:undefined});
+    });
+    const prepPage=await prepContext.newPage();prepPage.on('dialog',dialog=>dialog.accept());
+    prepPage.on('console',m=>console.log('Prep console:',m.text()));prepPage.on('pageerror',e=>console.log('Prep page error:',e.message));
+    await prepPage.goto(address);
+    await prepPage.getByRole('button',{name:/^New document/}).click();
+    const menuAction=async name=>{await prepPage.getByRole('button',{name:'Menu',exact:true}).click();await prepPage.locator('.pmd-mobile-sheet').getByRole('button',{name,exact:true}).click();};
+    await menuAction('Start Prep');await prepPage.getByRole('button',{name:'Start Prep',exact:true}).click();
+    await menuAction('New prep flow');
+    const prepCell=prepPage.locator('textarea.pmd-flow-cell[data-row="0"][data-col="0"]');
+    await prepCell.pressSequentially('Typed on tablet');
+    const blocked=await prepCell.evaluate(el=>{const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true});el.dispatchEvent(event);return event.defaultPrevented;});
+    assert.equal(blocked,true);assert.equal(await prepCell.inputValue(),'Typed on tablet');
+    console.log('Tablet Prep input/paste checks passed.');
+    await prepPage.waitForTimeout(4500);
+    // Windows Playwright WebKit also stalls on a blank-app reload with the
+    // Prep owner disabled. Chromium checks restart; WebKit checks live UI.
+    if (process.env.PREP_CHROMIUM) await prepPage.reload();
+    await prepPage.waitForFunction(()=>document.querySelector('textarea.pmd-flow-cell[data-row="0"][data-col="0"]')?.value==='Typed on tablet');
+    assert.equal(await prepPage.locator('.pmd-prep-bar').getAttribute('data-mode'),'prep');
+    if (process.env.PREP_CHROMIUM) {
+      const second=await prepContext.newPage();await second.goto(address);
+      await second.waitForFunction(()=>document.body.classList.contains('pmd-prep-paused'));
+      await second.close();
+    }
+    await menuAction('Round checklist…');
+    assert.ok((await prepPage.locator('.pmd-text-prompt-dialog').innerText()).includes('Keep protected:'));
+    await prepPage.getByRole('button',{name:'Start Round',exact:true}).click();
+    await prepPage.waitForFunction(()=>document.body.classList.contains('pmd-round-mode'));
+    let openedChooser=false;prepPage.on('filechooser',()=>{openedChooser=true;});
+    await menuAction('Open…');await prepPage.waitForTimeout(200);assert.equal(openedChooser,false);
+    await menuAction('Typing logs');await prepPage.getByRole('button',{name:'View',exact:true}).first().click();
+    await prepPage.getByText('Paste blocked',{exact:true}).waitFor();
+    const timelineText=await prepPage.locator('.pmd-prep-timeline').innerText();console.log('Tablet timeline:',timelineText.slice(0,1800));
+    assert.ok(timelineText.includes('Typed on tablet'),timelineText);
+    const logDownload=prepPage.waitForEvent('download');await prepPage.getByRole('button',{name:'Export readable',exact:true}).first().click();
+    const reportDownload=await logDownload;const reportPath=path.join(output,'synthetic-prep-report.txt');await reportDownload.saveAs(reportPath);
+    assert.ok(fs.readFileSync(reportPath,'utf8').includes('Paste blocked'));
+    await prepPage.locator('.pmd-prep-log-panel').getByRole('button',{name:'Close',exact:true}).click();
+    await menuAction('End Prep / Round session');await prepPage.getByRole('button',{name:'End Session',exact:true}).click();
+    await prepPage.getByText(/Seal code:/).waitFor();
+    if (process.env.PREP_CHROMIUM) {
+      const code=(await prepPage.locator('.pmd-text-prompt-dialog').innerText()).match(/Seal code: ([A-F0-9-]+)/)[1];
+      await prepPage.locator('.pmd-text-prompt-dialog').getByRole('button',{name:'OK',exact:true}).click();
+      await prepPage.getByRole('button',{name:'Download a document copy',exact:true}).click();
+      const saved=prepPage.waitForEvent('download');await prepPage.locator('.pmd-save-as-dialog').getByRole('button',{name:'As-Is',exact:true}).click();
+      const file=path.join(output,'synthetic-sealed-prep.cmir');await (await saved).saveAs(file);
+      await prepPage.getByRole('button',{name:'Menu',exact:true}).click();
+      const chosen=prepPage.waitForEvent('filechooser');await prepPage.locator('.pmd-mobile-sheet').getByRole('button',{name:'Open…',exact:true}).click();await (await chosen).setFiles(file);
+      await prepPage.waitForFunction(()=>document.querySelector('textarea.pmd-flow-cell[data-row="0"][data-col="0"]')?.value==='Typed on tablet');
+      await menuAction('Check prep document');await prepPage.locator('.pmd-text-prompt-dialog input').fill(code);
+      await prepPage.getByRole('button',{name:'Check',exact:true}).click();
+      await prepPage.getByText('Unchanged since the round',{exact:true}).waitFor();
+      console.log('Browser seal survived native download/reopen and Check Prep Document.');
+    }
+    console.log(`${process.env.PREP_CHROMIUM ? 'Chromium (including durable restart and single-workspace lock)' : 'WebKit'} tablet Prep: typing/paste guards, Round checklist/file refusal and readable log download passed.`);
+    await prepContext.close();
   } finally { await browser.close();await relayMock?.close();server.close(); }
 }
 run().catch(error=>{console.error(error);server.close();process.exitCode=1;});

@@ -17371,7 +17371,14 @@ body.pmd-recovery-active:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) #a
 body:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) .pmd-recovery-sidebar { left: 0; }
 
 /* Editable tablet workspace. Phone reading mode and desktop sizing stay independent. */
-body.pmd-tablet-editing { --pmd-tablet-top: 0px; --pmd-tablet-bottom: 0px; }
+body.pmd-tablet-editing { --pmd-tablet-top: 0px; --pmd-tablet-bottom: 0px; --status-bar-height: 40px; }
+body.pmd-tablet-editing .pmd-prep-bar { max-width: 70vw; }
+body.pmd-tablet-editing .pmd-prep-bar summary { min-height: 36px; display: flex; align-items: center; }
+body.pmd-tablet-editing .pmd-prep-actions button { min-height: 44px; }
+body.pmd-tablet-editing .pmd-prep-log-panel { max-height: 85dvh; padding: 12px; }
+body.pmd-tablet-editing .pmd-prep-log-row { flex-wrap: wrap; }
+body.pmd-tablet-editing .pmd-prep-log-panel button { min-height: 40px; }
+body.pmd-tablet-editing .pmd-prep-timeline { overflow-wrap: anywhere; }
 body.pmd-tablet-editing .pmd-mobile-appbar { top: var(--pmd-tablet-top); }
 body.pmd-tablet-editing:not(.pmd-multi-doc) #app {
   top: calc(var(--pmd-mobile-appbar-h) + var(--pmd-tablet-top));

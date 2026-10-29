@@ -1,5 +1,7 @@
 import { installTabletViewport } from './tablet-viewport.js';
 import { collabEnabled } from './collab/collab-gate.js';
+import { runPrepCommand } from './prep-controller.js';
+import { prepRuntime } from './prep-runtime.js';
 /**
  * Mobile shell — view-first chrome for phones and tablets on the web
  * edition (SPEC-mobile-view.md). Mounted at boot by editor/index.ts
@@ -835,6 +837,18 @@ function buildOverflowSheet(): HTMLElement {
   item('Open…', () => runRibbon('openFile'));
   item('New document', () => runRibbon('newDocument'));
   if (isTabletEditing()) item('New Flow', () => runRibbon('newFlow'));
+  if (isTabletEditing()) {
+    const session = prepRuntime.status.session;
+    if (!session) item('Start Prep', () => { void runPrepCommand('startPrep'); });
+    if (session?.mode === 'prep') {
+      item('New prep document', () => { void runPrepCommand('newPrep'); });
+      item('New prep flow', () => { void runPrepCommand('newPrepFlow'); });
+      item('Round checklist…', () => { void runPrepCommand('startRound'); });
+    }
+    if (session) item('End Prep / Round session', () => { void runPrepCommand('endPrep'); });
+    item('Typing logs', () => { void runPrepCommand('prepLogs'); });
+    item('Check prep document', () => { void runPrepCommand('checkPrepDoc'); });
+  }
   item('Export a copy…', () => runRibbon('saveAs'));
   if (isTabletEditing() && collabEnabled()) {
     item('Start co-editing', () => runRibbon('collabStartSession'));

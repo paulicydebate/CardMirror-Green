@@ -11,6 +11,7 @@
  */
 
 import { LearnStore, applyLearnOp, type LearnOp } from '../learn-store.js';
+import { prepRound, prepRuntime } from '../prep-runtime.js';
 import type {
   FileFilter,
   Host,
@@ -23,6 +24,11 @@ import type {
 } from './types.js';
 
 const LEARN_STORE_KEY = 'pmd-learn-store';
+function assertPrepFileOpen(): void {
+  if (!prepRound()) return;
+  prepRuntime.record('blocked', prepRuntime.focused, { reason: 'open-existing-file' });
+  throw new Error('Round Mode: opening existing files is blocked.');
+}
 const LEARN_STORE_LOCK = 'pmd-learn-store';
 
 const DOCX_MIME =
@@ -266,6 +272,7 @@ export class BrowserHost implements Host {
   private abortPendingOpen: (() => void) | null = null;
 
   async openFile(opts: OpenFileOptions = {}): Promise<OpenedFile | null> {
+    assertPrepFileOpen();
     // File System Access path (Chromium): yields a handle so subsequent saves
     // write back IN PLACE. Falls back to the handle-less <input> elsewhere
     // (Firefox/Safari/iOS), where Save stays Save-As.
@@ -300,6 +307,7 @@ export class BrowserHost implements Host {
     // `ensureWritable`.
     const file = await handle.getFile();
     const buf = await file.arrayBuffer();
+    assertPrepFileOpen();
     // Freshness baseline for the changed-on-disk guard in saveExisting.
     this.baselines.set(handle, { mtimeMs: file.lastModified, size: file.size });
     return {
@@ -355,6 +363,7 @@ export class BrowserHost implements Host {
         }
         try {
           const buf = await file.arrayBuffer();
+          assertPrepFileOpen();
           resolve({
             name: file.name,
             bytes: new Uint8Array(buf),

@@ -16,7 +16,13 @@ For the first cross-device check, start an ordinary Flow session on desktop and 
 
 Both peers should use matching current Flow code. Account-less invitation joins do not require entering a Tabroom password or adding an AI API key. Starting a new hosted session on iPad needs the existing browser account connection or a self-hosted relay configuration; receiving an invitation can use its room-scoped guest pass.
 
-Prep/Round logging and enforcement remain desktop-only. A desktop Prep document cannot be joined from the web app by pretending it is an ordinary document. Browser editing is not an enforcement substitute. OpenCaselist's authenticated desktop panel also remains desktop-only.
+Prep/Round is available on editable iPads. Open a document, then Menu > Start Prep. Use Menu > New prep document or New prep flow before typing. The bottom-pane Prep / Round control also provides actions and current status. Only new blank session documents can become prep documents. A desktop Prep invitation requires starting your own Prep session first; the collaboration protocol retains the host's Isolation/Co-Flowing rule. OpenCaselist's authenticated desktop panel remains desktop-only.
+
+Menu > Round checklist lists the protected documents, what will close, file restrictions and collaboration rules before you confirm Start Round. Existing shared sessions keep their host's rule; changing your default does not change an already shared session. Round blocks existing file imports, while saving and new blank notes remain available. End Session records the end and seals open prep documents. Save each sealed document as .cmir afterward; DOCX copies do not retain its certificate.
+
+Menu > Typing logs > View shows timestamps, accepted typing, blocked paste attempts and partner edits separately. Export readable downloads a .txt timeline; Export raw JSONL preserves the technical audit chain. Logs and active mode live in this browser's IndexedDB, separately from document recovery. Reload resumes the mode; one Green workspace per browser storage partition is allowed to prevent competing log writers. Close any other Green tab before reloading a workspace paused by that check. Ordinary strategy-document contents are excluded. Browser storage failure pauses protected editing instead of silently disabling the log.
+
+The browser cannot inspect other apps/devices or prevent website-data deletion. Focus/visibility events indicate only what the browser reported; they do not prove cheating. iPad suspension or sudden termination can lose the final uncommitted input batch. Keep exported copies, and have the judge record the session's final seal independently. A self-generated hash chain alone is not proof of authenticity or uninterrupted supervision.
 
 ## Validation and limits
 
