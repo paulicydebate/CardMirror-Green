@@ -15561,7 +15561,8 @@ body.pmd-multi-doc .pmd-cardcutter-trim {
 /* Hover: the same accent border on all three bars. */
 .pmd-dropzone-bar:hover,
 .pmd-send-bar:hover,
-.pmd-receive-bar:hover {
+.pmd-receive-bar:hover,
+.pmd-coedit-with:hover {
   border-color: var(--pmd-c-accent);
 }
 /* Open: the accent "clicked" outline on the pill only. */
@@ -17407,7 +17408,7 @@ body.pmd-tablet-editing:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) #ed
 body.pmd-tablet-editing #collab-chip { max-width: 70vw; }
 
 .pmd-home-tablet-flow { display: none; }
-.pmd-coedit-with { border: 1px solid var(--pmd-c-border-soft); border-radius: 6px; padding: 5px 10px; background: var(--pmd-c-bg); color: var(--pmd-c-text); font: inherit; cursor: pointer; white-space: nowrap; }
+.pmd-coedit-with { font-family: inherit; cursor: pointer; }
 body.pmd-mobile .pmd-coedit-with { display: none; }
 body.pmd-tablet-editing .pmd-home-tablet-flow { display: flex; }
 body.pmd-tablet-editing:has(#editor .pmd-flow-workspace) .pmd-mobile-modebar { left: 0; }

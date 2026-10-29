@@ -193,8 +193,9 @@ export class SendPillController {
 
     opts.parent.appendChild(this.root);
     this.coeditButton = document.createElement('button');
-    this.coeditButton.type = 'button'; this.coeditButton.className = 'pmd-coedit-with';
-    this.coeditButton.textContent = 'Co-edit with…';
+    this.coeditButton.type = 'button'; this.coeditButton.className = 'pmd-pill-bar pmd-coedit-with';
+    const coeditLabel = document.createElement('span'); coeditLabel.className = 'pmd-pill-label';
+    coeditLabel.textContent = 'Co-edit with…'; this.coeditButton.append(coeditLabel);
     this.coeditButton.title = 'Invite a saved partner to co-edit the active document';
     this.coeditButton.onclick = () => { this.collapse(); void import('../index.js').then(m => m.openCoeditWith()); };
     opts.parent.append(this.coeditButton);
