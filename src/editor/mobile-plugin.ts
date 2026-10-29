@@ -1,8 +1,9 @@
 /**
  * Mobile-shell editor behavior (SPEC-mobile-view.md).
  *
- * The mobile shell is view-first: the ProseMirror view is never
- * contenteditable, which keeps the on-screen keyboard away entirely
+ * Phone reading mode is view-first. Tablet workspaces additionally allow
+ * ordinary editing when neither Read nor a tap-selection mode is active.
+ * In phone mode the ProseMirror view is never contenteditable, which keeps the on-screen keyboard away entirely
  * while leaving decorations, history, and programmatic selection
  * fully alive. Commands target content via tap coordinates
  * (`posAtCoords` under the hood of `handleClick`'s `pos`), not via a
@@ -36,10 +37,14 @@ import { unitRangeAtPos, type UnitRange } from './structural-move.js';
  *  mid-session — the shell decision is per-load (see
  *  `resolveMobileLayout`). */
 let mobileShellActive = false;
+let tabletEditing = false;
 
-export function setMobileShellActive(on: boolean): void {
+export function setMobileShellActive(on: boolean, editableTablet = false): void {
   mobileShellActive = on;
+  tabletEditing = on && editableTablet;
+  tapMode = 'none';
 }
+export function isTabletEditing(): boolean { return tabletEditing; }
 
 export function isMobileShellActive(): boolean {
   return mobileShellActive;
@@ -55,6 +60,7 @@ let unitTapHandler: ((unit: UnitRange | null) => void) | null = null;
 export function setMobileTapMode(view: EditorView, mode: MobileTapMode): void {
   tapMode = mode;
   if (mode === 'none') setMobileUnitSelection(view, null);
+  else view.dispatch(view.state.tr.setMeta('addToHistory', false));
 }
 
 /** The shell registers one handler; called with the unit under every
@@ -117,9 +123,9 @@ export const mobilePlugin: Plugin<MobileShellState> = new Plugin<MobileShellStat
     },
   },
   props: {
-    /** View-first: never contenteditable on mobile. */
-    editable(): boolean {
-      return !mobileShellActive;
+    /** Phone reading mode stays locked; tablets expose an explicit editing mode. */
+    editable(state): boolean {
+      return !mobileShellActive || (tabletEditing && tapMode === 'none' && !readModePlugin.getState(state)?.on);
     },
     decorations(state) {
       const sel = mobileKey.getState(state)?.selected;

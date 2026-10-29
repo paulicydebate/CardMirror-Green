@@ -148,12 +148,15 @@ export function startRoomsMock(): Promise<RoomsMock> {
     // A view-pass bearer is a SPECTATOR: room-data reads only.
     const isViewer =
       viewPassValue !== null && req.headers.authorization === `Bearer ${viewPassValue}`;
-    if (!isViewer && req.headers.authorization !== `Bearer ${token}`) {
+    const isGuest = guestPassValue !== null && req.headers.authorization === `Bearer ${guestPassValue}`;
+    if (!isViewer && !isGuest && req.headers.authorization !== `Bearer ${token}`) {
       return json(res, 401, { error: 'unauthorized' });
     }
     const m = /^\/relay\/rooms(?:\/([^/]+)(?:\/([a-z-]+))?)?$/.exec(path);
     if (!m) return json(res, 404, { error: 'not found' });
     const [, roomId, sub] = m;
+    // Synthetic guests may access room data, but cannot create or delete rooms.
+    if (isGuest && (!roomId || req.method === 'DELETE')) return json(res, 403, { error: 'guest pass cannot manage rooms' });
     if (isViewer) {
       const readOnlyOk =
         (req.method === 'GET' && (sub === 'stream' || sub === 'updates' || sub === 'view-pass'));

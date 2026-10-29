@@ -1,3 +1,5 @@
+import { installTabletViewport } from './tablet-viewport.js';
+import { collabEnabled } from './collab/collab-gate.js';
 /**
  * Mobile shell — view-first chrome for phones and tablets on the web
  * edition (SPEC-mobile-view.md). Mounted at boot by editor/index.ts
@@ -26,6 +28,7 @@ import { readModeAwareUndo, readModeAwareRedo } from './read-mode-plugin.js';
 import { mobileDensity } from './mobile-layout.js';
 import {
   setMobileTapMode,
+  isTabletEditing,
   onMobileUnitTapped,
   setMobileUnitSelection,
   type MobileTapMode,
@@ -52,6 +55,7 @@ export function mountMobileShell(): void {
   mounted = true;
   document.body.classList.add('pmd-mobile', `pmd-mobile-${mobileDensity(window.innerWidth)}`);
 
+  if (isTabletEditing()) { document.body.classList.add('pmd-tablet-editing'); installTabletViewport(); }
   const appBar = buildAppBar();
   document.body.insertBefore(appBar, document.body.firstChild);
   const { drawer, scrim, openDrawer, closeDrawer } = buildDrawer();
@@ -107,6 +111,10 @@ function buildAppBar(): HTMLElement {
     if (view) readModeAwareRedo(view.state, view.dispatch.bind(view), view);
   });
   bar.appendChild(redoBtn);
+  if (isTabletEditing()) {
+    const save = iconButton('Save', 'Download a document copy', 'pmd-mappbar-save');
+    save.addEventListener('click', () => runRibbon('saveAs')); bar.appendChild(save);
+  }
 
   const displayBtn = iconButton('Aa', 'Display options', 'pmd-mappbar-display');
   displayBtn.addEventListener('click', () => toggleSheet(buildDisplaySheet));
@@ -239,6 +247,11 @@ function buildModeBar(): HTMLElement {
     runRibbon('toggleReadMode');
   });
   bar.appendChild(readBtn);
+  if (isTabletEditing()) {
+    editBtn = document.createElement('button'); editBtn.type = 'button'; editBtn.className = 'pmd-mobile-mode-btn pmd-mobile-mode-edit'; editBtn.textContent = 'Edit';
+    editBtn.addEventListener('click', () => { setTapMode('none'); if (settings.get('readMode')) runRibbon('toggleReadMode'); syncEdit(); });
+    bar.prepend(editBtn); settings.subscribe(syncEdit); syncEdit();
+  }
 
   moveBtn = document.createElement('button');
   moveBtn.type = 'button';
@@ -248,6 +261,8 @@ function buildModeBar(): HTMLElement {
   moveBtn.addEventListener('click', () => setTapMode(tapMode === 'move' ? 'none' : 'move'));
   bar.appendChild(moveBtn);
 
+  // Green tablets focus on editing/flowing; no paid-AI configuration in this workflow.
+  if (isTabletEditing()) return bar;
   repairBtn = document.createElement('button');
   repairBtn.type = 'button';
   repairBtn.className = 'pmd-mobile-mode-btn pmd-mobile-mode-repair';
@@ -264,6 +279,8 @@ function buildModeBar(): HTMLElement {
 // ─── Tap-select modes (Move / Repair) ──────────────────────────────
 
 let tapMode: MobileTapMode = 'none';
+let editBtn: HTMLButtonElement | null = null;
+function syncEdit(): void { const on = !settings.get('readMode') && tapMode === 'none'; editBtn?.classList.toggle('pmd-mode-active', on); editBtn?.setAttribute('aria-pressed', String(on)); }
 let moveBtn: HTMLButtonElement | null = null;
 let repairBtn: HTMLButtonElement | null = null;
 let moveSheet: HTMLElement | null = null;
@@ -281,6 +298,7 @@ function setTapMode(mode: MobileTapMode): void {
   moveBtn?.classList.toggle('pmd-mode-active', mode === 'move');
   repairBtn?.classList.toggle('pmd-mode-active', mode === 'repair');
   setMobileTapMode(view, mode);
+  syncEdit();
   currentUnit = null;
   hideMoveSheet();
   hideRepairSheet();
@@ -709,6 +727,8 @@ async function deleteUnit(): Promise<void> {
 
 let openSheetEl: HTMLElement | null = null;
 let openSheetBuilder: (() => HTMLElement) | null = null;
+let sheetDismiss: ((event: PointerEvent) => void) | null = null;
+let sheetTimer = 0;
 
 function toggleSheet(builder: () => HTMLElement): void {
   // Tapping the same trigger twice closes; a different trigger swaps.
@@ -721,15 +741,18 @@ function toggleSheet(builder: () => HTMLElement): void {
   openSheetEl = sheet;
   openSheetBuilder = builder;
   const dismiss = (e: PointerEvent): void => {
+    if (e.target instanceof Element && e.target.closest('.pmd-mappbar-menu, .pmd-mappbar-display')) return;
     if (openSheetEl && !openSheetEl.contains(e.target as Node)) closeSheet();
   };
   // Defer so the opening tap doesn't immediately dismiss.
-  window.setTimeout(() => {
-    document.addEventListener('pointerdown', dismiss, { once: true });
-  }, 0);
+  sheetDismiss = dismiss;
+  sheetTimer = window.setTimeout(() => { document.addEventListener('pointerdown', dismiss); }, 0);
 }
 
 function closeSheet(): void {
+  window.clearTimeout(sheetTimer);
+  if (sheetDismiss) document.removeEventListener('pointerdown', sheetDismiss);
+  sheetDismiss = null;
   openSheetEl?.remove();
   openSheetEl = null;
   openSheetBuilder = null;
@@ -811,7 +834,15 @@ function buildOverflowSheet(): HTMLElement {
   };
   item('Open…', () => runRibbon('openFile'));
   item('New document', () => runRibbon('newDocument'));
+  if (isTabletEditing()) item('New Flow', () => runRibbon('newFlow'));
   item('Export a copy…', () => runRibbon('saveAs'));
+  if (isTabletEditing() && collabEnabled()) {
+    item('Start co-editing', () => runRibbon('collabStartSession'));
+    item('Join co-editing', () => runRibbon('collabJoinSession'));
+    item('Copy invitation link', () => runRibbon('collabCopyInviteLink'));
+    item('End / leave co-editing', () => runRibbon('collabEndSession'));
+    item('Collaboration settings', () => { void import('./settings-ui.js').then(m => m.openSettings({ category: 'pairing' })); });
+  }
   item('Word count', () => runRibbon('wordCountSelection'));
   item('Settings', () => {
     void import('./mobile-settings-ui.js').then((m) => m.openMobileSettings());

@@ -3,7 +3,7 @@
  *
  * Open everywhere collaboration can exist: every desktop host, and —
  * since the 2026-08-19 soft launch — browser hosts too. Closed only
- * where it can't: Lite builds and the mobile shell. This gate decides
+ * where it can't: Lite builds and the phone reading shell. This gate decides
  * whether collab SURFACES exist at all; whether they're active is the
  * user's 'Enable collaboration' master toggle (default off), so the
  * ungating itself changed nothing for anyone who hasn't opted in.
@@ -22,22 +22,17 @@ import { getHost } from '../host/index.js';
 import { prepRound } from '../prep-runtime.js';
 import { isLiteBuild } from '../lite.js';
 import { settings } from '../settings.js';
-import { resolveMobileLayout } from '../mobile-layout.js';
+import { resolveMobileLayout, mobileLayoutEnv } from '../mobile-layout.js';
 
 /** Mirrors `index.ts`'s boot-time mobile-shell resolution, memoized
  *  once per page load (same reload-to-switch convention — resizing
  *  mid-session must not flip the gate under an open session). */
 let mobileShellMemo: boolean | null = null;
-function isMobileShell(): boolean {
+function isPhoneReadingShell(): boolean {
   if (mobileShellMemo !== null) return mobileShellMemo;
   try {
-    mobileShellMemo = resolveMobileLayout(settings.get('mobileLayout'), {
-      hostKind: getHost().kind,
-      coarsePointer:
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(pointer: coarse)').matches,
-      viewportWidth: window.innerWidth,
-    });
+    const env = mobileLayoutEnv(getHost().kind);
+    mobileShellMemo = resolveMobileLayout(settings.get('mobileLayout'), env) && !env.tablet;
   } catch {
     /* unresolvable layout → treat as mobile, gate stays closed */
     mobileShellMemo = true;
@@ -61,7 +56,7 @@ export function collabEnabled(opts?: { duringRound?: boolean }): boolean {
     // this gate only decides whether the surfaces exist. The mobile
     // shell is the one exclusion: co-editing is a desktop-layout
     // feature (user decision 2026-08-18).
-    return !isMobileShell();
+    return !isPhoneReadingShell(); // Editable tablet workspaces are eligible; phones stay view-first.
   } catch {
     /* no host resolvable → treat as not-desktop, stay closed */
     return false;

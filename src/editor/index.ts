@@ -95,7 +95,7 @@ import {
   anOlderMultiPaneWindowExists,
   closeSelfWithFallback,
 } from './window-coordination.js';
-import { resolveMobileLayout } from './mobile-layout.js';
+import { resolveMobileLayout, mobileLayoutEnv } from './mobile-layout.js';
 import { mobilePlugin, setMobileShellActive } from './mobile-plugin.js';
 import { installCardCutterGate, cardCutterActive } from './card-cutter-gate.js';
 import { installPluginCommunityGate } from './plugin-community-gate.js';
@@ -461,9 +461,8 @@ if (collabEnabled() && !getElectronHost()) {
 if (!getElectronHost() && !isLiteBuild() && window.location.hash.includes('join=')) {
   const joinParts = parseJoinLinkHash(window.location.hash);
   window.history.replaceState(null, '', window.location.pathname + window.location.search);
-  if (joinParts && isMobileLayout()) {
-    // Deliberately unsupported (user decision 2026-08-18): co-editing
-    // is a desktop-layout feature. A clean refusal beats the mobile
+  if (joinParts && isMobileLayout() && !mobileLayoutEnv(getHost().kind).tablet) {
+    // Phone reading mode remains unsupported; editable tablets can join. A clean refusal beats the mobile
     // shell's script error — and beats silently ignoring the link.
     setTimeout(() => {
       void alertDialog(
@@ -5719,12 +5718,7 @@ function makeMobileStarterDoc(): PMNode {
  *  boot-time `BOOT_MOBILE` decision, recomputed here because
  *  `makeNewDocBody` runs before that constant is initialized. */
 function isMobileLayout(): boolean {
-  return resolveMobileLayout(settings.get('mobileLayout'), {
-    hostKind: getHost().kind,
-    coarsePointer:
-      typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches,
-    viewportWidth: window.innerWidth,
-  });
+  return resolveMobileLayout(settings.get('mobileLayout'), mobileLayoutEnv(getHost().kind));
 }
 
 /** Pick between the onboarding starter and a blank doc based on
@@ -5735,7 +5729,7 @@ function isMobileLayout(): boolean {
 function makeNewDocBody(): PMNode {
   if (prepRuntime.status.session) return makeBlankNewDoc();
   if (!settings.get('showOnboardingStarter')) return makeBlankNewDoc();
-  return isMobileLayout() ? makeMobileStarterDoc() : makeStarterDoc();
+  return isMobileLayout() ? (mobileLayoutEnv(getHost().kind).tablet ? makeBlankNewDoc() : makeMobileStarterDoc()) : makeStarterDoc();
 }
 
 /**
@@ -10141,20 +10135,14 @@ function countSummary(doc: PMNode): string {
 // multi-pane branch off for this session WITHOUT writing the synced
 // `multiDocWorkspace` setting — toggling back to desktop restores the
 // workspace untouched.
-const BOOT_MOBILE_ENV = {
-  hostKind: getHost().kind,
-  coarsePointer:
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(pointer: coarse)').matches,
-  viewportWidth: window.innerWidth,
-};
+const BOOT_MOBILE_ENV = mobileLayoutEnv(getHost().kind);
 const BOOT_MOBILE = resolveMobileLayout(settings.get('mobileLayout'), BOOT_MOBILE_ENV);
 if (BOOT_MOBILE_ENV.hostKind === 'browser') {
   console.log(
     `[cardmirror] mobile: setting=${settings.get('mobileLayout')} width=${BOOT_MOBILE_ENV.viewportWidth} coarse=${BOOT_MOBILE_ENV.coarsePointer} → ${BOOT_MOBILE ? 'mobile' : 'desktop'} layout`,
   );
 }
-if (BOOT_MOBILE) setMobileShellActive(true);
+if (BOOT_MOBILE) setMobileShellActive(true, !!BOOT_MOBILE_ENV.tablet);
 /** A pane popped out of three-pane mode (CardMirror Green) runs as a normal
  *  single-document window: three-pane is one window only. */
 const BOOT_POPOUT_WINDOW = typeof location !== 'undefined' && new URLSearchParams(location.search).has('popout');

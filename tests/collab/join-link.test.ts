@@ -39,7 +39,7 @@ describe('join links', () => {
 
   it('builds and parses round-trip, pass included', () => {
     const link = buildJoinLink({ shareCode: CODE, guestPass: PASS });
-    expect(link.startsWith('https://cardmirror.app/#')).toBe(true);
+    expect(link.startsWith('https://paulicydebate.github.io/CardMirror-Green/#')).toBe(true);
     expect(link.includes('?')).toBe(false); // fragment only — never the query
     const parsed = parseJoinLinkHash(new URL(link).hash);
     expect(parsed).toEqual({ shareCode: CODE, guestPass: PASS });
@@ -74,6 +74,18 @@ describe('guest-pass threading', () => {
     expect(on.session.guestPass).toBe('room-pass-1');
     await on.session.stop();
     mock.setGuestPass(null);
+  });
+
+  it('a guest bearer can exchange updates without room-management privileges', async () => {
+    mock.setGuestPass('synthetic-guest-pass');
+    try {
+      const owner = new RoomsClient({baseUrl:()=>mock.url,token:()=>mock.token});
+      const room = await owner.createRoom();
+      const guest = new RoomsClient({baseUrl:()=>mock.url,token:()=> 'synthetic-guest-pass',guestAuth:true});
+      expect(await guest.postUpdate(room.roomId,new Uint8Array([1,2,3]))).toBeGreaterThan(0);
+      await expect(guest.createRoom()).rejects.toMatchObject({status:403});
+      await expect(guest.deleteRoom(room.roomId)).rejects.toMatchObject({status:403});
+    } finally { mock.setGuestPass(null); }
   });
 
   it('a pass-authenticated client presents the pass as its bearer, no routing header', async () => {

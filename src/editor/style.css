@@ -17369,3 +17369,29 @@ body:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) :is(#app, #status-bar,
 }
 body.pmd-recovery-active:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) #app { left: var(--pmd-recovery-width); }
 body:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) .pmd-recovery-sidebar { left: 0; }
+
+/* Editable tablet workspace. Phone reading mode and desktop sizing stay independent. */
+body.pmd-tablet-editing { --pmd-tablet-top: 0px; --pmd-tablet-bottom: 0px; }
+body.pmd-tablet-editing .pmd-mobile-appbar { top: var(--pmd-tablet-top); }
+body.pmd-tablet-editing:not(.pmd-multi-doc) #app {
+  top: calc(var(--pmd-mobile-appbar-h) + var(--pmd-tablet-top));
+  bottom: calc(var(--pmd-tablet-bottom) + var(--status-bar-height) + var(--pmd-mobile-modebar-h) + env(safe-area-inset-bottom, 0px));
+  touch-action: pan-x pan-y;
+}
+body.pmd-tablet-editing #status-bar { bottom: var(--pmd-tablet-bottom); }
+body.pmd-tablet-editing .pmd-mobile-modebar { bottom: calc(var(--pmd-tablet-bottom) + var(--status-bar-height) + env(safe-area-inset-bottom, 0px)); gap: 4px; }
+body.pmd-tablet-editing .pmd-mobile-mode-btn { min-height: 40px; padding: 0 12px; }
+body.pmd-tablet-editing .pmd-mobile-drawer { top: calc(var(--pmd-mobile-appbar-h) + var(--pmd-tablet-top)); bottom: var(--pmd-tablet-bottom); }
+body.pmd-tablet-editing .pmd-mobile-sheet { bottom: calc(var(--pmd-tablet-bottom) + var(--status-bar-height) + var(--pmd-mobile-modebar-h) + env(safe-area-inset-bottom, 0px)); max-height: 55dvh; overflow: auto; }
+body.pmd-tablet-editing .pmd-mappbar-save { font-size: 14px; }
+body.pmd-tablet-editing textarea:is(.pmd-flow-cell, .pmd-flow-docsec) { font-size: max(16px, calc(var(--flow-size) * var(--editor-zoom, 1))); }
+body.pmd-tablet-editing .pmd-flow-root button { min-height: 40px; }
+body.pmd-tablet-editing .pmd-flow-gridwrap { touch-action: pan-x pan-y; }
+body.pmd-tablet-editing:has(#editor .pmd-flow-workspace) .pmd-mobile-drawer { display: none; }
+body.pmd-tablet-editing:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) #editor { height: 100%; }
+body.pmd-tablet-editing #collab-chip { max-width: 70vw; }
+
+.pmd-home-tablet-flow { display: none; }
+body.pmd-tablet-editing .pmd-home-tablet-flow { display: flex; }
+body.pmd-tablet-editing:has(#editor .pmd-flow-workspace) .pmd-mobile-modebar { left: 0; }
+body.pmd-tablet-editing:has(#editor .pmd-flow-workspace) .pmd-mappbar-drawer { visibility: hidden; }

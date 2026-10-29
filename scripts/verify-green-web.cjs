@@ -1,0 +1,15 @@
+const fs=require('node:fs');
+const assert=require('node:assert/strict');
+const manifest=JSON.parse(fs.readFileSync('dist/manifest.webmanifest','utf8'));
+assert.equal(manifest.name,'CardMirror Green');
+assert.equal(manifest.theme_color,'#15803d');
+assert.equal(manifest.display,'standalone');
+assert.ok(manifest.start_url.endsWith('/CardMirror-Green/') || manifest.start_url === './');
+assert.ok(manifest.scope.endsWith('/CardMirror-Green/') || manifest.scope === './');
+assert.ok(manifest.icons.some(icon=>icon.src.endsWith('green-app-icon.png')));
+assert.ok(fs.statSync('dist/green-app-icon.png').size > 0);
+const html=fs.readFileSync('dist/index.html','utf8');
+assert.ok(html.includes('/CardMirror-Green/assets/'));
+assert.ok(!html.includes('http-equiv="refresh"'));
+assert.ok(fs.statSync('dist/sw.js').size > 0);
+console.log('Verified Green identity, subpath assets, install manifest, icon and offline service worker.');

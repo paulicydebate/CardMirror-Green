@@ -1,46 +1,58 @@
-name: Deploy redirect stub to GitHub Pages
-
-# The web app moved to https://cardmirror.app (Cloudflare Workers static
-# assets, deployed by Cloudflare's Git integration on every push to main).
-# GitHub Pages now serves only `web-redirect/`: a redirect page plus a
-# self-destructing service worker that frees previously-installed PWAs
-# from their old offline cache. Keep this deployed indefinitely — it's
-# what old links and installed apps land on.
-
+name: Deploy CardMirror Green web app
 on:
   push:
-    branches: [main]
-    paths: ['web-redirect/**', '.github/workflows/deploy-pages.yml']
-  # Allow a manual re-deploy from the Actions tab.
+    branches: ['feature/full-card-api']
+    paths: ['src/**', 'public/**', 'index.html', 'vite.config.ts', 'package*.json', '.github/workflows/deploy-pages.yml']
   workflow_dispatch:
-
-# Single concurrent run; cancel in-progress deploys if a newer commit lands.
 concurrency:
-  group: pages
-  cancel-in-progress: true
-
-# Permissions the actions/deploy-pages action requires.
+  group: green-pages
+  cancel-in-progress: false
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
 jobs:
-  deploy:
-    name: Deploy redirect stub
+  build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix apps/desktop ci
+      - run: npm run typecheck
+      - name: Check tablet and collaboration behavior
+        run: npx vitest run tests/editor/ipad-workspace.test.ts tests/editor/mobile-layout.test.ts tests/collab/collab-gate.test.ts tests/collab/join-link.test.ts tests/collab/flow-coedit.test.ts
+      - name: Build Green PWA for its own GitHub Pages path
+        run: npm run build
+        env:
+          VITE_BASE: /CardMirror-Green/
+      - name: Verify installable Green web build
+        run: node scripts/verify-green-web.cjs
+      - name: Install headless WebKit test runtime
+        run: npx playwright install --with-deps webkit
+      - name: Exercise tablet Flow, files, offline use and encrypted collaboration
+        run: node scripts/test-ipad-web.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: green-ipad-webkit-checks
+          path: tests/scratch/ipad-check
+          if-no-files-found: ignore
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: web-redirect
-
-      - name: Deploy
+      - uses: actions/configure-pages@v5
+      - uses: actions/deploy-pages@v4
         id: deployment
-        uses: actions/deploy-pages@v4

@@ -236,7 +236,7 @@ async function requestPersistentStorage(): Promise<void> {
 export class BrowserHost implements Host {
   readonly kind = 'browser' as const;
   readonly journalsSupported = browserJournalsSupported();
-  readonly canSpawnWindow = detectCanSpawnWindow();
+  readonly canSpawnWindow = !isIOS() && detectCanSpawnWindow();
 
   constructor() {
     // Ask the browser to keep our IndexedDB/localStorage (settings, the autosave
@@ -424,8 +424,10 @@ export class BrowserHost implements Host {
     const a = document.createElement('a');
     a.href = url;
     a.download = suggestedName;
-    a.click();
-    URL.revokeObjectURL(url);
+    a.hidden = true; document.body.appendChild(a);
+    a.click(); a.remove();
+    // Safari consumes the blob asynchronously; immediate revocation can cancel the download.
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
     return { name: suggestedName };
   }
 

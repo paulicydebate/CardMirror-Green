@@ -167,7 +167,7 @@ class HomeScreen {
     header.appendChild(this.backBtn);
     const title = document.createElement('h1');
     title.className = 'pmd-home-title';
-    title.textContent = 'CardMirror';
+    title.textContent = 'CardMirror Green';
     header.appendChild(title);
     const tagline = document.createElement('p');
     tagline.className = 'pmd-home-tagline';
@@ -230,6 +230,10 @@ class HomeScreen {
     actions.appendChild(
       this.actionCard('Open…', 'Browse for a .cmir or .docx file.', this.actionRunners[2]!),
     );
+    if (callbacks.newFlow) {
+      const tabletFlow = this.actionCard('New Flow', 'Create an editable spreadsheet flow.', () => this.callbacks?.newFlow?.());
+      tabletFlow.classList.add('pmd-home-tablet-flow'); actions.appendChild(tabletFlow);
+    }
     inner.appendChild(actions);
 
     // Last workspace — "pick up where you left off", above Recent
