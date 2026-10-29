@@ -1,8 +1,8 @@
 # CardMirror Green on iPad
 
-Status: first editable tablet web/PWA milestone under validation. This is a browser app, not an App Store app or an iPad build of Electron.
+Status: first editable tablet web/PWA preview deployed and automated checks passed. Actual iPad acceptance testing remains pending. This is a browser app, not an App Store app or an iPad build of Electron.
 
-Planned Green address: https://paulicydebate.github.io/CardMirror-Green/ . Only use it after the Green web deployment succeeds; upstream cardmirror.app is a separate deployment.
+Green address: https://paulicydebate.github.io/CardMirror-Green/ . Deployment succeeded for 2c428fe3; upstream cardmirror.app is a separate deployment.
 
 ## First use
 
