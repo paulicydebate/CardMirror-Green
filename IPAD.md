@@ -22,4 +22,6 @@ Prep/Round logging and enforcement remain desktop-only. A desktop Prep document 
 
 Headless WebKit uses fresh synthetic profiles, files and a local mock relay. Its emulation does not establish real iPad keyboard, Files picker, PWA lifecycle, storage retention or real-relay behavior. Test these on an actual iPad before relying on the app in a round. Desktop apps and personal profiles must not be launched or controlled without the user's explicit approval.
 
+Headless Chromium separately verifies the real service worker: offline reload, offline Flow editing, journal persistence and reopening the unsaved draft after another offline reload. Playwright documents service-worker support for Chromium; its WebKit CacheStorage/reload limitations prevent treating those automated runs as Safari offline verification. Tablet startup recovery is enabled and its panel appears above Home, with touch-sized controls. Reading-only phones still defer recovery.
+
 The web workflow builds and verifies the Green manifest/icon, scoped subpath assets and offline service worker, runs regression tests and headless WebKit checks, then deploys to GitHub Pages from feature/full-card-api. GitHub Pages must be enabled for GitHub Actions in this repository; main remains unchanged. Web updates activate on a later launch instead of forcibly reloading an editing session.

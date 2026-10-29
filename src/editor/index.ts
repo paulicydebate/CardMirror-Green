@@ -11215,11 +11215,8 @@ async function runStartupRecovery(): Promise<void> {
 }
 
 async function runStartupRecoveryInner(): Promise<void> {
-  // No recovery offers on mobile — the sidebar is a desktop surface
-  // (it would fight the mobile chrome), and the view-first shell is
-  // the wrong place to adjudicate drafts. Journals stay put and
-  // surface on the next desktop-layout launch.
-  if (BOOT_MOBILE) {
+  // Reading-only phones defer recovery; editable tablets must offer their drafts.
+  if (BOOT_MOBILE && !BOOT_MOBILE_ENV.tablet) {
     console.log('[cardmirror] mobile: skipping startup recovery (journals deferred to desktop)');
     return;
   }

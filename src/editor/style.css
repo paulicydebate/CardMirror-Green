@@ -17384,6 +17384,14 @@ body.pmd-tablet-editing .pmd-mobile-mode-btn { min-height: 40px; padding: 0 12px
 body.pmd-tablet-editing .pmd-mobile-drawer { top: calc(var(--pmd-mobile-appbar-h) + var(--pmd-tablet-top)); bottom: var(--pmd-tablet-bottom); }
 body.pmd-tablet-editing .pmd-mobile-sheet { bottom: calc(var(--pmd-tablet-bottom) + var(--status-bar-height) + var(--pmd-mobile-modebar-h) + env(safe-area-inset-bottom, 0px)); max-height: 55dvh; overflow: auto; }
 body.pmd-tablet-editing .pmd-mappbar-save { font-size: 14px; }
+body.pmd-tablet-editing .pmd-recovery-sidebar {
+  z-index: 600;
+  left: 0;
+  top: calc(var(--pmd-mobile-appbar-h) + var(--pmd-tablet-top));
+  bottom: calc(var(--pmd-tablet-bottom) + var(--status-bar-height) + var(--pmd-mobile-modebar-h));
+  width: min(100vw, 360px);
+}
+body.pmd-tablet-editing .pmd-recovery-sidebar button { min-height: 40px; }
 body.pmd-tablet-editing textarea:is(.pmd-flow-cell, .pmd-flow-docsec) { font-size: max(16px, calc(var(--flow-size) * var(--editor-zoom, 1))); }
 body.pmd-tablet-editing .pmd-flow-root button { min-height: 40px; }
 body.pmd-tablet-editing .pmd-flow-gridwrap { touch-action: pan-x pan-y; }
