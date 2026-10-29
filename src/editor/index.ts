@@ -1472,6 +1472,20 @@ function resolveDocPersistentId(uid: string): string | null {
   return uid === currentDocUid ? currentDocId : null;
 }
 
+export async function openCoeditWith(): Promise<void> {
+  if (!collabEnabled()) { showToast('Co-editing is unavailable in this mode.'); return; }
+  if (!getActiveView() || homeScreen.isVisible()) { showToast('Open the document you want to co-edit first.'); return; }
+  const uid = activeDocIdentity().sessionUid;
+  const picker = await import('./collab/coedit-picker.js');
+  await picker.openCoeditPicker({
+    documentUid: uid, documentTitle: activeFile().filename ?? 'Untitled document',
+    currentUid: () => activeDocIdentity().sessionUid,
+    partners: settings.get('pairingPartners'), connected: settings.get('pairingEnabled'),
+    configure: () => { void import('./settings-ui.js').then(m => m.openSettings({ category: 'pairing' })); },
+    join: () => { ribbonContext.collabJoinSession(); },
+    invite: async target => { const m = await loadCollabUi(); await m.inviteTargetFlow(collabDeps, target, uid); },
+  });
+}
 function loadCollabUi(): Promise<typeof import('./collab/collab-ui.js')> {
   return (collabUiModule ??= import('./collab/collab-ui.js').then((m) => {
     // Tell collab-ui which doc is focused so its shared chip / no-deps flows

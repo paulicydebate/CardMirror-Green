@@ -146,6 +146,7 @@ export class SendPillController {
    *  visibility rules; the link additionally needs the room's view pass. */
   private viewCodeEl: HTMLButtonElement | null = null;
   private viewLinkEl: HTMLButtonElement | null = null;
+  private coeditButton: HTMLButtonElement | null = null;
   /** The whole bottom area; `pmd-send-actions-live` while the 2×2 copy
    *  grid is showing — only then does Add contact move into the side
    *  column (icon-only, under the gear). Otherwise the row is the
@@ -191,6 +192,12 @@ export class SendPillController {
     });
 
     opts.parent.appendChild(this.root);
+    this.coeditButton = document.createElement('button');
+    this.coeditButton.type = 'button'; this.coeditButton.className = 'pmd-coedit-with';
+    this.coeditButton.textContent = 'Co-edit with…';
+    this.coeditButton.title = 'Invite a saved partner to co-edit the active document';
+    this.coeditButton.onclick = () => { this.collapse(); void import('../index.js').then(m => m.openCoeditWith()); };
+    opts.parent.append(this.coeditButton);
 
     this.surface = {
       hitTest: (clientX, clientY) => {
@@ -348,10 +355,12 @@ export class SendPillController {
     this.unsubscribeSettings?.();
     this.unsubscribeController?.();
     this.root.remove();
+    this.coeditButton?.remove();
   }
 
   private applyVisibility(): void {
     this.root.hidden = !settings.get('pairingEnabled');
+    if (this.coeditButton) this.coeditButton.hidden = !collabEnabled();
   }
 
   /** Rebuild the partner + group drop rows from settings. */

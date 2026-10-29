@@ -104,6 +104,30 @@ function mkIndexStyleView(ownerUid = OWNER): EditorView {
 }
 
 describe('collab UI flows through the editor seams', () => {
+  it('starts an explicitly chosen document without a redundant prompt or clipboard code', async () => {
+    const uid='named-partner-doc'; const hostView=mkIndexStyleView(uid);
+    const copied=vi.fn(async()=>{});
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:copied}});
+    const deps={getView:()=>hostView,getOwnerUid:()=>uid,newSessionDoc:()=>true,
+      refreshPlugins:()=>hostView.updateState(hostView.state.reconfigure({plugins:buildMiniPlugins(uid)}))};
+    const api=(window as unknown as {electronAPI:Record<string,unknown>}).electronAPI;
+    const send=vi.fn(async()=>({ok:1,fail:0,authFail:0}));
+    const oldSend=api['pairingSend'], oldEnabled=settings.get('pairingEnabled');
+    api['pairingSend']=send; settings.set('pairingEnabled',true);
+    try {
+      await collabUi.startSessionFlow(deps,'wrong-doc');
+      expect(collabPluginSourceFor(uid)).toBeNull();
+      await collabUi.inviteTargetFlow(deps,{codes:['synthetic-partner'],label:'Alex'},uid); await settle();
+      expect(collabPluginSourceFor(uid)).not.toBeNull();
+      expect(copied).not.toHaveBeenCalled();
+      expect(document.querySelector('.pmd-text-prompt-dialog')).toBeNull();
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({recipientCodes:['synthetic-partner'],item:expect.objectContaining({type:'room-invite'})}));
+      const room=collabUi.activeSession()!.roomId;
+      await collabUi.inviteTargetFlow(deps,{codes:['synthetic-partner-2'],label:'Blair'},uid);
+      expect(collabUi.activeSession()!.roomId).toBe(room); // reuse the document session
+      await collabEndOrLeaveSession(uid);
+    } finally { api['pairingSend']=oldSend; settings.set('pairingEnabled',oldEnabled); hostView.destroy(); }
+  });
   it('declines a Green prep invite before mounting anything when Prep Mode is off', async () => {
     const create = vi.fn(() => true);
     const code = encodeShareCode('ab'.repeat(16), generateRoomKeyBytes(), '1.0.0', true);

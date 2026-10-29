@@ -1041,11 +1041,12 @@ function guardReady(deps: CollabUiDeps): EditorView | null {
  *  (audit find, 2026-07-10). */
 const startsInFlight = new Set<string>();
 
-export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
+export async function startSessionFlow(deps: CollabUiDeps, confirmedUid?: string): Promise<void> {
   if (!collabEnabled()) return; // desktop-only; inert on the web edition
   const view = guardReady(deps);
   if (!view) return;
   const ownerUid = deps.getOwnerUid?.() ?? '';
+  if (confirmedUid !== undefined && confirmedUid !== ownerUid) { showToast('The active document changed. Choose your partner again.'); return; }
   if (sessionFor(ownerUid)) {
     showToast('This document already has a session — end or leave it first');
     return;
@@ -1056,7 +1057,7 @@ export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
   }
   startsInFlight.add(ownerUid);
   try {
-    await startSessionFlowInner(deps, view, ownerUid);
+    await startSessionFlowInner(deps, view, ownerUid, confirmedUid !== undefined);
   } finally {
     startsInFlight.delete(ownerUid);
   }
@@ -1066,6 +1067,7 @@ async function startSessionFlowInner(
   deps: CollabUiDeps,
   view: EditorView,
   ownerUid: string,
+  partnerChosen = false,
 ): Promise<void> {
   // Confirm, naming the doc the session will be created for — removes any
   // ambiguity about which doc is being shared (multi-pane: the focused one).
@@ -1073,7 +1075,7 @@ async function startSessionFlowInner(
   // A plain yes/no — two equal buttons (confirmDialog), NOT the big
   // route-choice cards, which are reserved for genuine multi-option
   // decisions (field feedback, 2026-07-11).
-  const startConfirm = await confirmDialog(
+  const startConfirm = partnerChosen || await confirmDialog(
     'Anyone you share the code with can edit this document with you in real time.',
     {
       title: `Start a co-editing session for ${startName ? `"${startName}"` : 'this document'}?`,
@@ -1134,6 +1136,9 @@ async function startSessionFlowInner(
     }
     sess.lastStatus = { connected: true, queuedUpdates: 0 };
     updateChip({ connected: true, queuedUpdates: 0 });
+    // The explicit named-partner picker sends the invitation directly below;
+    // do not overwrite the clipboard or ask the user to send a redundant code.
+    if (partnerChosen) return;
     // Web hosts copy the INVITE LINK (their partner most likely joins in
     // a browser; the link carries the guest pass so an account-less
     // joiner works). Desktop keeps the bare code — its partners are
@@ -1722,7 +1727,7 @@ async function sendInviteTo(
     minReceiverVersion: roomInviteFloor(format, mode),
   });
   const verb = mode === 'view' ? 'Invited to watch' : 'Invited';
-  if (res.fail === 0) showToast(`${verb} ${target.label} ✓`);
+  if (res.fail === 0) showToast(`${verb} ${target.label} ✓ — waiting for them to choose ${mode === 'view' ? 'Watch' : 'Join'} in Receive.`);
   else if (res.ok === 0) showToast(`Couldn't reach ${target.label}`);
   else showToast(`${verb} ${target.label} (${res.fail} failed)`);
 }
@@ -1761,8 +1766,10 @@ export async function inviteStarredFlow(): Promise<void> {
 export async function inviteTargetFlow(
   deps: CollabUiDeps,
   target: { codes: string[]; label: string; via?: string; mode?: 'edit' | 'view' },
+  confirmedUid?: string,
 ): Promise<void> {
   if (!collabEnabled()) return;
+  if (confirmedUid !== undefined && deps.getOwnerUid?.() !== confirmedUid) { showToast('The active document changed. Choose your partner again.'); return; }
   if (!settings.get('pairingEnabled')) {
     showToast('Card sharing is off — invites travel through it');
     return;
@@ -1773,8 +1780,8 @@ export async function inviteTargetFlow(
   }
   let sess = sessionFor(deps.getOwnerUid?.());
   if (!sess) {
-    await startSessionFlow(deps);
-    sess = sessionFor(deps.getOwnerUid?.());
+    await startSessionFlow(deps, confirmedUid);
+    sess = sessionFor(confirmedUid ?? deps.getOwnerUid?.());
     if (!sess) return; // start failed/cancelled — its toast explains
   }
   if (target.mode === 'view') {

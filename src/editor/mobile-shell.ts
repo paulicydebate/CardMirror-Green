@@ -851,6 +851,7 @@ function buildOverflowSheet(): HTMLElement {
   }
   item('Export a copy…', () => runRibbon('saveAs'));
   if (isTabletEditing() && collabEnabled()) {
+    item('Co-edit with…', () => { void import('./index.js').then(m => m.openCoeditWith()); });
     item('Start co-editing', () => runRibbon('collabStartSession'));
     item('Join co-editing', () => runRibbon('collabJoinSession'));
     item('Copy invitation link', () => runRibbon('collabCopyInviteLink'));
