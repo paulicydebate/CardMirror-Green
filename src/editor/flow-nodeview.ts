@@ -51,7 +51,7 @@ import {
 } from '../flow/flow-model.js';
 import { flowKeyForEvent, validFlowShortcut, displayFlowShortcut } from './flow-shortcuts.js';
 import { alertDialog, confirmDialog, promptForText } from './text-prompt.js';
-import { appendTagsSheet, flowTabName } from '../flow/doc-tags.js';
+import { appendPositionSheets, flowTabName } from '../flow/doc-tags.js';
 import { flowDocSources } from './flow-doc-sources.js';
 import { chooseFlowTagSource } from './flow-import-dialog.js';
 import { getSpeechDocResolver } from './speech-doc-registry.js';
@@ -1124,9 +1124,9 @@ export class FlowWorkbookView implements NodeView {
       const event = this.book.event, choice = await chooseFlowTagSource(event, docs);
       if (!choice || !allowed()) return;
       // Read again on confirmation: never import a closed source or stale preview.
-      const {tags} = await provider.read(choice.source.uid);
+      const snapshot = await provider.read(choice.source.uid);
       if (!allowed() || this.book.event !== event) return;
-      const result = appendTagsSheet(this.book, flowTabName(choice.source.filename), choice.side, choice.speech, tags);
+      const result = appendPositionSheets(this.book, flowTabName(choice.source.filename), choice.side, choice.speech, snapshot, choice.splitPositions);
       this.view.dispatch(closeHistory(this.view.state.tr)); this.commit(result.book);
       this.view.dispatch(closeHistory(this.view.state.tr));
       if (!this.book.sheets.some(sheet => sheet.id === result.sheetId)) throw new Error('The document did not accept the import.');

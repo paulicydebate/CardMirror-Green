@@ -13,6 +13,7 @@
  */
 
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron';
+import type { FlowTagSnapshot } from './flow-tags-broker.js';
 
 interface FileFilter {
   name: string;
@@ -819,8 +820,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       }>
     >,
 
-  flowDocumentTags: (uid: string) => ipcRenderer.invoke('host:flow-document-tags', uid) as Promise<{tags: string[]}>,
-  onFlowDocumentTags(handler: (uid: string) => {tags: string[]}): () => void {
+  flowDocumentTags: (uid: string) => ipcRenderer.invoke('host:flow-document-tags', uid) as Promise<FlowTagSnapshot>,
+  onFlowDocumentTags(handler: (uid: string) => FlowTagSnapshot): () => void {
     const listener = (_event: unknown, payload: {requestId: string; uid: string}): void => {
       try { ipcRenderer.send('flow:document-tags-reply', {...payload, ...handler(payload.uid)}); }
       catch (error) { ipcRenderer.send('flow:document-tags-reply', {...payload, error: error instanceof Error ? error.message : String(error)}); }

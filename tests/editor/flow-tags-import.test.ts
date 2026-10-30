@@ -24,6 +24,25 @@ const current = () => parseFlow(String(view!.state.doc.firstChild!.attrs['data']
 const importButton = () => [...document.querySelectorAll<HTMLButtonElement>('.pmd-flow-tool')].find(b => b.textContent === 'Import tags')!;
 
 describe('import open document tags into Flow', () => {
+  it('previews one tab per position and imports/undoes all of them together', async () => {
+    setFlowDocSources({list: async () => [{uid: 'source', filename: '1AC.cmir'}], read: async () => ({tags: ['Economy', 'Climate', 'Uniqueness'], positions: [{name: 'AD1', start: 0}, {name: 'AD2', start: 1}, {name: 'Politics DA', start: 2}]})});
+    const v = mount(); importButton().click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('AD1 (1) · AD2 (1) · Politics DA (1)'));
+    document.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
+    await vi.waitFor(() => expect(current().sheets).toHaveLength(5));
+    expect(current().sheets.slice(2).map(sheet => sheet.name)).toEqual(['AD1', 'AD2', 'Politics DA']);
+    undo(v.state, v.dispatch); expect(current().sheets).toHaveLength(2);
+  });
+  it('lets users turn off the position split and use the filename instead', async () => {
+    setFlowDocSources({list: async () => [{uid: 'source', filename: '1AC.cmir'}], read: async () => ({tags: ['Economy', 'Climate'], positions: [{name: 'AD1', start: 0}, {name: 'AD2', start: 1}]})});
+    mount(); importButton().click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('AD1 (1)'));
+    document.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
+    expect(document.body.textContent).toContain('New tabs: 1AC (2)');
+    document.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
+    await vi.waitFor(() => expect(current().sheets).toHaveLength(3));
+    expect(current().sheets.at(-1)!.name).toBe('1AC');
+  });
   it('shows a count, imports current tags into the chosen column and undoes as one action', async () => {
     const read = vi.fn(async () => ({tags: ['Preview tag']}));
     setFlowDocSources({list: async () => [{uid: 'source', filename: 'C:\\Debate\\Politics DA.docx'}], read});

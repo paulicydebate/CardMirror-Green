@@ -15,7 +15,7 @@ Start a new LLM or developer with [HANDOFF.md](HANDOFF.md). Scope: work confirme
 | OpenCaselist real check | User reported the in-app panel working with their real account (2026-10-26) |
 | Chat cutting (copy-paste) | Copy a prompt for Grok/any chat AI, paste the reply; every quote verified against the card before underline/emphasis/green highlight are applied in one undoable step |
 | Spreadsheet flow (v1) | New Flow command/Home tile; sheets per position, speech columns for NPDA/NFA-LD/policy, wrapping cells, keyboard navigation, column-as-document toggle, Word export as tables |
-| LD/policy tag import | Import tags from an open document into a new filename-named tab and chosen speech; one-time editable copy, cross-window desktop reads, undo and Prep transfer gates |
+| LD/policy tag import | Import open-document tags into separate named position tabs (AD1/AD2/DA/Off1/etc.) and a chosen speech, with preview and whole-document option; one-time copy, cross-window desktop reads, undo and Prep transfer gates |
 | Cloud handoff | GitHub holds source, AGENTS.md, current status, contract documentation and this roadmap so another computer can continue with the desktop off |
 | Prep / Round Modes | Desktop controller, per-document restrictions, coordinated Round closing, native file/clipboard gates, prep-aware encrypted collaboration, durable typing logs, restart recovery, viewer/export and seal code; see CARDMIRROR_GREEN.md for validation limits |
 

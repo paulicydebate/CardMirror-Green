@@ -599,12 +599,12 @@ installSpeechDocResolver(getHost());
 
 // Open-document tag reads stay local; desktop routes other windows via main.
 void import('./flow-doc-sources.js').then(async ({setFlowDocSources}) => {
-  const {documentTags} = await import('../flow/doc-tags.js');
+  const {documentTagSnapshot} = await import('../flow/doc-tags.js');
   const readLocal = (uid: string) => {
     if (prepIsolationCopyBlocked(uid) || prepTransferBlocked(uid, 'import-tags-to-flow')) throw new Error('Transfers from Prep/Round documents are blocked.');
     const source = getSpeechDocResolver().viewForUid(uid);
     if (!source) throw new Error('The source document has closed.');
-    return {tags: documentTags(source.state.doc)};
+    return documentTagSnapshot(source.state.doc);
   };
   const desktop = getElectronHost();
   desktop?.onFlowDocumentTags(readLocal);
