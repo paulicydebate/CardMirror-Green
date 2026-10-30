@@ -50,7 +50,12 @@ import {
   type FlowWorkbook,
 } from '../flow/flow-model.js';
 import { flowKeyForEvent, validFlowShortcut, displayFlowShortcut } from './flow-shortcuts.js';
-import { confirmDialog, promptForText } from './text-prompt.js';
+import { alertDialog, confirmDialog, promptForText } from './text-prompt.js';
+import { appendTagsSheet, flowTabName } from '../flow/doc-tags.js';
+import { flowDocSources } from './flow-doc-sources.js';
+import { chooseFlowTagSource } from './flow-import-dialog.js';
+import { getSpeechDocResolver } from './speech-doc-registry.js';
+import { prepIsolationCopyBlocked, prepRound, prepTransferBlocked } from './prep-runtime.js';
 import { flowUpdateSource, markPrepFlowReconciliation, PREP_FLOW_RECONCILE_ORIGIN } from './prep-document-guard.js';
 import { EditHistory, maxFlowClock, mergeIncoming, recordLocalEdit, stampFlowEdit } from '../flow/flow-merge.js';
 import {
@@ -483,6 +488,7 @@ export class FlowWorkbookView implements NodeView {
       this.render({ row, col, caret: 'end' });
     });
     const inGrid = this.expandedCol === null;
+    if (['nfald', 'policy'].includes(this.book.event)) tools.append(this.tool('Import tags', 'Create a named sheet from an open document’s tags', () => { void this.importTags(); }));
     tools.append(
       this.tool('B', `Bold (${isMac ? 'Cmd' : 'Ctrl'}+B)`, flag('bold'), !inGrid),
       this.tool('S\u0336', `Cross out (${isMac ? 'Cmd' : 'Ctrl'}+Shift+X)`, flag('crossed'), !inGrid),
@@ -1100,6 +1106,34 @@ export class FlowWorkbookView implements NodeView {
     this.view.dispatch(closeHistory(this.view.state.tr));
     this.render();
     this.focusCell({...targets[0]!, caret: 'end'});
+  }
+
+  private importingTags = false;
+  private async importTags(): Promise<void> {
+    if (this.importingTags) return;
+    const allowed = () => {
+      const uid = getSpeechDocResolver().uidForView(this.view) ?? this.view.dom.dataset['prepUid'];
+      return this.dom.isConnected && this.view.editable && !prepRound() && !prepIsolationCopyBlocked(uid) && !prepTransferBlocked(uid, 'import-tags-to-flow');
+    };
+    if (!allowed()) { await alertDialog('Importing tags is unavailable in this mode.'); return; }
+    this.importingTags = true;
+    try {
+      const provider = flowDocSources(), ownUid = getSpeechDocResolver().uidForView(this.view);
+      const docs = (await provider.list()).filter(doc => doc.uid !== ownUid);
+      if (!docs.length) { await alertDialog('Open a tagged document in CardMirror Green first. In the browser, keep it in the same workspace.'); return; }
+      const event = this.book.event, choice = await chooseFlowTagSource(event, docs);
+      if (!choice || !allowed()) return;
+      // Read again on confirmation: never import a closed source or stale preview.
+      const {tags} = await provider.read(choice.source.uid);
+      if (!allowed() || this.book.event !== event) return;
+      const result = appendTagsSheet(this.book, flowTabName(choice.source.filename), choice.side, choice.speech, tags);
+      this.view.dispatch(closeHistory(this.view.state.tr)); this.commit(result.book);
+      this.view.dispatch(closeHistory(this.view.state.tr));
+      if (!this.book.sheets.some(sheet => sheet.id === result.sheetId)) throw new Error('The document did not accept the import.');
+      this.sheetId = result.sheetId; this.expandedCol = null; this.resetCellSelection();
+      this.render({row: 0, col: this.sheet.columns.indexOf(choice.speech), caret: 'end'});
+    } catch (error) { if (this.dom.isConnected) await alertDialog(error instanceof Error ? error.message : String(error)); }
+    finally { this.importingTags = false; }
   }
 
   // ─── Cell keys ────────────────────────────────────────────────────

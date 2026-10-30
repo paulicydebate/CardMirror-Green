@@ -39,6 +39,7 @@ import { autoUpdater } from 'electron-updater';
 import { bundlePathFromExe, launchSwapHelper, macBundleSelfUpdatable } from './mac-swap-update.js';
 import { registerVoiceIpc } from './voice/ipc';
 import { registerFlowIpc } from './flow-bridge.js';
+import { FlowTagsBroker } from './flow-tags-broker.js';
 import { registerOpenCaselistIpc } from './opencaselist-ipc.js';
 import { registerPairingIpc, relayUrl } from './pairing-ipc.js';
 import { LITE_BUILD } from './lite-build.js';
@@ -2218,6 +2219,20 @@ interface SpeechRegistration {
 let speechRegistration: SpeechRegistration | null = null;
 const docOwners = new Map<string, number>(); // uid → windowId
 const windowDocs = new Map<number, Set<string>>(); // windowId → uid set
+const flowTagsBroker = new FlowTagsBroker();
+prepHandle('host:flow-document-tags', async (event, uid: unknown) => {
+  if (typeof uid !== 'string' || uid.length > 200) throw new Error('Invalid source document.');
+  prepNativeRefusal(event.sender.id, 'transfer');
+  const owner = docOwners.get(uid), win = owner === undefined ? null : BrowserWindow.fromId(owner);
+  if (!win || win.isDestroyed()) throw new Error('The source document has closed.');
+  prepNativeRefusal(win.webContents.id, 'transfer', uid);
+  const result = await flowTagsBroker.request(win.webContents.id, uid, payload => win.webContents.send('flow:document-tags-request', payload));
+  if (docOwners.get(uid) !== owner || win.isDestroyed()) throw new Error('The source document has closed or moved.');
+  prepNativeRefusal(event.sender.id, 'transfer');
+  prepNativeRefusal(win.webContents.id, 'transfer', uid);
+  return result;
+});
+ipcMain.on('flow:document-tags-reply', (event, payload) => flowTagsBroker.answer(event.sender.id, payload));
 
 // ─── Cross-window duplicate-open guard ────────────────────────────
 // Maps an open file's absolute path to the BrowserWindow.id that

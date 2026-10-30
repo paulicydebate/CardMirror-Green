@@ -23,7 +23,7 @@ jobs:
       - run: npm --prefix apps/desktop ci
       - run: npm run typecheck
       - name: Check tablet and collaboration behavior
-        run: npx vitest run tests/editor/ipad-workspace.test.ts tests/editor/prep-browser.test.ts tests/editor/prep-document-guard.test.ts tests/editor/mobile-layout.test.ts tests/editor/collaboration-panel.test.ts tests/collab/collab-persist.test.ts tests/collab/collab-gate.test.ts tests/collab/join-link.test.ts tests/collab/flow-coedit.test.ts
+        run: npx vitest run tests/editor/ipad-workspace.test.ts tests/editor/prep-browser.test.ts tests/editor/prep-document-guard.test.ts tests/editor/mobile-layout.test.ts tests/editor/collaboration-panel.test.ts tests/editor/flow-tags-import.test.ts tests/flow/doc-tags.test.ts tests/collab/collab-persist.test.ts tests/collab/collab-gate.test.ts tests/collab/join-link.test.ts tests/collab/flow-coedit.test.ts
       - name: Build Green PWA for its own GitHub Pages path
         run: npm run build
         env:

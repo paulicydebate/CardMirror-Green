@@ -163,6 +163,8 @@ export interface BulkCompressProgress extends BulkCompressSummary {
  *  (and not imported from the desktop workspace) so the editor
  *  doesn't take a build-time dependency on Electron-specific code. */
 interface ElectronAPI {
+  flowDocumentTags?(uid: string): Promise<{tags: string[]}>;
+  onFlowDocumentTags?(handler: (uid: string) => {tags: string[]}): () => void;
   clipboardReadText(): Promise<string>;
   /** Main-process read of the html + plain clipboard flavors.
    *  Optional so a renderer against an older packaged shell falls
@@ -1314,6 +1316,15 @@ export class ElectronHost implements Host {
     }>
   > {
     return api().listDocs();
+  }
+
+  async flowDocumentTags(uid: string): Promise<{tags: string[]}> {
+    const read = api().flowDocumentTags;
+    if (!read) throw new Error('Update CardMirror Green to import tags across windows.');
+    return read(uid);
+  }
+  onFlowDocumentTags(handler: (uid: string) => {tags: string[]}): () => void {
+    return api().onFlowDocumentTags?.(handler) ?? (() => {});
   }
 
   /** Cross-window duplicate-open guard. `openPathCheck` is the

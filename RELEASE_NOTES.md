@@ -1,7 +1,7 @@
-CardMirror Green 1.16.15 — Drag to select Flow cells
+CardMirror Green 1.16.16 — Import open-document tags into Flow
 
-Click a Flow cell, hold the mouse button and drag across more cells. Release, then press Backspace or Delete to clear the selected cells. Dragging near the bottom or top of the grid scrolls to more rows. Adjacent unselected cells are preserved.
+In an LD or Policy Flow, click Import tags. Choose an open CardMirror document, Aff/Neg and the speech column, then Create sheet. Each tag becomes a row, and the tab is named after the source filename. Desktop can use documents in other windows or workspace panes.
 
-Dragging within a single cell still selects its text. Shift-click and Ctrl/Cmd-click selections remain available. Clearing a range is a separate Undo action, so one Undo restores the cleared contents.
+This creates an independent editable copy. Citations and evidence bodies are excluded; the source and existing Flow sheets stay unchanged. One Undo removes the import. Prep/Round transfer restrictions remain in force.
 
 On Windows or an Apple Silicon Mac, use Help > Check for Updates, save your work, then Restart to install.

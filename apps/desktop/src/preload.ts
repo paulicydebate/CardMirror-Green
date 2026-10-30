@@ -819,6 +819,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
       }>
     >,
 
+  flowDocumentTags: (uid: string) => ipcRenderer.invoke('host:flow-document-tags', uid) as Promise<{tags: string[]}>,
+  onFlowDocumentTags(handler: (uid: string) => {tags: string[]}): () => void {
+    const listener = (_event: unknown, payload: {requestId: string; uid: string}): void => {
+      try { ipcRenderer.send('flow:document-tags-reply', {...payload, ...handler(payload.uid)}); }
+      catch (error) { ipcRenderer.send('flow:document-tags-reply', {...payload, error: error instanceof Error ? error.message : String(error)}); }
+    };
+    ipcRenderer.on('flow:document-tags-request', listener);
+    return () => ipcRenderer.removeListener('flow:document-tags-request', listener);
+  },
+
   /** Every document window, most recently focused first (the Switch
    *  Window palette). `docNames` are the window's saved docs' filenames. */
   listWindows: () =>

@@ -11,7 +11,7 @@ import { EditorState, Plugin, Selection, TextSelection, type Command } from 'pro
 import { flowWorkspacePlugin } from './flow-workspace.js';
 import { prepDocumentGuard } from './prep-document-guard.js';
 import { initPrepController, prepCreated, prepMarkCreated, prepCreateBlank, prepRestoreIdentity, prepFlush, prepOpened, prepInventoryChanged, prepOpenAllowed, runPrepCommand } from './prep-controller.js';
-import { prepDoc, prepIsolationCopyBlocked, prepRound, prepRuntime } from './prep-runtime.js';
+import { prepDoc, prepIsolationCopyBlocked, prepRound, prepRuntime, prepTransferBlocked } from './prep-runtime.js';
 import { prepSealFor } from '../native/index.js';
 import { serializeRangesForClipboard, serializeNodesForClipboard } from './clipboard-slice.js';
 import { EditorView } from 'prosemirror-view';
@@ -596,6 +596,24 @@ let autosaveStateForActive: () => boolean = () => settings.get('autosaveEnabled'
 // it swaps in the main-process-mirroring resolver so doc
 // registrations and speech-set calls flow through IPC.
 installSpeechDocResolver(getHost());
+
+// Open-document tag reads stay local; desktop routes other windows via main.
+void import('./flow-doc-sources.js').then(async ({setFlowDocSources}) => {
+  const {documentTags} = await import('../flow/doc-tags.js');
+  const readLocal = (uid: string) => {
+    if (prepIsolationCopyBlocked(uid) || prepTransferBlocked(uid, 'import-tags-to-flow')) throw new Error('Transfers from Prep/Round documents are blocked.');
+    const source = getSpeechDocResolver().viewForUid(uid);
+    if (!source) throw new Error('The source document has closed.');
+    return {tags: documentTags(source.state.doc)};
+  };
+  const desktop = getElectronHost();
+  desktop?.onFlowDocumentTags(readLocal);
+  setFlowDocSources({
+    list: async () => desktop ? (await desktop.listDocs()).map(d => ({uid: d.uid, filename: d.filename})) :
+      getSpeechDocResolver().allViews().map(d => ({uid: d.uid, filename: resolveDocFilename(d.uid)})),
+    read: async uid => desktop ? desktop.flowDocumentTags(uid) : readLocal(uid),
+  });
+});
 
 /** Sync the speech-mark button's aria-pressed with whether the
  *  currently-active view IS the speech doc. Called from

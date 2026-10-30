@@ -17457,6 +17457,9 @@ body.pmd-collaboration-open { --pmd-collaboration-width: 360px; }
 .pmd-collaboration-advanced { padding: 12px 14px; border-top: 1px solid var(--pmd-c-border-soft); color: var(--pmd-c-text-secondary); }
 .pmd-collaboration-advanced summary { cursor: pointer; }
 .pmd-collaboration-advanced button { display: block; margin-top: 8px; width: 100%; text-align: left; }
+.pmd-flow-import-dialog { max-height: 85dvh; overflow: auto; }
+.pmd-flow-import-dialog label { display: flex; flex-direction: column; gap: .35rem; margin: .7rem 0; }
+.pmd-flow-import-dialog select { font: inherit; color: var(--pmd-c-text); background: var(--pmd-c-surface); padding: .5rem; max-width: 100%; }
 body.pmd-collaboration-open:not(.pmd-multi-doc) #app { right: var(--pmd-collaboration-width); }
 body.pmd-collaboration-open.pmd-multi-doc #app { margin-right: var(--pmd-collaboration-width); }
 body.pmd-collaboration-open .pmd-home-screen { right: var(--pmd-collaboration-width); }
