@@ -183,6 +183,50 @@ describe('flow NodeView', () => {
     key(cell(v, 4, 1), 'Escape'); expect(v.dom.querySelectorAll('td[aria-selected="true"]')).toHaveLength(1);
   });
 
+  it('drags across rows, clears with Backspace and restores the range with one undo', () => {
+    const v = mount();
+    for (let row = 0; row < 5; row++) type(cell(v, row, 0), `Argument ${row}`);
+    type(cell(v, 2, 1), 'Keep adjacent');
+    cell(v, 0, 0).focus();
+    cell(v, 0, 0).dispatchEvent(new MouseEvent('mousedown', {button: 0, buttons: 1, bubbles: true}));
+    cell(v, 3, 0).dispatchEvent(new MouseEvent('mousemove', {buttons: 1, bubbles: true, cancelable: true}));
+    cell(v, 3, 0).dispatchEvent(new MouseEvent('mouseup', {button: 0, bubbles: true, cancelable: true}));
+    expect(v.dom.querySelectorAll('td[aria-selected="true"]')).toHaveLength(4);
+    expect(document.activeElement).toBe(cell(v, 3, 0));
+    key(cell(v, 3, 0), 'Backspace');
+    for (let row = 0; row < 4; row++) expect(cellAt(book(v).sheets[0]!, row, 0).text).toBe('');
+    expect(cellAt(book(v).sheets[0]!, 4, 0).text).toBe('Argument 4');
+    expect(cellAt(book(v).sheets[0]!, 2, 1).text).toBe('Keep adjacent');
+    undo(v.state, v.dispatch);
+    for (let row = 0; row < 5; row++) expect(cellAt(book(v).sheets[0]!, row, 0).text).toBe(`Argument ${row}`);
+  });
+
+  it('drags rectangles upwards and stops selecting after release or blur', () => {
+    const v = mount();
+    cell(v, 3, 2).dispatchEvent(new MouseEvent('mousedown', {button: 0, buttons: 1, bubbles: true}));
+    cell(v, 1, 1).dispatchEvent(new MouseEvent('mousemove', {buttons: 1, bubbles: true}));
+    cell(v, 1, 1).dispatchEvent(new MouseEvent('mouseup', {button: 0, bubbles: true}));
+    expect(v.dom.querySelectorAll('td[aria-selected="true"]')).toHaveLength(6);
+    cell(v, 8, 3).dispatchEvent(new MouseEvent('mousemove', {buttons: 1, bubbles: true}));
+    expect(v.dom.querySelectorAll('td[aria-selected="true"]')).toHaveLength(6);
+    cell(v, 0, 0).dispatchEvent(new MouseEvent('mousedown', {button: 0, buttons: 1, bubbles: true}));
+    window.dispatchEvent(new Event('blur'));
+    cell(v, 8, 3).dispatchEvent(new MouseEvent('mousemove', {buttons: 1, bubbles: true}));
+    expect(v.dom.querySelectorAll('td[aria-selected="true"]')).toHaveLength(1);
+  });
+
+  it('preserves native text dragging within one cell', () => {
+    const v = mount(); const area = cell(v, 0, 0); type(area, 'Select some text');
+    area.dispatchEvent(new MouseEvent('mousedown', {button: 0, buttons: 1, bubbles: true}));
+    area.setSelectionRange(2, 7);
+    const move = new MouseEvent('mousemove', {buttons: 1, bubbles: true, cancelable: true});
+    area.dispatchEvent(move);
+    area.dispatchEvent(new MouseEvent('mouseup', {button: 0, bubbles: true}));
+    expect(move.defaultPrevented).toBe(false);
+    expect(area.selectionStart).toBe(2); expect(area.selectionEnd).toBe(7);
+    expect(v.dom.querySelectorAll('td[aria-selected="true"]')).toHaveLength(1);
+  });
+
   it('keeps normal Shift-left text selection inside an edited cell', () => {
     const v = mount(); type(cell(v, 0, 0), 'Text');
     const area = cell(v, 0, 0); area.setSelectionRange(4,4);

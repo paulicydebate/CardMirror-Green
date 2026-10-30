@@ -52,6 +52,29 @@ async function run() {
       await cell.fill('Synthetic iPad argument');await cell.press('Enter');
       assert.equal(await page.locator('textarea.pmd-flow-cell[data-row="1"][data-col="0"]').evaluate(el=>el===document.activeElement),true);
       assert.equal(await cell.inputValue(),'Synthetic iPad argument');
+      if(width===1366) {
+        const flowCell=(row,col=0)=>page.locator(`textarea.pmd-flow-cell[data-row="${row}"][data-col="${col}"]`);
+        for(let row=1;row<=3;row++)await flowCell(row).fill(`Clear argument ${row}`);
+        await flowCell(2,1).fill('Keep adjacent argument');
+        const first=await flowCell(1).boundingBox(),last=await flowCell(3).boundingBox();
+        await page.mouse.move(first.x+12,first.y+10);await page.mouse.down();
+        await page.mouse.move(last.x+12,last.y+10,{steps:12});await page.mouse.up();
+        assert.equal(await page.locator('td[aria-selected="true"]').count(),3);
+        await page.keyboard.press('Backspace');
+        for(let row=1;row<=3;row++)assert.equal(await flowCell(row).inputValue(),'');
+        assert.equal(await flowCell(2,1).inputValue(),'Keep adjacent argument');
+        assert.equal(await cell.inputValue(),'Synthetic iPad argument');
+        console.log('Mouse drag range and Backspace cleared only the selected cells.');
+        const start=await cell.boundingBox(),grid=await page.locator('.pmd-flow-gridwrap').boundingBox();
+        await page.mouse.move(start.x+12,start.y+10);await page.mouse.down();
+        await page.mouse.move(start.x+12,grid.y+grid.height+20,{steps:12});
+        await page.waitForFunction(()=>document.querySelector('.pmd-flow-gridwrap').scrollTop>40);
+        await page.mouse.up();
+        assert.ok(await page.locator('td[aria-selected="true"]').count()>5);
+        await page.locator('.pmd-flow-gridwrap').evaluate(el=>{el.scrollTop=0;});
+        await cell.click();
+        console.log('Mouse range selection scrolls beyond the visible grid and stops on release.');
+      }
       const bounds=await page.evaluate(()=>{
         const app=document.querySelector('#app').getBoundingClientRect();const flow=document.querySelector('.pmd-flow-root').getBoundingClientRect();
         return {app:{x:app.x,y:app.y,width:app.width,height:app.height},flow:{x:flow.x,y:flow.y,width:flow.width,height:flow.height},tablet:document.body.classList.contains('pmd-tablet-editing')};

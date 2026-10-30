@@ -21,6 +21,7 @@
 
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView, NodeView } from 'prosemirror-view';
+import { closeHistory } from 'prosemirror-history';
 import {
   addSheet,
   placeColumnSections,
@@ -138,6 +139,8 @@ export class FlowWorkbookView implements NodeView {
   private selectedCells = new Set<string>();
   private rangeSelection = false;
   private selectionAnchor: { rowId: string; col: ColKey } | null = null;
+  private cellDrag: { start: HTMLTextAreaElement; row: number; col: ColKey; x: number; y: number; startX: number; startY: number; crossed: boolean } | null = null;
+  private dragFrame = 0;
   private draggedSheet: string | null = null;
   private appearanceOpen = false;
   private theme: FlowTheme = loadFlowTheme();
@@ -163,6 +166,7 @@ export class FlowWorkbookView implements NodeView {
   }
 
   destroy(): void {
+    this.finishCellDrag();
     this.unsubscribeTheme();
     this.resizeObserver?.disconnect();
     window.removeEventListener('resize', this.scheduleFit);
@@ -375,6 +379,7 @@ export class FlowWorkbookView implements NodeView {
   // ─── Rendering ────────────────────────────────────────────────────
 
   private render(focus?: FocusSpot): void {
+    this.finishCellDrag();
     const main = el('div', 'pmd-flow-main');
     main.append(this.renderTopbar(), this.expandedCol === null ? this.renderGrid() : this.renderColumnDoc());
     this.dom.replaceChildren(this.renderSidebar(), main);
@@ -710,6 +715,7 @@ export class FlowWorkbookView implements NodeView {
     area.addEventListener('keydown', (e) => this.onCellKey(e, area, row, col));
     area.addEventListener('mousedown', event => {
       if (event.button !== 0) return;
+      this.finishCellDrag();
       if (event.shiftKey) {
         event.preventDefault(); this.extendCellSelection(row, col); area.focus();
       } else if (event.ctrlKey || event.metaKey) {
@@ -719,8 +725,12 @@ export class FlowWorkbookView implements NodeView {
         if (this.selectedCells.has(key)) this.selectedCells.delete(key); else this.selectedCells.add(key);
         this.selectionAnchor ??= {rowId: this.sheet.rows[row]!.id, col};
         this.paintSelection(); area.focus();
-      } else this.selectSingleCell(row, col);
+      } else {
+        this.selectSingleCell(row, col);
+        this.beginCellDrag(area, row, col, event);
+      }
     });
+    area.addEventListener('dragstart', event => { if (this.cellDrag) event.preventDefault(); });
     area.addEventListener('focus', () => {
       this.lastCell = { row, col, caret: 'end' };
       this.lastSel = {start: area.selectionStart, end: area.selectionEnd};
@@ -965,6 +975,77 @@ export class FlowWorkbookView implements NodeView {
   }
 
   // Selection is local UI state keyed by stable row id, never cell text offsets.
+  private beginCellDrag(start: HTMLTextAreaElement, row: number, col: ColKey, event: MouseEvent): void {
+    this.finishCellDrag();
+    this.cellDrag = { start, row, col, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, crossed: false };
+    document.addEventListener('mousemove', this.moveCellDrag, true);
+    document.addEventListener('mouseup', this.releaseCellDrag, true);
+    window.addEventListener('blur', this.cancelCellDrag);
+    this.dragFrame = requestAnimationFrame(this.scrollCellDrag);
+  }
+  private moveCellDrag = (event: MouseEvent): void => {
+    if (!this.cellDrag) return;
+    if (!(event.buttons & 1)) { this.finishCellDrag(); return; }
+    this.cellDrag.x = event.clientX; this.cellDrag.y = event.clientY;
+    this.updateCellDrag(event.target);
+    if (this.cellDrag?.crossed) event.preventDefault();
+  };
+  private updateCellDrag(fallback: EventTarget | null = null): void {
+    const drag = this.cellDrag;
+    if (!drag) return;
+    // Native textarea mouse capture can keep event.target on the first cell.
+    // Hit-test the pointer instead; the fallback also supports DOM-only tests.
+    const hit = document.elementFromPoint?.(drag.x, drag.y) ?? fallback;
+    if (!(hit instanceof Element)) return;
+    const area = hit.closest('td')?.querySelector<HTMLTextAreaElement>('textarea.pmd-flow-cell');
+    if (!area || !this.dom.contains(area)) return;
+    const row = Number(area.dataset['row']), col = parseCol(area.dataset['col']);
+    if (!this.sheet.rows[row]) return;
+    if (row !== Number(drag.start.dataset['row']) || col !== parseCol(drag.start.dataset['col'])) drag.crossed = true;
+    if (!drag.crossed) return; // Keep ordinary text dragging within one cell.
+    drag.row = row; drag.col = col;
+    this.extendCellSelection(row, col);
+    window.getSelection()?.removeAllRanges();
+  }
+  private scrollCellDrag = (): void => {
+    const drag = this.cellDrag;
+    if (!drag) return;
+    const wrap = this.dom.querySelector<HTMLElement>('.pmd-flow-gridwrap');
+    if (wrap && Math.hypot(drag.x - drag.startX, drag.y - drag.startY) > 5) {
+      const rect = wrap.getBoundingClientRect();
+      if (drag.x >= rect.left && drag.x <= rect.right && drag.y >= rect.top - 40 && drag.y <= rect.bottom + 80) {
+        const delta = drag.y > rect.bottom - 32 ? 14 : drag.y < rect.top + 48 ? -14 : 0;
+        if (delta) {
+          wrap.scrollTop += delta;
+          const hit = document.elementFromPoint?.(drag.x, Math.max(rect.top + 48, Math.min(rect.bottom - 2, drag.y)));
+          if (hit) {
+            const y = drag.y; drag.y = Math.max(rect.top + 48, Math.min(rect.bottom - 2, drag.y));
+            this.updateCellDrag(hit); drag.y = y;
+          }
+        }
+      }
+    }
+    this.dragFrame = requestAnimationFrame(this.scrollCellDrag);
+  };
+  private releaseCellDrag = (event: MouseEvent): void => {
+    if (!this.cellDrag || event.button !== 0) return;
+    this.cellDrag.x = event.clientX; this.cellDrag.y = event.clientY;
+    this.updateCellDrag(event.target);
+    const drag = this.cellDrag;
+    this.finishCellDrag();
+    if (drag.crossed) {
+      event.preventDefault();
+      this.focusCell({row: drag.row, col: drag.col, caret: 'end'});
+    }
+  };
+  private cancelCellDrag = (): void => { this.finishCellDrag(); };
+  private finishCellDrag(): void {
+    this.cellDrag = null;
+    cancelAnimationFrame(this.dragFrame); this.dragFrame = 0;
+    document.removeEventListener('mousemove', this.moveCellDrag, true);
+    document.removeEventListener('mouseup', this.releaseCellDrag, true);
+    window.removeEventListener('blur', this.cancelCellDrag);
+  }
   private visibleColumns(): ColKey[] {
     const cols: ColKey[] = [];
     for (let col = 0; col < this.sheet.columns.length; col++) { cols.push(col); if (col === this.prepAfter) cols.push('prep'); }
@@ -1014,7 +1095,10 @@ export class FlowWorkbookView implements NodeView {
       const patch = {text: '', hl: []};
       book = col === 'prep' ? setPrep(book, this.sheetId, row, patch) : setCell(book, this.sheetId, row, col, patch);
     }
-    this.commit(book); this.render();
+    this.view.dispatch(closeHistory(this.view.state.tr));
+    this.commit(book);
+    this.view.dispatch(closeHistory(this.view.state.tr));
+    this.render();
     this.focusCell({...targets[0]!, caret: 'end'});
   }
 
