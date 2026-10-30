@@ -202,6 +202,12 @@
           "items": {
             "$ref": "#/definitions/paragraph"
           }
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/paragraph"
+          }
         }
       },
       "required": [

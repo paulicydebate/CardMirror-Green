@@ -1108,6 +1108,7 @@ let multiDocGetAllFilenames: (() => (string | null)[]) | null = null;
 /** Resolve one doc uid → its filename (across all panes + stacks). Used by
  *  collab to name a session after its OWNER doc, not the whole-window title. */
 let multiDocGetFilenameForUid: ((uid: string) => string | null) | null = null;
+let multiDocFocusDocument: ((uid: string) => boolean) | null = null;
 let multiDocGetDocIdForUid: ((uid: string) => string | null) | null = null;
 // Collab join/resume in the workspace (slot-picker session docs).
 let multiDocCreateSessionDoc: (() => Promise<string | null>) | null = null;
@@ -1241,6 +1242,7 @@ export function enableMultiDocMode(opts: {
    *  Lets collab publish/label a session with its OWNER doc's name rather than
    *  the whole-window title. */
   getFilenameForUid?: (uid: string) => string | null;
+  focusDocument?: (uid: string) => boolean;
   getDocIdForUid?: (uid: string) => string | null;
   /** Collab join/resume in the workspace: create a fresh unsaved doc in a
    *  user-picked slot to hold the session. Returns its uid, or null when the
@@ -1304,6 +1306,7 @@ export function enableMultiDocMode(opts: {
   multiDocFindViewForDocId = opts.findViewForDocId ?? null;
   multiDocGetAllFilenames = opts.getAllFilenames ?? null;
   multiDocGetFilenameForUid = opts.getFilenameForUid ?? null;
+  multiDocFocusDocument = opts.focusDocument ?? null;
   multiDocGetDocIdForUid = opts.getDocIdForUid ?? null;
   multiDocCreateSessionDoc = opts.createSessionDoc ?? null;
   multiDocSetFilenameForUid = opts.setFilenameForUid ?? null;
@@ -1472,19 +1475,47 @@ function resolveDocPersistentId(uid: string): string | null {
   return uid === currentDocUid ? currentDocId : null;
 }
 
+let collaborationPanel: import('./collab/collaboration-panel.js').CollaborationPanel | null = null;
+let collaborationPanelOpening: Promise<void> | null = null;
 export async function openCoeditWith(): Promise<void> {
-  if (!collabEnabled()) { showToast('Co-editing is unavailable in this mode.'); return; }
-  if (!getActiveView() || homeScreen.isVisible()) { showToast('Open the document you want to co-edit first.'); return; }
-  const uid = activeDocIdentity().sessionUid;
-  const picker = await import('./collab/coedit-picker.js');
-  await picker.openCoeditPicker({
-    documentUid: uid, documentTitle: activeFile().filename ?? 'Untitled document',
-    currentUid: () => activeDocIdentity().sessionUid,
-    partners: settings.get('pairingPartners'), connected: settings.get('pairingEnabled'),
-    configure: () => { void import('./settings-ui.js').then(m => m.openSettings({ category: 'pairing' })); },
-    join: () => { ribbonContext.collabJoinSession(); },
-    invite: async target => { const m = await loadCollabUi(); await m.inviteTargetFlow(collabDeps, target, uid); },
-  });
+  if (!collabEnabled({ duringRound: true })) { showToast('Collaboration is unavailable in this layout.'); return; }
+  if (collaborationPanel) { collaborationPanel.show(); return; }
+  if (collaborationPanelOpening) return collaborationPanelOpening;
+  collaborationPanelOpening = (async () => {
+    const [m, panel, relay] = await Promise.all([loadCollabUi(), import('./collab/collaboration-panel.js'), import('./collab/collab-relay.js')]);
+    await relay.ensureBakedRelay();
+    collaborationPanel = new panel.CollaborationPanel({
+      current: () => !getActiveView() || homeScreen.isVisible() ? null : { uid: activeDocIdentity().sessionUid, title: activeFile().filename ?? 'Untitled document' },
+      sessions: () => m.collaborationPanelSessions(),
+      invite: (uid, code, name) => m.inviteTargetFlow(collabDeps, { codes: [code], label: name || 'Partner' }, uid),
+      join: (code, guestPass) => m.joinSessionWithCode(multiDocActive ? makeMultiPaneSessionDeps() : collabDeps, code, { guestPass: guestPass ?? undefined }),
+      resume: async roomId => { await m.resumeSessionFlow(multiDocActive ? makeMultiPaneSessionDeps() : collabDeps, roomId); },
+      focus: uid => {
+        if (multiDocActive && multiDocFocusDocument?.(uid)) { homeScreen.hide(); return; }
+        const target = getSpeechDocResolver().viewForUid(uid);
+        if (target) { homeScreen.hide(); target.focus(); } else showToast('This document is no longer open. Resume it from Shared docs.');
+      },
+      end: uid => m.endSessionFlow(collabDeps, uid),
+      disconnect: async uid => {
+        if (m.isIsolationGuestCopyUid(uid)) return false;
+        if (!(await confirmDialog('Disconnect this document and keep its local session copy, including changes waiting to send? Resume it from Shared docs later.', { title: 'Keep a recovery copy?', okLabel: 'Keep copy and disconnect' }))) return null;
+        return collabCloseKeepResumable(uid);
+      },
+      verifyRecovery: uid => m.verifyPanelRecovery(uid),
+      configured: () => !!relay.relayClient(),
+      settings: () => { void import('./settings-ui.js').then(s => s.openSettings({ category: 'pairing' })); },
+      advanced: action => {
+        if (action === 'start') ribbonContext.collabStartSession();
+        if (action === 'join') ribbonContext.collabJoinSession();
+        if (action === 'copy') ribbonContext.collabCopyInviteLink();
+        if (action === 'view') ribbonContext.collabCopyViewLink();
+        if (action === 'recover') runRibbon('recoverPreviousVersion');
+        if (action === 'send' || action === 'inbox') { collaborationPanel?.close(); document.querySelector<HTMLElement>(action === 'send' ? '.pmd-send-bar' : '.pmd-receive-bar')?.click(); }
+      },
+    });
+    collaborationPanel.show();
+  })().catch(error => showToast(String(error))).finally(() => { collaborationPanelOpening = null; });
+  return collaborationPanelOpening;
 }
 function loadCollabUi(): Promise<typeof import('./collab/collab-ui.js')> {
   return (collabUiModule ??= import('./collab/collab-ui.js').then((m) => {

@@ -104,6 +104,21 @@ function mkIndexStyleView(ownerUid = OWNER): EditorView {
 }
 
 describe('collab UI flows through the editor seams', () => {
+  it('the panel refuses to end an offline session and verifies a local recovery copy instead', async () => {
+    const uid='panel-offline';const hostView=mkIndexStyleView(uid);
+    const deps={getView:()=>hostView,getOwnerUid:()=>uid,newSessionDoc:()=>true,refreshPlugins:()=>hostView.updateState(hostView.state.reconfigure({plugins:buildMiniPlugins(uid)}))};
+    try {
+      await collabUi.startSessionFlow(deps,uid);await settle();
+      mock.pause();hostView.dispatch(hostView.state.tr.insertText(' unsent',hostView.state.doc.content.size-1));
+      await sleep(250);
+      await collabUi.endSessionFlow(deps,uid);
+      expect(document.querySelector('.pmd-text-prompt-dialog')).toBeNull();
+      expect(collabPluginSourceFor(uid)).not.toBeNull();
+      expect(await collabUi.verifyPanelRecovery(uid)).toBe(true);
+      const saved=await loadSessionRecord(collabUi.activeSession()!.roomId);expect(saved).not.toBeNull();
+      expect(collabUi.collaborationPanelSessions().find(s=>s.uid===uid)!.recovery.savedAt).not.toBeNull();
+    } finally {mock.resume();await collabEndOrLeaveSession(uid);hostView.destroy();}
+  });
   it('starts an explicitly chosen document without a redundant prompt or clipboard code', async () => {
     const uid='named-partner-doc'; const hostView=mkIndexStyleView(uid);
     const copied=vi.fn(async()=>{});
@@ -641,7 +656,9 @@ describe('collab UI flows through the editor seams', () => {
         signal: ac.signal,
       }).catch(() => {});
     }
-    await sleep(150);
+    // Wait for the actual capacity condition: runner load can delay socket
+    // registration beyond an arbitrary sleep and accidentally admit the joiner.
+    await vi.waitFor(() => expect(mock.streamCount(decoded.roomId)).toBe(10), { timeout: 5000, interval: 25 });
     expect(mock.streamCount(decoded.roomId)).toBe(10);
 
     const viewJ = mkIndexStyleView('doc-J');
@@ -919,7 +936,7 @@ describe('spectators through the UI flows (view-only sessions, 2026-10-24)', () 
         signal: ac.signal,
       }).catch(() => {});
     }
-    await sleep(150);
+    await vi.waitFor(() => expect(mock.streamCount(decoded.roomId)).toBe(10), { timeout: 5000, interval: 25 });
     const viewF = mkIndexStyleView('doc-F');
     const depsF = {
       getView: () => viewF,

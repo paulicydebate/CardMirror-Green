@@ -2782,6 +2782,12 @@ class MultiPaneShell {
     }
     return null;
   }
+  /** Shared docs must raise hidden stack records before focusing their view. */
+  focusDocument(uid: string): boolean {
+    const hit = this.findRecordByUid(uid);
+    if (!hit) return false;
+    hit.slot.showRecord(hit.rec); hit.rec.view.focus(); return true;
+  }
 
   /** Commit a save result to the doc it was saved FROM, wherever it sits
    *  now. Save As / keep-both capture the uid before their awaits and
@@ -4290,6 +4296,7 @@ export function mountMultiPaneShell(): void {
     findViewForDocId: (id) => shell!.findViewForDocId(id),
     getAllFilenames: () => shell!.getAllFilenames(),
     getFilenameForUid: (uid) => shell!.filenameForUid(uid),
+    focusDocument: (uid) => shell!.focusDocument(uid),
     getDocIdForUid: (uid) => shell!.docIdForUid(uid),
     createSessionDoc: () => shell!.createSessionDocIntoSlot(),
     setFilenameForUid: (uid, name) => shell!.setFilenameForUid(uid, name),

@@ -133,6 +133,7 @@ interface ActiveSession {
   cursors: CursorsHandle;
   commentsSync: CommentsSyncHandle;
   persist: PersistHandle;
+  recovery: { savedAt: number | null; failed: boolean };
   /** Session-history writer ({roomId}.cmir-history). Disposed at
    *  teardown but its FILE is always retained — unlike the session
    *  record, which is deleted on Leave/End/tombstone. */
@@ -155,6 +156,29 @@ interface ActiveSession {
 }
 
 const sessions = new Map<string, ActiveSession>();
+
+export interface CollaborationPanelSession {
+  uid: string; roomId: string; title: string; role: 'host' | 'participant' | 'spectator';
+  connected: boolean; queued: number; peers: string[]; watchers: number;
+  prep: boolean; roundMode: 'isolation' | 'coflow'; isolationCopy: boolean;
+  recovery: { savedAt: number | null; failed: boolean };
+}
+/** UI-safe snapshot: never expose room keys or invitation credentials in DOM. */
+export function collaborationPanelSessions(): CollaborationPanelSession[] {
+  return [...sessions.values()].map(s => ({ uid: s.ownerUid, roomId: s.session.roomId,
+    title: sessionDocTitle(s.ownerUid) || sharedDocTitle(s.session) || 'Untitled document',
+    role: s.session.role, connected: s.lastStatus?.connected ?? false,
+    queued: s.session.queuedUpdates, peers: s.cursors.presence().filter(p => !p.self).map(p => p.name),
+    watchers: s.watchers, prep: isPrepSessionDoc(s.session), roundMode: sessionRoundMode(s.session),
+    isolationCopy: isIsolationGuestCopy(s), recovery: { ...s.recovery } }));
+}
+export async function verifyPanelRecovery(uid: string): Promise<boolean> {
+  const s = sessions.get(uid);
+  if (!s || isIsolationGuestCopy(s)) return false;
+  const ok = await s.persist.verifiedFlush();
+  if (!ok) s.recovery.failed = true;
+  notifyCollabCopresenceChange(); return ok;
+}
 
 /** How Round Mode treats a shared prep doc, as its host chose when sharing.
  *  Docs shared before the option existed act as Isolation. */
@@ -563,12 +587,14 @@ function installSeams(
   // Recent rooms: kept past a Leave so Join session can offer a rejoin.
   rememberRecentRoom(session, shareCode, sessionDocTitle(ownerUid) || sharedDocTitle(session));
   // M3: crash-surviving session record (home-screen Sessions list resumes it).
+  const recovery = { savedAt: null as number | null, failed: false };
   const persist = attachSessionPersistence(
     session,
     shareCode,
     () => sessionDocTitle(ownerUid) || sharedDocTitle(session),
     () => docIdResolver?.(ownerUid) ?? null,
-    { onFailure: (n) => noteWriterFailure('collab-persist-failing', 'crash-resume record', n) },
+    { onFailure: (n) => { recovery.failed = n > 0; noteWriterFailure('collab-persist-failing', 'crash-resume record', n); notifyCollabCopresenceChange(); },
+      onSaved: at => { recovery.savedAt = at; recovery.failed = false; notifyCollabCopresenceChange(); } },
   );
   // Recover Previous Version's durable record: full-history snapshots
   // that survive session end (deliberately including a remote
@@ -618,6 +644,7 @@ function installSeams(
     cursors,
     commentsSync,
     persist,
+    recovery,
     history,
     wakeCleanup,
     unloadCleanup,
@@ -1713,7 +1740,7 @@ async function sendInviteTo(
   shareCode: string,
   ownerUid: string | null | undefined,
   mode: 'edit' | 'view' = 'edit',
-): Promise<void> {
+): Promise<boolean> {
   const item = buildRoomInviteItem({
     shareCode,
     title: sessionDocTitle(ownerUid),
@@ -1730,6 +1757,7 @@ async function sendInviteTo(
   if (res.fail === 0) showToast(`${verb} ${target.label} ✓ — waiting for them to choose ${mode === 'view' ? 'Watch' : 'Join'} in Receive.`);
   else if (res.ok === 0) showToast(`Couldn't reach ${target.label}`);
   else showToast(`${verb} ${target.label} (${res.fail} failed)`);
+  return res.ok > 0;
 }
 
 /** Send a session invite to the starred partner/group. */
@@ -1767,30 +1795,29 @@ export async function inviteTargetFlow(
   deps: CollabUiDeps,
   target: { codes: string[]; label: string; via?: string; mode?: 'edit' | 'view' },
   confirmedUid?: string,
-): Promise<void> {
-  if (!collabEnabled()) return;
-  if (confirmedUid !== undefined && deps.getOwnerUid?.() !== confirmedUid) { showToast('The active document changed. Choose your partner again.'); return; }
+): Promise<boolean> {
+  if (!collabEnabled()) return false;
+  if (confirmedUid !== undefined && deps.getOwnerUid?.() !== confirmedUid) { showToast('The active document changed. Choose your partner again.'); return false; }
   if (!settings.get('pairingEnabled')) {
     showToast('Card sharing is off — invites travel through it');
-    return;
+    return false;
   }
   if (target.codes.length === 0) {
     showToast('That group has no recipients yet');
-    return;
+    return false;
   }
   let sess = sessionFor(deps.getOwnerUid?.());
   if (!sess) {
     await startSessionFlow(deps, confirmedUid);
     sess = sessionFor(confirmedUid ?? deps.getOwnerUid?.());
-    if (!sess) return; // start failed/cancelled — its toast explains
+    if (!sess) return false; // start failed/cancelled — its toast explains
   }
   if (target.mode === 'view') {
     const viewCode = viewCodeFromShareCode(sess.shareCode);
-    if (!viewCode) return;
-    await sendInviteTo(target, viewCode, sess.ownerUid, 'view');
-    return;
+    if (!viewCode) return false;
+    return sendInviteTo(target, viewCode, sess.ownerUid, 'view');
   }
-  await sendInviteTo(target, sess.shareCode, sess.ownerUid);
+  return sendInviteTo(target, sess.shareCode, sess.ownerUid);
 }
 
 /** Terminate/leave a session and clear its resumable record — the shared core
@@ -1866,15 +1893,23 @@ async function closeEndOrLeaveSession(uid: string): Promise<boolean> {
   return endOrLeaveSession(sess);
 }
 
-export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
+export async function endSessionFlow(deps: CollabUiDeps, panelUid?: string): Promise<void> {
   // Ends the FOCUSED doc's session (the one the user is looking at).
-  const sess = sessionFor(deps.getOwnerUid?.());
+  const sess = sessionFor(panelUid ?? deps.getOwnerUid?.());
   if (!sess) {
     showToast('No active session');
     return;
   }
   const isHost = sess.session.role === 'host';
   const isSpectator = sess.session.role === 'spectator';
+  const panelReady = (): boolean => {
+    if (panelUid === undefined || isSpectator) return true;
+    if (sessions.get(sess.ownerUid) !== sess) return false;
+    sess.session.flush();
+    if (sess.lastStatus?.connected && sess.session.queuedUpdates === 0) return true;
+    showToast('Changes are not synchronized yet. Reconnect or keep a recovery copy before disconnecting.'); return false;
+  };
+  if (!panelReady()) return;
   // In-app overlay, NOT window.confirm: Electron's native confirm on
   // Windows/Linux never hands keyboard focus back to the renderer —
   // the editor was untypeable until a reload (field bug, 2026-07-03).
@@ -1890,6 +1925,7 @@ export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
     },
   );
   if (!choice) return;
+  if (!panelReady()) return;
   // A failed host End (relay unreachable) already toasted and left the
   // session live — don't repaint plugins or claim success.
   if (!(await endOrLeaveSession(sess))) return;

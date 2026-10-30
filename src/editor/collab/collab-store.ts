@@ -196,9 +196,9 @@ function requestDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
-async function put(store: string, value: unknown): Promise<void> {
+async function put(store: string, value: unknown, required = false): Promise<void> {
   const db = await openDb();
-  if (!db) return;
+  if (!db) { if (required) throw new Error('Local collaboration recovery storage is unavailable.'); return; }
   const tx = db.transaction(store, 'readwrite');
   tx.objectStore(store).put(value);
   await requestDone(tx);
@@ -235,7 +235,7 @@ async function all<T>(store: string): Promise<T[]> {
 // ── Session records ──────────────────────────────────────────────────
 
 export async function saveSessionRecord(record: PersistedSessionRecord): Promise<void> {
-  await put(SESSIONS, record);
+  await put(SESSIONS, record, true);
   notify();
 }
 

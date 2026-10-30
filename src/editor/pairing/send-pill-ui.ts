@@ -195,8 +195,8 @@ export class SendPillController {
     this.coeditButton = document.createElement('button');
     this.coeditButton.type = 'button'; this.coeditButton.className = 'pmd-pill-bar pmd-coedit-with';
     const coeditLabel = document.createElement('span'); coeditLabel.className = 'pmd-pill-label';
-    coeditLabel.textContent = 'Co-edit with…'; this.coeditButton.append(coeditLabel);
-    this.coeditButton.title = 'Invite a saved partner to co-edit the active document';
+    coeditLabel.textContent = 'Collaboration'; this.coeditButton.append(coeditLabel);
+    this.coeditButton.title = 'Partners, shared documents and invitations';
     this.coeditButton.onclick = () => { this.collapse(); void import('../index.js').then(m => m.openCoeditWith()); };
     opts.parent.append(this.coeditButton);
 
@@ -361,7 +361,7 @@ export class SendPillController {
 
   private applyVisibility(): void {
     this.root.hidden = !settings.get('pairingEnabled');
-    if (this.coeditButton) this.coeditButton.hidden = !collabEnabled();
+    if (this.coeditButton) this.coeditButton.hidden = !collabEnabled({ duringRound: true });
   }
 
   /** Rebuild the partner + group drop rows from settings. */

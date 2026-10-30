@@ -111,6 +111,13 @@ describe('published batch JSON Schema', () => {
     const batch = await createIngestBatch([{ source: { ...source(), uri: ' HTTPS://Example.com/a b ' }, doc: doc(card()) }]);
     expect(batch.sources[0]!.uri).toBe('https://example.com/a%20b');
     expect(validate(batch), JSON.stringify(validate.errors)).toBe(true);
+    // The extraction follow-up adds table paragraphs; old v1 batches omit
+    // this additive field and must stay valid, while malformed tables fail.
+    const legacy = structuredClone(batch) as unknown as { records: Array<{ content: Record<string, unknown> }> };
+    delete legacy.records[0]!.content['tables'];
+    expect(validate(legacy)).toBe(true);
+    expect(validate({ ...batch, records: batch.records.map(r => ({ ...r, content: { ...r.content, tables: 'invalid' } })) })).toBe(false);
+    expect(validate({ ...batch, records: batch.records.map(r => ({ ...r, content: { ...r.content, unknownField: true } })) })).toBe(false);
     expect(validate({ ...batch, schemaVersion: 2 })).toBe(false);
     const invalid = structuredClone(batch) as unknown as { records: Array<Record<string, unknown>> };
     delete invalid.records[0]!['provenance'];

@@ -234,6 +234,9 @@ class HomeScreen {
       const tabletFlow = this.actionCard('New Flow', 'Create an editable spreadsheet flow.', () => this.callbacks?.newFlow?.());
       tabletFlow.classList.add('pmd-home-tablet-flow'); actions.appendChild(tabletFlow);
     }
+    if (collabEnabled({ duringRound: true })) {
+      actions.append(this.actionCard('Collaboration', 'Partners, shared documents and invitations.', () => { void import('./index.js').then(m => m.openCoeditWith()); }));
+    }
     inner.appendChild(actions);
 
     // Last workspace — "pick up where you left off", above Recent

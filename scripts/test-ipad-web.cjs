@@ -42,7 +42,7 @@ async function run() {
       const context=await browser.newContext({...devices['iPad Pro 11'], viewport:{width,height:768},acceptDownloads:true});
       await context.route('**/registerSW.js',route=>route.fulfill({status:200,contentType:'text/javascript',body:'/* Service-worker tests run separately in Chromium. */'}));
       await context.addInitScript(()=>{
-        if(!localStorage.getItem('pmd-settings')) localStorage.setItem('pmd-settings',JSON.stringify({showOnboardingStarter:false,multiDocWorkspace:false,aiFeaturesEnabled:false}));
+        if(!localStorage.getItem('pmd-settings')) localStorage.setItem('pmd-settings',JSON.stringify({showOnboardingStarter:false,multiDocWorkspace:false,aiFeaturesEnabled:false,pairingPartners:[{name:'Alex',code:'cmk1.synthetic-alex'},{name:'Jordan',code:'cmk1.synthetic-jordan'}]}));
       });
       const page=await context.newPage();page.on('dialog',dialog=>dialog.accept());const pending=new Set();page.on('request',r=>pending.add(r.url()));page.on('requestfinished',r=>pending.delete(r.url()));page.on('requestfailed',r=>{pending.delete(r.url());console.log('Request failed:',r.url(),r.failure()?.errorText)});page.on('console',m=>{if(m.type()==='error')console.log('Browser console:',m.text())});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.log('Page error:',e.message)});
       await page.goto(address);
@@ -59,9 +59,26 @@ async function run() {
       assert.equal(bounds.tablet,true);assert.ok(Math.abs(bounds.app.width-bounds.flow.width)<4,JSON.stringify(bounds));assert.ok(bounds.flow.height>250,JSON.stringify(bounds));
       await page.getByRole('button',{name:'Menu',exact:true}).click();
       assert.equal(await page.getByRole('button',{name:'Join co-editing',exact:true}).isVisible(),true);
+      await page.getByRole('button',{name:'Collaboration…',exact:true}).click();
+      const collaboration=page.locator('.pmd-collaboration-panel');
+      await collaboration.getByRole('tab',{name:'People',exact:true}).waitFor();
+      await collaboration.getByRole('button',{name:'Make Jordan your default partner',exact:true}).click();
+      assert.equal(await collaboration.getByRole('button',{name:'Co-edit with Jordan',exact:true}).isVisible(),true);
+      const dock=await page.evaluate(()=>{const app=document.querySelector('#app').getBoundingClientRect(),panel=document.querySelector('.pmd-collaboration-panel').getBoundingClientRect();return {app:{right:app.right,bottom:app.bottom},panel:{left:panel.left,top:panel.top},width:innerWidth};});
+      if(width>760)assert.ok(Math.abs(dock.app.right-dock.panel.left)<3,JSON.stringify(dock));
+      else assert.ok(dock.app.bottom<=dock.panel.top+3,JSON.stringify(dock));
+      await collaboration.getByRole('tab',{name:'Invitations',exact:true}).click();
+      assert.ok((await collaboration.innerText()).includes('No pending invitations'));
+      await collaboration.getByRole('tab',{name:'Shared docs',exact:true}).click();
+      await collaboration.getByRole('tab',{name:'People',exact:true}).click();
+      await page.screenshot({path:path.join(output,`collaboration-panel-${width}.png`)});
+      await collaboration.getByRole('button',{name:'Close',exact:true}).click();
+      assert.equal(await cell.inputValue(),'Synthetic iPad argument');
+      console.log(`WebKit collaboration panel ${width}px: real default-partner controls, tabs and document clearance passed.`);
+      await page.getByRole('button',{name:'Menu',exact:true}).click();
       await page.getByRole('button',{name:'Menu',exact:true}).click();
       await page.screenshot({path:path.join(output,`flow-${width}.png`)});
-      if(width===1024) {
+      if(width===1024 && !process.env.PANEL_ONLY) {
         await page.getByRole('button',{name:'Download a document copy',exact:true}).click();
         const downloadPromise=page.waitForEvent('download');
         await page.locator('.pmd-save-as-dialog').getByRole('button',{name:'As-Is',exact:true}).click();
@@ -76,6 +93,21 @@ async function run() {
       }
       assert.deepEqual(errors,[]);console.log(`WebKit tablet ${width}px: typing, immediate row navigation, Flow bounds and collaboration controls passed.`);
       await context.close();
+    }
+    if(process.env.PANEL_ONLY) {
+      const desktop=await browser.newContext({viewport:{width:1366,height:900}});
+      await desktop.route('**/registerSW.js',route=>route.fulfill({status:200,contentType:'text/javascript',body:'/* Offline checked separately. */'}));
+      await desktop.addInitScript(()=>localStorage.setItem('pmd-settings',JSON.stringify({showOnboardingStarter:false,multiDocWorkspace:false,aiFeaturesEnabled:false})));
+      const page=await desktop.newPage();await page.goto(address);
+      await page.getByRole('button',{name:/^New document/}).click();
+      await page.locator('#editor .ProseMirror').fill('Synthetic desktop collaboration layout');
+      await page.getByRole('button',{name:'Collaboration',exact:true}).click();
+      await page.locator('.pmd-collaboration-panel').waitFor({state:'visible'});
+      assert.equal(await page.locator('.pmd-collaboration-panel').isVisible(),true);
+      for(const theme of ['light','dark']){await page.evaluate(t=>document.documentElement.dataset.theme=t,theme);await page.screenshot({path:path.join(output,`collaboration-desktop-${theme}.png`)});}
+      const bounds=await page.evaluate(()=>({editor:document.querySelector('#app').getBoundingClientRect().right,panel:document.querySelector('.pmd-collaboration-panel').getBoundingClientRect().left}));assert.ok(Math.abs(bounds.editor-bounds.panel)<3,JSON.stringify(bounds));
+      console.log('WebKit desktop Collaboration launcher and dock clearance passed in both themes.');
+      await desktop.close();return;
     }
     // Two real browser contexts, an encrypted session and a local synthetic relay.
     const relayUrl = address + 'relay';
