@@ -24,6 +24,8 @@ export interface StructuredCard {
   citations: CardParagraph[];
   bodies: CardParagraph[];
   undertags: CardParagraph[];
+  /** Text of tables inside the card, one entry per cell paragraph (additive; v1). */
+  tables: CardParagraph[];
 }
 
 function paragraph(node: PMNode): CardParagraph {
@@ -65,16 +67,47 @@ export function extractStructuredCards(doc: PMNode): StructuredCard[] {
       citations: [],
       bodies: [],
       undertags: [],
+      tables: [],
     };
     node.forEach((child) => {
       switch (child.type.name) {
         case 'cite_paragraph': result.citations.push(paragraph(child)); break;
         case 'card_body': result.bodies.push(paragraph(child)); break;
         case 'undertag': result.undertags.push(paragraph(child)); break;
+        case 'table':
+          child.descendants((n) => {
+            if (n.type.name === 'paragraph') { result.tables.push(paragraph(n)); return false; }
+            return true;
+          });
+          break;
       }
     });
     cards.push(result);
     return false;
   });
   return cards;
+}
+
+/**
+ * Versioned, read-only public contract for downstream tools (research
+ * importers, .cmir round-trip, flowing apps). v1 is frozen: new fields may
+ * be added, existing fields never change meaning. The result is a deep,
+ * JSON-safe copy, so callers cannot reach editor state through it.
+ * The existing plugin API (`structuredCards()`) is unchanged.
+ */
+export const EXTRACT_CARDS_API_VERSION = 1 as const;
+export interface ExtractCardsV1Result {
+  apiVersion: typeof EXTRACT_CARDS_API_VERSION;
+  cards: StructuredCard[];
+}
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === 'object') {
+    for (const v of Object.values(value as object)) deepFreeze(v);
+    Object.freeze(value);
+  }
+  return value;
+}
+export function extractCardsV1(doc: PMNode): ExtractCardsV1Result {
+  const cards = JSON.parse(JSON.stringify(extractStructuredCards(doc))) as StructuredCard[];
+  return deepFreeze({ apiVersion: EXTRACT_CARDS_API_VERSION, cards });
 }

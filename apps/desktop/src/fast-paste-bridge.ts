@@ -195,7 +195,7 @@ function focusedRenderTarget(): BrowserWindow | null {
   // running app can still serve `/ping` (and consent prompts/toasts
   // still land somewhere) and not look broken. Inserts do NOT use
   // this fallback — see insertTarget.
-  const all = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+  const all = BrowserWindow.getAllWindows().filter((w: BrowserWindow) => !w.isDestroyed());
   return all.length > 0 ? all[0]! : null;
 }
 
@@ -510,7 +510,7 @@ export async function broadcastJump(
     return { ok: false, error: 'bad-request' };
   }
   const wins = BrowserWindow.getAllWindows().filter(
-    (w) =>
+    (w: BrowserWindow) =>
       !w.isDestroyed() &&
       // Doc windows all install a jump listener; the timer pop-out
       // (timer.html, main.ts:openTimerWindow) is the one window kind
@@ -520,8 +520,8 @@ export async function broadcastJump(
       // so correctness doesn't depend on this list being complete).
       !w.webContents.getURL().endsWith('timer.html'),
   );
-  const acks = await Promise.all(
-    wins.map((win) => dispatchJumpTo(win, source).then((ack) => ({ win, ack }))),
+  const acks: Array<{ win: BrowserWindow; ack: JumpAck }> = await Promise.all(
+    wins.map((win: BrowserWindow) => dispatchJumpTo(win, source).then((ack) => ({ win, ack }))),
   );
   // First ok wins. Only one open doc holds a given docId in normal use,
   // so multiple-ok isn't a real case; if it ever is, the first still wins.
