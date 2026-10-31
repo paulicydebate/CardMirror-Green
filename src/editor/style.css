@@ -11305,6 +11305,7 @@ body.pmd-recovery-active.pmd-multi-doc #app {
 .pmd-flow-td.pmd-flow-side-aff { background: var(--flow-tint-aff); }
 .pmd-flow-td.pmd-flow-side-neg { background: var(--flow-tint-neg); }
 .pmd-flow-stripes .pmd-flow-td.pmd-flow-odd { background: var(--flow-stripe); }
+.pmd-flow-root.pmd-flow-neutral.pmd-flow-stripes .pmd-flow-grid .pmd-flow-head.pmd-flow-odd { background-color: var(--flow-stripe) !important; }
 /* Classic sheet: whole columns filled per speech, like the parli template. */
 .pmd-flow-usefills .pmd-flow-td,
 .pmd-flow-usefills .pmd-flow-head { border-right: 1px solid var(--flow-line); }

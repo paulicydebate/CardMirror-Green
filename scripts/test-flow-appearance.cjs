@@ -60,6 +60,7 @@ async function run(){
         await shortcut.focus();await shortcut.press('Tab');assert.equal(await shortcut.evaluate(el=>el===document.activeElement),false);
         const palettes=fixture.platform==='Win32'?await panel.locator('[data-colorway]').evaluateAll(buttons=>buttons.map(b=>b.dataset.colorway)):['sage-plum'];
         await page.screenshot({path:path.join(output,`${fixture.platform}-${fixture.width}-${fixture.pane}-${base}-shortcut.png`)});
+        let referenceBands=null;
         for(const colorway of palettes){
           await panel.locator(`[data-colorway="${colorway}"]`).click();
           await panel.getByTitle('Close',{exact:true}).click();
@@ -68,6 +69,13 @@ async function run(){
             return [...root.querySelectorAll('.pmd-flow-td,.pmd-flow-chip,.pmd-flow-tab-active')].every(neutral);
           });
           assert.equal(surfaces,true,`${base}/${colorway}: speech-colored background remains`);
+          const bands=await page.locator('.pmd-flow-root').evaluate(root=>({
+            cells:[...root.querySelectorAll('.pmd-flow-grid tbody tr:nth-child(3) td')].slice(0,3).map(el=>getComputedStyle(el).backgroundColor),
+            heads:[...root.querySelectorAll('.pmd-flow-head')].slice(0,3).map(el=>getComputedStyle(el).backgroundColor),
+          }));
+          assert.equal(bands.cells[0],bands.cells[2]);assert.notEqual(bands.cells[0],bands.cells[1]);
+          assert.deepEqual(bands.heads,bands.cells,'Column headers must follow the body bands');
+          if(referenceBands)assert.deepEqual(bands,referenceBands,'Text colorways must not change column backgrounds');else referenceBands=bands;
           for(const col of [0,1]){
             const contrast=await page.locator(`textarea[data-row="0"][data-col="${col}"]`).evaluate(area=>{
               area.dispatchEvent(new MouseEvent('mousedown',{button:0,bubbles:true}));area.dispatchEvent(new MouseEvent('mouseup',{button:0,bubbles:true}));area.focus();

@@ -1,5 +1,11 @@
 # CardMirror Green
 
+## Latest Flow clarification (2026-10-30, unreleased)
+
+The user's Flower screenshot clarifies that speech columns should alternate between two neutral shades, independently of text color. Soft now alternates white / 97% gray; Soft dark alternates 16% / 18% gray. The opaque speech headers follow the same bands. This uses existing column indexes, so consecutive speeches from the same side still alternate. No Flower source was copied.
+
+Validation: 32 focused Flow/theme tests, TypeScript and web build passed. The isolated headless appearance check passed both Soft bases across all 17 text palettes, plus narrow-pane/small-screen cases, verifying neutral alternating backgrounds, matching headers, palette independence and selection contrast. No visible desktop apps were launched. This is source work beyond published 1.16.20; desktop packaging/publication remains the next step.
+
 Personal fork: https://github.com/paulicydebate/CardMirror-Green
 Active branch: `feature/full-card-api`. PR #1 remains draft; do not merge or modify main.
 
