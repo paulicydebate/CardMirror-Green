@@ -627,7 +627,7 @@ export class FlowWorkbookView implements NodeView {
     panel.appendChild(sizes);
     const font = el('select', 'pmd-flow-select');
     font.setAttribute('aria-label', 'Font');
-    for (const [v, l] of [['', 'Font: theme default'], ['ui', 'Font: app font'], ['arial', 'Font: Arial'], ['serif', 'Font: serif']] as const) {
+    for (const [v, l] of [['', 'Font: theme default'], ['ui', 'Font: app font'], ['arial', 'Font: Arial'], ['serif', 'Font: serif'], ['soft', 'Font: Soft (Merriweather Sans light)']] as const) {
       const o = el('option', undefined, l);
       o.value = v;
       o.selected = (this.theme.font ?? '') === v;

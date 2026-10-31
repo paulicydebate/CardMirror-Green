@@ -11,9 +11,9 @@ import { DEFAULT_FLOW_HIGHLIGHT_KEY, normalizeFlowShortcut } from './flow-shortc
  * same flow keeps their own look.
  */
 
-export type FlowBaseId = 'light' | 'dark' | 'classic' | 'contrast';
+export type FlowBaseId = 'light' | 'dark' | 'classic' | 'contrast' | 'soft' | 'soft-dark';
 export type FlowTextSize = 'small' | 'medium' | 'large';
-export type FlowFont = 'ui' | 'arial' | 'serif';
+export type FlowFont = 'ui' | 'arial' | 'serif' | 'soft';
 
 export interface FlowTheme {
   base: FlowBaseId;
@@ -35,6 +35,8 @@ interface BaseSpec {
   /** Shade every other column. */
   stripes: boolean;
   font: FlowFont;
+  /** Derive pastel side colors from the colorway's hues (Flower-style). */
+  pastel?: boolean;
   vars: Record<string, string>;
 }
 
@@ -97,6 +99,40 @@ export const FLOW_BASES: Record<FlowBaseId, BaseSpec> = {
       '--flow-hl': 'rgba(0, 255, 0, 0.45)',
     },
   },
+  // Flower-inspired (Ashwagandhae/debate-flow): softened gray text, pastel
+  // sides, and layers told apart by tint, not lines or shadows.
+  soft: {
+    label: 'Soft',
+    dark: false,
+    fills: false,
+    stripes: false,
+    font: 'soft',
+    pastel: true,
+    vars: {
+      '--flow-bg': 'hsl(0 0% 100%)', '--flow-panel': 'hsl(0 0% 95%)', '--flow-line': 'hsl(0 0% 94%)', '--flow-text': 'hsl(0 0% 30%)',
+      '--flow-muted': 'hsl(0 0% 50%)', '--flow-shadow': 'none',
+      '--flow-tint-aff': 'color-mix(in srgb, var(--flow-aff) 7%, transparent)',
+      '--flow-tint-neg': 'color-mix(in srgb, var(--flow-neg) 7%, transparent)',
+      '--flow-stripe': 'transparent',
+      '--flow-hl': 'rgba(34, 230, 80, 0.30)',
+    },
+  },
+  'soft-dark': {
+    label: 'Soft dark',
+    dark: true,
+    fills: false,
+    stripes: false,
+    font: 'soft',
+    pastel: true,
+    vars: {
+      '--flow-bg': 'hsl(0 0% 16%)', '--flow-panel': 'hsl(0 0% 10%)', '--flow-line': 'hsl(0 0% 19%)', '--flow-text': 'hsl(0 0% 80%)',
+      '--flow-muted': 'hsl(0 0% 60%)', '--flow-shadow': 'none',
+      '--flow-tint-aff': 'color-mix(in srgb, var(--flow-aff) 8%, transparent)',
+      '--flow-tint-neg': 'color-mix(in srgb, var(--flow-neg) 8%, transparent)',
+      '--flow-stripe': 'transparent',
+      '--flow-hl': 'rgba(57, 255, 20, 0.22)',
+    },
+  },
 };
 
 interface Colorway {
@@ -125,7 +161,29 @@ const FONT_STACKS: Record<FlowFont, string> = {
   ui: 'var(--pmd-ui-font, system-ui, sans-serif)',
   arial: 'Arial, Helvetica, sans-serif',
   serif: 'Georgia, "Times New Roman", serif',
+  soft: '"Merriweather Sans", var(--pmd-ui-font, system-ui, sans-serif)',
 };
+/** Body weight per font: the soft font is set light (bold cells stay 700). */
+const FONT_WEIGHTS: Record<FlowFont, string> = { ui: '400', arial: '400', serif: '400', soft: '300' };
+
+/** Hue (0-360) and saturation (0-1) of a #rrggbb color. */
+function hexHueSat(hex: string): { h: number; s: number } {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255) as [number, number, number];
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if (d === 0) return { h: 0, s: 0 };
+  const l = (max + min) / 2;
+  const s = d / (1 - Math.abs(2 * l - 1));
+  let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = Math.round(h * 60);
+  return { h: h < 0 ? h + 360 : h, s };
+}
+
+/** Flower's pastel side color for a colorway shade: hsl(h 60% 80%) on dark, hsl(h 90% 30%) on light; grays stay gray. */
+export function pastelSideColor(hex: string, dark: boolean): string {
+  const { h, s } = hexHueSat(hex);
+  if (s < 0.1) return dark ? 'hsl(0 0% 85%)' : 'hsl(0 0% 25%)';
+  return dark ? `hsl(${h} 60% 80%)` : `hsl(${h} 90% 30%)`;
+}
 const SIZES: Record<FlowTextSize, string> = { small: '0.8rem', medium: '0.9rem', large: '1.05rem' };
 
 export const DEFAULT_FLOW_THEME: FlowTheme = { base: 'dark', colorway: 'green-pink', affText: null, negText: null, size: 'medium', font: null, highlightColor: null, highlightKey: DEFAULT_FLOW_HIGHLIGHT_KEY };
@@ -185,7 +243,10 @@ export function onFlowThemeChange(fn: (theme: FlowTheme) => void): () => void {
 /** Colorway colors for a base (its light or dark shades). */
 export function colorwayColors(colorway: string, base: FlowBaseId): { aff: string; neg: string } {
   const cw = FLOW_COLORWAYS[colorway] ?? FLOW_COLORWAYS[DEFAULT_FLOW_THEME.colorway]!;
-  return FLOW_BASES[base].dark ? cw.dark : cw.light;
+  const spec = FLOW_BASES[base];
+  const shade = spec.dark ? cw.dark : cw.light;
+  if (!spec.pastel) return shade;
+  return { aff: pastelSideColor(shade.aff, spec.dark), neg: pastelSideColor(shade.neg, spec.dark) };
 }
 
 /** The side colors in effect (custom overrides win). */
@@ -205,6 +266,7 @@ export function applyFlowTheme(root: HTMLElement, theme: FlowTheme): void {
   root.style.setProperty('--flow-neg', colors.neg);
   root.style.setProperty('--flow-accent', colors.aff);
   root.style.setProperty('--flow-font', FONT_STACKS[theme.font ?? base.font]);
+  root.style.setProperty('--flow-weight', FONT_WEIGHTS[theme.font ?? base.font]);
   root.style.setProperty('--flow-size', SIZES[theme.size]);
   root.dataset['flowTheme'] = theme.base;
   root.dataset['flowColorway'] = theme.colorway;

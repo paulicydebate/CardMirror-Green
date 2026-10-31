@@ -30,6 +30,20 @@
  * + provenance details in `src/editor/fonts/LICENSES.md`. */
 
 @font-face {
+  font-family: 'Merriweather Sans';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('./fonts/merriweather-sans-300.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Merriweather Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('./fonts/merriweather-sans-700.woff2') format('woff2');
+}
+@font-face {
   font-family: 'Atkinson Hyperlegible';
   font-style: normal;
   font-weight: 400;
@@ -11140,6 +11154,7 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   background: var(--flow-bg);
   color: var(--flow-text);
   font-family: var(--flow-font);
+  font-weight: var(--flow-weight, 400);
   box-shadow: var(--flow-shadow);
   /* Labels and buttons are not text to select; cells (textareas) still are. */
   user-select: none;

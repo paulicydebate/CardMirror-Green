@@ -205,3 +205,11 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+
+## Merriweather Sans (300, 700)
+
+`merriweather-sans-300.woff2`, `merriweather-sans-700.woff2`: latin subset
+from `@fontsource/merriweather-sans` 5.3.0. Copyright The Merriweather Sans
+Project Authors (https://github.com/SorkinType/Merriweather-Sans). Licensed
+under the SIL Open Font License 1.1 (same terms as above). Used by the Flow
+"Soft" styles.
