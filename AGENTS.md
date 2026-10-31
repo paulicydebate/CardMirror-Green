@@ -3,7 +3,7 @@
 For a fresh chat or another LLM, start with HANDOFF.md, then CARDMIRROR_GREEN.md, ROADMAP.md and CARD_INGEST_V1.md. These files replace any assumption that the prior chat or desktop is available.
 
 - Repository: paulicydebate/CardMirror-Green. Work only on feature/full-card-api.
-- Keep PR #1 draft. Do not merge it or modify main without a new explicit user request.
+- PR #1 was merged into main by another actor on 2026-10-30. Historical draft-only notes are superseded. Continue work on feature/full-card-api; do not modify main, reopen/recreate PR #1, or merge new work into main without a new explicit user request.
 - User tests on Windows x64; their MacBook Pro is M5 Apple Silicon (macOS ARM64).
 - Fork name: CardMirror Green. Preserve its green folder icon and isolated app ID, executable, user-data folder, update policy and bridge identity.
 - Desktop preview workflow: .github/workflows/desktop-previews.yml. Verify both platforms' jobs and artifacts after packaging changes. Do not mistake an upstream CardMirror build for this fork.

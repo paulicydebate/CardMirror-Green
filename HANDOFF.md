@@ -8,8 +8,8 @@ This document is the starting point for a new LLM or developer. The previous cha
 
 - Repository: https://github.com/paulicydebate/CardMirror-Green
 - Active branch: `feature/full-card-api`
-- Draft PR: https://github.com/paulicydebate/CardMirror-Green/pull/1
-- Keep PR #1 draft. Do not merge it, modify main, force-push, or discard local work without a new explicit user instruction.
+- Historical PR: https://github.com/paulicydebate/CardMirror-Green/pull/1 — merged into main by another actor on 2026-10-30. Older milestone notes describing it as draft are historical.
+- Continue on feature/full-card-api. Do not modify main, reopen/recreate PR #1, merge new work into main, force-push, or discard local work without a new explicit user instruction.
 - The fork is CardMirror Green. Preserve its green folder icon, separate installer/app ID, executable, user-data directory and bridge identity.
 - User's desktop is Windows x64. Their laptop is an M5 Apple Silicon MacBook Pro; use macOS ARM64 builds.
 - User wants source, progress and handoff information in GitHub so work can continue with the desktop turned off.
@@ -18,6 +18,8 @@ This document is the starting point for a new LLM or developer. The previous cha
 Read in this order: [AGENTS.md](AGENTS.md), this handoff, [CARDMIRROR_GREEN.md](CARDMIRROR_GREEN.md), [ROADMAP.md](ROADMAP.md), and [CARD_INGEST_V1.md](CARD_INGEST_V1.md).
 
 ## Latest verified Prep / Round milestone
+
+Current release preparation: 1.16.18 includes the other LLM's Soft/Soft dark Flow styles and bundled Merriweather Sans fonts, already merged via PR #4 into feature/full-card-api at 9e45f2d8. PR #1 subsequently merged that branch into main at 764ab555; the two branches have identical app content at that milestone. This checkout was fast-forwarded without conflicts; no merge or main modification was needed. Release is being prepared from the feature branch. Check the final CARDMIRROR_GREEN.md entry for validation/publication status before claiming updater availability. Use Flow Appearance to select Soft or Soft dark after installation.
 
 Newest work: 1.16.17 changes manual LD/policy Import tags to one tab per recognized styled position heading (AD1, AD2, DA, Off1, CP/K/T/etc.), with a preview and whole-document checkbox opt-out. Unassigned tags retain a filename tab. All tabs import/undo together; source, old sheets and Prep/Isolation protections are preserved. Optional position boundaries are validated across desktop windows; old payloads fall back safely. Full local suite passed 4,444 / 46 skipped; typecheck, desktop main and web builds passed. Check the final CARDMIRROR_GREEN.md entry for publication status before claiming availability. Both platform release and preview builds for the earlier 1.16.16 are now verified green.
 
