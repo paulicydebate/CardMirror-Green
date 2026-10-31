@@ -67,6 +67,7 @@ import {
 import { applyPlainPasteFromText, togglePlainPaste } from './paste-plugin.js';
 import { lockHighlighting } from './create-reference.js';
 import { showToast } from './toast.js';
+import { prepDoc, prepRound, prepRuntime, prepTransferBlocked } from './prep-runtime.js';
 import { activateCitePromptPreset, citePromptPresets } from './ai/cite-prompt-presets.js';
 import { surfaceError } from './error-surface.js';
 import { TYPE_TO_LEVEL, TYPE_LABEL } from './headings.js';
@@ -4630,12 +4631,24 @@ export type RibbonCommandId =
   | 'openContainingFolder'
   | 'saveWorkspace'
   | 'reopenWorkspace'
+  | 'openOpenCaselist'
+  | 'newFlow'
+  | 'startPrep'
+  | 'newPrep'
+  | 'newPrepFlow'
+  | 'markPrep'
+  | 'startRound'
+  | 'endPrep'
+  | 'prepLogs'
+  | 'checkPrepDoc'
+  | 'popOutPane'
   | 'arrangeWindows'
   | 'toggleCommentsVisible'
   | 'addCommentToSelection'
   | 'addNoteToSelection'
   | 'aiAskAboutSelection'
   | 'aiCreateCite'
+  | 'chatCutCard'
   | 'reformatAllCites'
   | 'translate'
   | 'repairText'
@@ -4914,12 +4927,24 @@ export const RIBBON_COMMAND_IDS: RibbonCommandId[] = [
   'openContainingFolder',
   'saveWorkspace',
   'reopenWorkspace',
+  'openOpenCaselist',
+  'newFlow',
+  'startPrep',
+  'newPrep',
+  'newPrepFlow',
+  'markPrep',
+  'startRound',
+  'endPrep',
+  'prepLogs',
+  'checkPrepDoc',
+  'popOutPane',
   'arrangeWindows',
   'toggleCommentsVisible',
   'addCommentToSelection',
   'addNoteToSelection',
   'aiAskAboutSelection',
   'aiCreateCite',
+  'chatCutCard',
   'reformatAllCites',
   'translate',
   'repairText',
@@ -5143,12 +5168,24 @@ export const RIBBON_COMMAND_LABELS: Record<RibbonCommandId, string> = {
   openContainingFolder: 'Open Containing Folder',
   saveWorkspace: 'Save Workspace',
   reopenWorkspace: 'Reopen Last Workspace',
+  openOpenCaselist: 'Browse OpenCaselist',
+  newFlow: 'New Flow (Spreadsheet)',
+  startPrep: 'Start Prep Mode',
+  newPrep: 'New Prep Document',
+  newPrepFlow: 'New Prep Flow (NPDA)',
+  markPrep: 'Mark as Prep Document',
+  startRound: 'Start Round Mode',
+  endPrep: 'End Prep / Round Session',
+  prepLogs: 'Prep / Round Logs',
+  checkPrepDoc: 'Check Prep Document',
+  popOutPane: 'Pop Out Pane to New Window',
   arrangeWindows: 'Arrange Windows',
   toggleCommentsVisible: 'Show / Hide Comments',
   addCommentToSelection: 'Add Comment to Selection',
   addNoteToSelection: 'Add Note to Selection',
   aiAskAboutSelection: 'Ask AI About Selection',
   aiCreateCite: 'Format Cite From Selection (AI)',
+  chatCutCard: 'Cut Card with Chat AI (Copy/Paste)',
   reformatAllCites: 'Reformat Every Cite in Document (AI)',
   translate: 'Translate Selection to Clipboard (AI)',
   repairText: 'Repair OCR/PDF Text (AI)',
@@ -5375,6 +5412,9 @@ export const RIBBON_COMMAND_ALIASES: Partial<Record<RibbonCommandId, readonly st
   toggleReaderView: ['reading view', 'reader view', 'paginated view', 'read view', 'book view', 'columns'],
   openContainingFolder: ['reveal in finder', 'show in folder', 'show in explorer', 'reveal file', 'file location', 'containing folder'],
   saveWorkspace: ['save session', 'save open documents', 'remember open documents', 'save tabs'],
+  popOutPane: ['pop out', 'popout', 'detach pane', 'second monitor', 'new window', 'move to window', 'undock'],
+  newFlow: ['flow', 'flowing', 'spreadsheet', 'new flow', 'flow sheet', 'excel flow', 'parli flow', 'npda'],
+  openOpenCaselist: ['caselist', 'open caselist', 'opencaselist', 'disclosure', 'wiki', 'open source', 'scout', 'tabroom'],
   reopenWorkspace: ['restore session', 'reopen session', 'open previous session', 'reopen last session', 'restore workspace', 'reopen documents', 'reopen tabs'],
   arrangeWindows: ['window arranger', 'arrange for speech', 'tile windows', 'speech doc side by side', 'split screen', 'organize windows'],
   toggleAutosave: ['enable autosave', 'disable autosave', 'turn on autosave', 'turn off autosave'],
@@ -5388,6 +5428,7 @@ export const RIBBON_COMMAND_ALIASES: Partial<Record<RibbonCommandId, readonly st
   smartShrink: ['smart shrink', 'deep shrink'],
   condenseAndShrink: ['fast condense', 'condense and shrink', 'condense shrink'],
   aiAskAboutSelection: ['question'],
+  chatCutCard: ['grok', 'chatgpt', 'copy prompt', 'paste ai reply', 'ai cut', 'cut evidence', 'cut card', 'highlight card', 'underline card'],
   reformatAllCites: ['reformat all cites', 'reformat cites', 'all cites', 'every cite', 'bulk cite'],
   pasteAsText: ['paste without formatting', 'paste unformatted', 'paste text'],
   pasteCondensed: ['paste condense', 'paste merge', 'paste flatten', 'paste no paragraphs', 'destructive paste'],
@@ -5578,12 +5619,24 @@ export const DEFAULT_RIBBON_KEYS: Record<RibbonCommandId, string | string[]> = {
   openContainingFolder: '',
   saveWorkspace: '',
   reopenWorkspace: '',
+  openOpenCaselist: '',
+  newFlow: '',
+  startPrep: '',
+  newPrep: '',
+  newPrepFlow: '',
+  markPrep: '',
+  startRound: '',
+  endPrep: '',
+  prepLogs: '',
+  checkPrepDoc: '',
+  popOutPane: '',
   arrangeWindows: '',
   toggleCommentsVisible: '',
   addCommentToSelection: '',
   addNoteToSelection: 'Mod-Shift-n',
   aiAskAboutSelection: 'Mod-Shift-q',
   aiCreateCite: 'Mod-Shift-x',
+  chatCutCard: '',
   // Deliberately unbound: one model request per cite in the document is
   // far too expensive to sit behind a stray chord. Bind it in Settings →
   // Keyboard shortcuts if you want one.
@@ -5868,6 +5921,21 @@ export interface RibbonContext {
   openContainingFolder: () => void;
   saveWorkspace: () => void;
   reopenWorkspace: () => void;
+  /** Browse OpenCaselist and open a disclosed file. Desktop only. */
+  openOpenCaselist: () => void;
+  /** Open a new spreadsheet flow document. */
+  newFlow: () => void;
+  startPrep: () => void;
+  newPrep: () => void;
+  newPrepFlow: () => void;
+  markPrep: () => void;
+  startRound: () => void;
+  endPrep: () => void;
+  prepLogs: () => void;
+  /** Compare the focused prep doc with the seal stored in its file. */
+  checkPrepDoc: () => void;
+  /** Three-pane: move the focused pane's doc into its own window. */
+  popOutPane: () => void;
   /** Arrange Windows: speech doc on one side, everything else on the
    *  other (three-pane: into slots). Desktop only. */
   arrangeWindows: () => void;
@@ -5877,6 +5945,8 @@ export interface RibbonContext {
   addNoteToSelection: () => void;
   aiAskAboutSelection: () => void;
   aiCreateCite: () => void;
+  /** Copy-paste cutting with a chat AI (no API key) for the focused card. */
+  chatCutCard: () => void;
   /** Confirm, then run the cite creator over every cite paragraph in the
    *  document — one model request each. */
   reformatAllCites: () => void;
@@ -6103,6 +6173,17 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   openContainingFolder: () => {},
   saveWorkspace: () => {},
   reopenWorkspace: () => {},
+  openOpenCaselist: () => {},
+  newFlow: () => {},
+  startPrep: () => {},
+  newPrep: () => {},
+  newPrepFlow: () => {},
+  markPrep: () => {},
+  startRound: () => {},
+  endPrep: () => {},
+  prepLogs: () => {},
+  checkPrepDoc: () => {},
+  popOutPane: () => {},
   arrangeWindows: () => {},
   openShortcutsReference: () => {},
   toggleCommentsVisible: () => {},
@@ -6110,6 +6191,7 @@ const DEFAULT_RIBBON_CONTEXT: RibbonContext = {
   addNoteToSelection: () => {},
   aiAskAboutSelection: () => {},
   aiCreateCite: () => {},
+  chatCutCard: () => {},
   reformatAllCites: () => {},
   translate: () => {},
   repairText: () => {},
@@ -6400,6 +6482,32 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
         ctx.reopenWorkspace();
         return true;
       };
+    case 'openOpenCaselist':
+      return (_state, dispatch) => {
+        if (!dispatch) return true;
+        ctx.openOpenCaselist();
+        return true;
+      };
+    case 'startPrep': return (_state, dispatch) => { if (dispatch) ctx.startPrep(); return true; };
+    case 'newPrep': return (_state, dispatch) => { if (dispatch) ctx.newPrep(); return true; };
+    case 'newPrepFlow': return (_state, dispatch) => { if (dispatch) ctx.newPrepFlow(); return true; };
+    case 'markPrep': return (_state, dispatch) => { if (dispatch) ctx.markPrep(); return true; };
+    case 'startRound': return (_state, dispatch) => { if (dispatch) ctx.startRound(); return true; };
+    case 'endPrep': return (_state, dispatch) => { if (dispatch) ctx.endPrep(); return true; };
+    case 'prepLogs': return (_state, dispatch) => { if (dispatch) ctx.prepLogs(); return true; };
+    case 'checkPrepDoc': return (_state, dispatch) => { if (dispatch) ctx.checkPrepDoc(); return true; };
+    case 'newFlow':
+      return (_state, dispatch) => {
+        if (!dispatch) return true;
+        ctx.newFlow();
+        return true;
+      };
+    case 'popOutPane':
+      return (_state, dispatch) => {
+        if (!dispatch) return true;
+        ctx.popOutPane();
+        return true;
+      };
     case 'arrangeWindows':
       return (_state, dispatch) => {
         if (!dispatch) return true;
@@ -6440,6 +6548,12 @@ function commandFor(id: RibbonCommandId, ctx: RibbonContext): Command {
         if (state.selection.empty) return false;
         if (!dispatch) return true;
         ctx.aiCreateCite();
+        return true;
+      };
+    case 'chatCutCard':
+      return (_state, dispatch) => {
+        if (!dispatch) return true;
+        ctx.chatCutCard();
         return true;
       };
     case 'reformatAllCites':
@@ -7416,8 +7530,19 @@ export function getRibbonCommand(
   id: AnyCommandId,
   ctx: RibbonContext = DEFAULT_RIBBON_CONTEXT,
 ): Command {
-  if (isPluginCommandId(id)) return () => runPluginCommand(id);
-  return commandFor(id as RibbonCommandId, ctx);
+  const base: Command = isPluginCommandId(id) ? () => runPluginCommand(id) : commandFor(id as RibbonCommandId, ctx);
+  return (state, dispatch, view) => {
+    if (dispatch) {
+      const uid = view?.dom.dataset['prepUid'] ?? prepRuntime.focused;
+      if (prepDoc(uid) && /^(paste|copy(?!Session|Invite|View)|cut|sendTo|addQuickCard|insert(Image|InDocCopy|Self|Transclusion)|absorb|extract|ai|chatCut|translate|repairText|reformatAll)/i.test(id)) {
+        prepTransferBlocked(uid, id); showToast('Prep document: content transfers are blocked.'); return true;
+      }
+      if (prepRound() && /^(openFile|reopenWorkspace|openQuickCardSearch|recoverPreviousVersion|openOpenCaselist|startSession|joinSession|resumeSession)/.test(id)) {
+        prepRuntime.record('blocked', uid, { reason: id }); showToast('Round Mode: this command is blocked.'); return true;
+      }
+    }
+    return base(state, dispatch, view);
+  };
 }
 
 /**

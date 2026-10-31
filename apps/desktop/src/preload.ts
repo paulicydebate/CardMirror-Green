@@ -13,6 +13,7 @@
  */
 
 import { contextBridge, ipcRenderer, webFrame, webUtils } from 'electron';
+import type { FlowTagSnapshot } from './flow-tags-broker.js';
 
 interface FileFilter {
   name: string;
@@ -90,6 +91,20 @@ interface PairingInboxItemIpc {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  prep: {
+    ready: () => ipcRenderer.invoke('prep:ready'),
+    action: (action: string, uid?: unknown) => ipcRenderer.invoke('prep:action', action, uid),
+    inventory: (docs: string[], focused: string | null) => ipcRenderer.send('prep:inventory', { docs, focused }),
+    events: (events: unknown[]) => ipcRenderer.invoke('prep:events', events),
+    logs: () => ipcRenderer.invoke('prep:logs'),
+    readLog: (id: string) => ipcRenderer.invoke('prep:read-log', id),
+    exportLog: (id: string, format: 'raw' | 'readable' = 'raw', timeZone?: string) => ipcRenderer.invoke('prep:export-log', id, format, timeZone),
+    prepared: (requestId: string, ok: boolean, fingerprints?: unknown[]) => ipcRenderer.send('prep:prepared', { requestId, ok, fingerprints }),
+    onSealed: (fn: (sealed: unknown) => void) => { const listener = (_e: unknown, sealed: unknown) => fn(sealed); ipcRenderer.on('prep:sealed', listener); return () => ipcRenderer.removeListener('prep:sealed', listener); },
+    checkSeal: (payload: { certificate: unknown; code: string; persistentId: string | null; fingerprint: string }) => ipcRenderer.invoke('prep:check-seal', payload),
+    onState: (fn: (state: unknown) => void) => { const listener = (_e: unknown, state: unknown) => fn(state); ipcRenderer.on('prep:state', listener); return () => ipcRenderer.removeListener('prep:state', listener); },
+    onPrepare: (fn: (request: { requestId: string; action: 'round' | 'end' }) => void) => { const listener = (_e: unknown, req: { requestId: string; action: 'round' | 'end' }) => fn(req); ipcRenderer.on('prep:prepare', listener); return () => ipcRenderer.removeListener('prep:prepare', listener); },
+  },
   /** Absolute filesystem path of a dropped/selected `File`. Electron 32+
    *  removed the `File.path` property, so drag-to-open resolves it through
    *  `webUtils.getPathForFile` here in the preload. Returns '' if the file has
@@ -412,6 +427,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('host:learn-store-changed', listener);
     return () => ipcRenderer.removeListener('host:learn-store-changed', listener);
   },
+
+  /** OpenCaselist panel: every operation runs in main (which holds the
+   *  session token) and resolves to `{ ok, value }` / `{ ok, error, signedOut }`. */
+  opencaselist: (op: string, ...args: unknown[]) =>
+    ipcRenderer.invoke('host:opencaselist', op, ...args) as Promise<unknown>,
 
   /** Report this window's workspace mode to main at boot (and on the
    *  reload a mode toggle triggers) so the OS "Open with…" path knows
@@ -799,6 +819,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         isFocusedWindow: boolean;
       }>
     >,
+
+  flowDocumentTags: (uid: string) => ipcRenderer.invoke('host:flow-document-tags', uid) as Promise<FlowTagSnapshot>,
+  onFlowDocumentTags(handler: (uid: string) => FlowTagSnapshot): () => void {
+    const listener = (_event: unknown, payload: {requestId: string; uid: string}): void => {
+      try { ipcRenderer.send('flow:document-tags-reply', {...payload, ...handler(payload.uid)}); }
+      catch (error) { ipcRenderer.send('flow:document-tags-reply', {...payload, error: error instanceof Error ? error.message : String(error)}); }
+    };
+    ipcRenderer.on('flow:document-tags-request', listener);
+    return () => ipcRenderer.removeListener('flow:document-tags-request', listener);
+  },
 
   /** Every document window, most recently focused first (the Switch
    *  Window palette). `docNames` are the window's saved docs' filenames. */

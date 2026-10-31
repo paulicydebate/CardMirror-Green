@@ -25,6 +25,7 @@ import {
   NODE_TO_PSTYLE,
 } from '../ooxml/styles.js';
 import { bookmarkNameForId } from '../schema/ids.js';
+import { flowNodeToBlocks } from '../flow/flow-to-pm.js';
 import { base64ToBytes } from '../ooxml/base64.js';
 import type { Thread } from '../editor/comments-plugin.js';
 import { assignDocxNumbering, buildNumberingXml, numPrXml } from './docx-numbering.js';
@@ -224,6 +225,11 @@ class DocxExporter {
     }
     if (node.type.name === 'table') {
       this.emitTable(node);
+      return;
+    }
+    if (node.type.name === 'flow_workbook') {
+      // A spreadsheet flow exports as a heading + table per sheet.
+      for (const block of flowNodeToBlocks(node.type.schema, node)) this.emitBlock(block);
       return;
     }
     // Every other block-level node is a paragraph kind.

@@ -72,26 +72,26 @@ describe('handshake dir', () => {
   });
   it('splits identity from session; quit clears ONLY the session', async () => {
     await writeCardmirrorHandshake(17699, 'secret');
-    const identity = JSON.parse(await fs.readFile(path.join(dir, 'cardmirror.json'), 'utf8'));
+    const identity = JSON.parse(await fs.readFile(path.join(dir, 'cardmirror-green.json'), 'utf8'));
     // Identity must NOT leak the session secrets into the never-deleted file.
-    expect(identity).toMatchObject({ app: 'cardmirror', kind: 'editor' });
+    expect(identity).toMatchObject({ app: 'cardmirror-green', kind: 'editor' });
     expect(identity.token).toBeUndefined();
     expect(identity.port).toBeUndefined();
     const session = JSON.parse(
-      await fs.readFile(path.join(dir, 'cardmirror.session.json'), 'utf8'),
+      await fs.readFile(path.join(dir, 'cardmirror-green.session.json'), 'utf8'),
     );
     expect(session).toMatchObject({ port: 17699, token: 'secret' });
     await deleteCardmirrorHandshake();
     // Session gone, identity persists — that's what keeps a closed app
     // selectable in a peer's picker.
-    await expect(fs.readFile(path.join(dir, 'cardmirror.session.json'))).rejects.toThrow();
-    await expect(fs.readFile(path.join(dir, 'cardmirror.json'))).resolves.toBeDefined();
+    await expect(fs.readFile(path.join(dir, 'cardmirror-green.session.json'))).rejects.toThrow();
+    await expect(fs.readFile(path.join(dir, 'cardmirror-green.json'))).resolves.toBeDefined();
   });
   it('protects the token: dir 0700, files 0600 (POSIX)', async () => {
     if (process.platform === 'win32') return; // no POSIX modes there
     await writeCardmirrorHandshake(17699, 'secret');
     expect(((await fs.stat(dir)).mode & 0o777).toString(8)).toBe('700');
-    const sess = await fs.stat(path.join(dir, 'cardmirror.session.json'));
+    const sess = await fs.stat(path.join(dir, 'cardmirror-green.session.json'));
     expect((sess.mode & 0o777).toString(8)).toBe('600');
   });
 });

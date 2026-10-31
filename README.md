@@ -1,3 +1,5 @@
+> **CardMirror Green development fork:** Start with [HANDOFF.md](HANDOFF.md) to continue with another LLM or developer. See the [roadmap](ROADMAP.md), [current status](CARDMIRROR_GREEN.md), and [batch v1 contract](CARD_INGEST_V1.md). Work on `feature/full-card-api`; keep PR #1 draft and leave `main` unchanged.
+
 <p align="center">
   <img src="./logo.png" alt="CardMirror" width="280" />
 </p>

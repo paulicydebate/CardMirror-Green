@@ -1,3 +1,5 @@
+import { prepCreated, prepOpened, prepClosed, prepInventoryChanged, prepOpenAllowed, prepRestoreIdentity } from './prep-controller.js';
+import { prepDoc, prepRuntime } from './prep-runtime.js';
 /**
  * Multi-pane workspace shell.
  *
@@ -57,6 +59,26 @@ type DocFormat = 'cmir' | 'docx';
  *  Returns null for filenames with neither a `.cmir` nor `.docx`
  *  extension (the caller can fall back to format detection by
  *  content sniffing, or just default to docx). */
+const PANE_WEIGHTS_KEY = 'cmg-pane-weights';
+
+/** Saved drag-resized pane widths (flex weights per slot); all 1 = even. */
+function loadPaneWeights(): Record<SlotId, number> {
+  const even: Record<SlotId, number> = { slot1: 1, slot2: 1, slot3: 1 };
+  try {
+    const raw = JSON.parse(localStorage.getItem(PANE_WEIGHTS_KEY) ?? 'null') as Record<string, unknown> | null;
+    if (!raw) return even;
+    for (const id of SLOT_IDS) {
+      const v = raw[id];
+      if (typeof v === 'number' && Number.isFinite(v) && v > 0.05 && v < 20) even[id] = v;
+    }
+  } catch { /* storage unavailable: even split */ }
+  return even;
+}
+
+function savePaneWeights(weights: Record<SlotId, number>): void {
+  try { localStorage.setItem(PANE_WEIGHTS_KEY, JSON.stringify(weights)); } catch { /* not persisted */ }
+}
+
 function formatFromFilename(name: string): DocFormat | null {
   const lower = name.toLowerCase();
   if (lower.endsWith('.cmir')) return 'cmir';
@@ -155,9 +177,10 @@ import { awaitWithSaveWatchdog } from './save-watchdog.js';
 type SlotId = 'slot1' | 'slot2' | 'slot3';
 const SLOT_IDS: SlotId[] = ['slot1', 'slot2', 'slot3'];
 
-let nextDocUid = 1;
 function newDocUid(): string {
-  return `doc-${nextDocUid++}`;
+  // Session ids must not collide with a protected document from a previous
+  // process after Prep / Round recovery (the old counter restarted at doc-1).
+  return `pane-${crypto.randomUUID()}`;
 }
 
 /** Sync the cross-window open-path claim when a record's handle
@@ -243,6 +266,8 @@ function scheduleJournalForRecord(record: DocRecord): void {
 async function runJournalForRecord(record: DocRecord): Promise<boolean> {
   const host = getHost();
   if (!host.journalsSupported) return true;
+  // A partner's copy of an Isolation prep doc keeps no recovery file.
+  if (prepRuntime.isolationCopies.has(record.uid)) return true;
   try {
     const state = record.view.state;
     const bytes = await serializeNativeAsync(state.doc, {
@@ -730,6 +755,17 @@ class Slot {
       this.shell.toggleExpanded(this);
     });
     chip.appendChild(this.chipExpandBtn);
+    const popOutBtn = document.createElement('button');
+    popOutBtn.type = 'button';
+    popOutBtn.className = 'pmd-pane-chip-popout';
+    popOutBtn.title = 'Pop out into its own window (e.g. for a second monitor)';
+    setIcon(popOutBtn, 'upload');
+    popOutBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    popOutBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void this.popOutVisible();
+    });
+    chip.appendChild(popOutBtn);
     this.chipHideBtn = document.createElement('button');
     this.chipHideBtn.type = 'button';
     this.chipHideBtn.className = 'pmd-pane-chip-hide';
@@ -1016,10 +1052,56 @@ class Slot {
     return record;
   }
 
+  /** Move the visible doc into its own window (CardMirror Green), e.g. to
+   *  put it on a second monitor. Its current contents travel along —
+   *  unsaved changes included, so the new window still asks before closing
+   *  — and it opens as a normal single-document window. Not available for a
+   *  doc in a live co-editing session. */
+  async popOutVisible(): Promise<void> {
+    const rec = this.visible;
+    if (!rec) return;
+    const host = getHost();
+    if (!host.canSpawnWindow) {
+      showToast('Pop out needs the desktop app.');
+      return;
+    }
+    if (collabCopresenceFor(rec.uid) != null) {
+      showToast('This document is in a co-editing session, so it can\u2019t move to another window.');
+      return;
+    }
+    const state = rec.view.state;
+    const bytes = await serializeNativeAsync(state.doc, {
+      threads: Array.from(getCommentsState(state).threads.values()),
+      ...(rec.docId ? { docId: rec.docId } : {}),
+    });
+    const wasSpeech = getSpeechDocResolver().isSpeechByUid(rec.uid);
+    // Hand the file over: release this window's claim first so the new
+    // window can take it.
+    syncDocPathClaim(rec.handle, null);
+    try {
+      await host.spawnWindow({
+        filename: rec.filename,
+        bytes,
+        handle: typeof rec.handle === 'string' ? rec.handle : null,
+        format: rec.format,
+        uid: rec.uid,
+        markDirty: rec.dirty,
+        ...(wasSpeech ? { markAsSpeech: true } : {}),
+        popout: true,
+      });
+    } catch (err) {
+      syncDocPathClaim(null, rec.handle);
+      void alertDialog(`Couldn't open a new window: ${err instanceof Error ? err.message : err}`);
+      return;
+    }
+    // Only now take it out of this pane (no save prompt: nothing is lost).
+    if (this.visible === rec) await this.closeVisible({ popOut: true });
+  }
+
   /** Close the currently-visible doc. Reveals the next stack member
    *  (or empties the slot). Prompts for save / discard / cancel if
    *  the doc has unsaved changes; clean docs close immediately. */
-  async closeVisible(opts?: { modeSwitch?: boolean }): Promise<boolean> {
+  async closeVisible(opts?: { modeSwitch?: boolean; popOut?: boolean }): Promise<boolean> {
     try {
       return await this.closeVisibleInner(opts);
     } catch (err) {
@@ -1034,7 +1116,7 @@ class Slot {
     }
   }
 
-  private async closeVisibleInner(opts?: { modeSwitch?: boolean }): Promise<boolean> {
+  private async closeVisibleInner(opts?: { modeSwitch?: boolean; popOut?: boolean }): Promise<boolean> {
     const idx = this.visibleIndex;
     if (idx < 0) return false;
     const closing = this.stack[idx]!;
@@ -1042,7 +1124,7 @@ class Slot {
     // toggle is a full reload that persists every session (resumable, and the
     // kept doc auto-resumes), so prompting per co-edited pane would be noise —
     // but a DIRTY non-focused doc still gets its normal save prompt below.
-    const coedited = !opts?.modeSwitch && collabCopresenceFor(closing.uid) != null;
+    const coedited = !opts?.modeSwitch && !opts?.popOut && collabCopresenceFor(closing.uid) != null;
     // Focus this pane so the confirm dialogs + save commands (which route via
     // `activeFile()`) target THIS doc, not whichever pane happened to be focused
     // when the user clicked ×.
@@ -1064,7 +1146,7 @@ class Slot {
       // prompt. 'run-normal' → the session was ended/left; still offer to save
       // the local file if it's dirty.
       if (co === 'run-normal' && closing.dirty && !(await runDirtyPrompt())) return false;
-    } else if (closing.dirty && !(await runDirtyPrompt())) {
+    } else if (!opts?.popOut && closing.dirty && !(await runDirtyPrompt())) {
       return false;
     }
     this.detachVisible();
@@ -1083,7 +1165,9 @@ class Slot {
     // Explicit close → drop the journal. Recovery is for crashes,
     // not "I changed my mind." If the user wanted to keep this
     // doc, they should have saved.
-    void clearJournalForRecord(closing);
+    // A popped-out doc keeps its journal (same uid) — the new window
+    // carries on writing it, so unsaved work stays crash-safe.
+    if (!opts?.popOut) void clearJournalForRecord(closing);
     // Clear speech-doc designation if the closing doc was it —
     // matches Verbatim's `AutoClose` which clears
     // `Globals.ActiveSpeechDoc` when the speech doc is closed.
@@ -1094,7 +1178,8 @@ class Slot {
     speechResolver.unregisterView(closing.uid);
     // Release the cross-window path claim before destroying the
     // view — re-opening this file in any window should succeed.
-    syncDocPathClaim(closing.handle, null);
+    // (A pop-out released it before spawning, so the new window owns it.)
+    if (!opts?.popOut) syncDocPathClaim(closing.handle, null);
     closing.view.destroy();
     closing.dragSurface.detach();
     closing.navPanel.destroy();
@@ -1492,6 +1577,34 @@ let shellLastNumberingSig = numberingDisplaySig();
 
 class MultiPaneShell {
   private slots: Record<SlotId, Slot>;
+  prepDocuments(): Array<{ uid: string; name: string }> {
+    return Object.values(this.slots).flatMap(slot => slot.stack.map(rec => ({ uid: rec.uid, name: rec.filename })));
+  }
+  async createPrepDocument(doc?: PMNode): Promise<string | null> {
+    const target = await this.promptForSlot('New prep document'); if (!target) return null;
+    const slot = this.slots[target];
+    const record = buildDocRecord(doc ? 'Prep flow' : 'Prep document', doc ?? makeBlankDoc(), slot, { handle: null, format: null });
+    slot.push(record); record.view.focus(); prepInventoryChanged(); return record.uid;
+  }
+  /** Close the doc with `uid` without saving or prompting (its recovery
+   *  journal is cleared by the normal close path). For a partner's copy of
+   *  an Isolation prep doc once co-editing ends. */
+  async discardDoc(uid: string): Promise<void> {
+    for (const slot of Object.values(this.slots)) for (const rec of [...slot.stack]) {
+      if (rec.uid !== uid) continue;
+      rec.dirty = false;
+      await slot.closeRecord(rec);
+    }
+    prepInventoryChanged();
+  }
+  async closeNonPrep(): Promise<boolean> {
+    for (const slot of Object.values(this.slots)) for (const rec of [...slot.stack]) {
+      if (prepDoc(rec.uid)) continue;
+      slot.showRecord(rec); this.focusSlot(slot);
+      if (!(await slot.closeVisible())) return false;
+    }
+    prepInventoryChanged(); return true;
+  }
   private shellEl: HTMLElement;
   private navRailEl: HTMLElement;
   private rowEl: HTMLElement;
@@ -1578,6 +1691,7 @@ class MultiPaneShell {
       this.rowEl.appendChild(this.slots[id].paneEl);
       this.navRailEl.appendChild(this.slots[id].navSectionEl);
     }
+    this.installPaneResizers();
     // Repaint every slot footer's co-editing indicator whenever a session's
     // status/presence changes or one starts/ends. The shell is a lifetime
     // singleton (mountMultiPaneShell early-returns if built), so this
@@ -1835,6 +1949,7 @@ class MultiPaneShell {
       if (!stillTwo) this.clearArrangedSplit();
     }
     this.navRailEl.dataset['active'] = String(active);
+    this.applyPaneWeights();
     // Active-count change → pane widths change → re-sync.
     this.scheduleSyncAllCardIntrinsicWidths();
     // Every open / close / send-to-slot lands here, so this is the one
@@ -1909,6 +2024,16 @@ class MultiPaneShell {
       }
     }
     if (any) this.applyExpandedState();
+  }
+
+  /** Pop out the focused slot's doc (the `popOutPane` command). */
+  async popOutFocused(): Promise<void> {
+    const slot = this.focusedSlot;
+    if (!slot?.visible) {
+      showToast('Click into a pane first, then pop it out.');
+      return;
+    }
+    await slot.popOutVisible();
   }
 
   /** Hide the focused slot. Used by the `hideSlot` ribbon command. */
@@ -2657,6 +2782,12 @@ class MultiPaneShell {
     }
     return null;
   }
+  /** Shared docs must raise hidden stack records before focusing their view. */
+  focusDocument(uid: string): boolean {
+    const hit = this.findRecordByUid(uid);
+    if (!hit) return false;
+    hit.slot.showRecord(hit.rec); hit.rec.view.focus(); return true;
+  }
 
   /** Commit a save result to the doc it was saved FROM, wherever it sits
    *  now. Save As / keep-both capture the uid before their awaits and
@@ -3295,6 +3426,7 @@ class MultiPaneShell {
   /** Create an empty doc; prompt for slot. Used by the ribbon's
    *  "New doc" button. */
   async createNewDoc(): Promise<void> {
+    if (prepRuntime.status.transitioning) return;
     const target = await this.promptForSlot('Untitled');
     if (!target) return;
     const doc = makeBlankDoc();
@@ -3305,6 +3437,7 @@ class MultiPaneShell {
     });
     slot.push(record);
     this.maybeAutoMarkSpeech(record, target);
+    void prepCreated(record.uid).catch(e => showToast(String(e)));
     // Caret into the empty paragraph + focus, so typing (or arming a
     // style for typing) works immediately with no extra click. Every
     // other slot-populating path focuses too — UNLESS the target pane
@@ -3386,7 +3519,7 @@ class MultiPaneShell {
     if (!target) return;
     const format = settings.get('defaultSpeechDocFormat');
     const filename = formatSpeechFilename(trimmed, format);
-    const includePocket = settings.get('includeSpeechDocPocket');
+    const includePocket = !prepRuntime.status.session && settings.get('includeSpeechDocPocket');
     // With pocket: Pocket heading carrying the filename (sans
     // extension) + trailing paragraph — Verbatim parity, the F4
     // row reads e.g. "Speech 2AC 5-15 12-30AM". Without: a fully
@@ -3406,6 +3539,7 @@ class MultiPaneShell {
     });
     slot.push(record);
     // `slot.push` focused the new view. Cursor placement:
+    void prepCreated(record.uid).catch(e => showToast(String(e)));
     //   - With pocket: drop into the trailing paragraph so the
     //     first ` press inserts BELOW the pocket rather than
     //     inside it. Position math: pocket node occupies
@@ -3480,6 +3614,107 @@ class MultiPaneShell {
     from.showRecord(rec);
     const released = from.releaseVisible();
     if (released) target.push(released);
+  }
+
+  // ─── Drag-to-resize panes (CardMirror Green) ──────────────────────
+  // Each pane carries a thin divider on its right edge; dragging it trades
+  // width with the next visible pane. Widths are kept as flex weights per
+  // slot (sum preserved between the two panes), remembered on this
+  // computer, and double-clicking a divider evens all panes out again.
+  // Not used while a slot is expanded or in the paged wide layout with
+  // three panes, where widths are fixed by design.
+
+  private paneWeights: Record<SlotId, number> = loadPaneWeights();
+  private readonly paneResizers = new Map<SlotId, HTMLDivElement>();
+
+  private installPaneResizers(): void {
+    for (const id of SLOT_IDS) {
+      const handle = document.createElement('div');
+      handle.className = 'pmd-pane-resizer';
+      handle.title = 'Drag to resize · double-click to even out';
+      handle.setAttribute('role', 'separator');
+      handle.setAttribute('aria-orientation', 'vertical');
+      handle.addEventListener('pointerdown', (e) => this.beginPaneResize(id, e));
+      // Keep the press from starting a text selection across the panes.
+      handle.addEventListener('mousedown', (e) => e.preventDefault());
+      handle.addEventListener('dblclick', () => {
+        for (const sid of SLOT_IDS) this.paneWeights[sid] = 1;
+        savePaneWeights(this.paneWeights);
+        this.applyPaneWeights();
+        this.scheduleSyncAllCardIntrinsicWidths();
+      });
+      this.slots[id].paneEl.appendChild(handle);
+      this.paneResizers.set(id, handle);
+    }
+  }
+
+  private paneResizeAllowed(active: number): boolean {
+    if (this.expandedSlot || active < 2) return false;
+    return !(this.layoutMode === 'wide' && active === 3);
+  }
+
+  /** Apply the stored weights to the visible panes and show a divider on
+   *  every visible pane that has a visible neighbour to its right. */
+  private applyPaneWeights(): void {
+    const shown = SLOT_IDS.filter((id) => this.slotShown(this.slots[id]));
+    const allowed = this.paneResizeAllowed(shown.length);
+    shown.forEach((id, i) => {
+      const handle = this.paneResizers.get(id);
+      if (handle) handle.hidden = !allowed || i === shown.length - 1;
+    });
+    for (const id of SLOT_IDS) {
+      const handle = this.paneResizers.get(id);
+      if (handle && !shown.includes(id)) handle.hidden = true;
+    }
+    if (!allowed || this.arrangedSplit) {
+      if (!this.arrangedSplit) for (const id of SLOT_IDS) this.slots[id].paneEl.style.flex = '';
+      return;
+    }
+    for (const id of SLOT_IDS) {
+      this.slots[id].paneEl.style.flex = shown.includes(id) ? `${this.paneWeights[id]} 1 0` : '';
+    }
+  }
+
+  private beginPaneResize(id: SlotId, e: PointerEvent): void {
+    const shown = SLOT_IDS.filter((sid) => this.slotShown(this.slots[sid]));
+    const i = shown.indexOf(id);
+    const nextId = shown[i + 1];
+    if (i < 0 || !nextId || !this.paneResizeAllowed(shown.length)) return;
+    e.preventDefault();
+    // A manual drag replaces an Arrange Windows split.
+    if (this.arrangedSplit) {
+      this.arrangedSplit = null;
+      for (const sid of shown) {
+        this.paneWeights[sid] = this.slots[sid].paneEl.getBoundingClientRect().width || 1;
+      }
+    }
+    const a = this.slots[id].paneEl;
+    const b = this.slots[nextId].paneEl;
+    const wa = a.getBoundingClientRect().width;
+    const wb = b.getBoundingClientRect().width;
+    const total = this.paneWeights[id] + this.paneWeights[nextId];
+    const startX = e.clientX;
+    const MIN = 220;
+    const handle = e.currentTarget as HTMLElement;
+    handle.setPointerCapture?.(e.pointerId);
+    document.body.classList.add('pmd-pane-resizing');
+    const move = (ev: PointerEvent): void => {
+      const na = Math.min(Math.max(wa + (ev.clientX - startX), MIN), wa + wb - MIN);
+      this.paneWeights[id] = (total * na) / (wa + wb);
+      this.paneWeights[nextId] = total - this.paneWeights[id];
+      this.applyPaneWeights();
+    };
+    const up = (): void => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      document.body.classList.remove('pmd-pane-resizing');
+      savePaneWeights(this.paneWeights);
+      this.scheduleSyncAllCardIntrinsicWidths();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
   }
 
   private applyArrangedSplit(): void {
@@ -3647,6 +3882,14 @@ export function revealAllSlots(): void {
 
 /** Cycle the focused slot's visible doc forward (+1) / back (-1). No-op when
  *  the shell isn't active. Used by the `cycleDocNext` / `cycleDocPrev` commands. */
+/** Pop the focused pane's doc out into its own window. Returns false when
+ *  three-pane mode isn't active. */
+export function popOutFocusedPane(): boolean {
+  if (!shell) return false;
+  void shell.popOutFocused();
+  return true;
+}
+
 export function cycleFocusedSlotDoc(direction: 1 | -1): void {
   if (!shell) return;
   shell.cycleFocusedSlotDoc(direction);
@@ -3738,6 +3981,7 @@ function buildDocRecord(
   // A session's collab binding attaches ONLY to its owning uid, so a pane opened
   // during someone else's session stays independent (no document fusion).
   const uid = opts.uid ?? newDocUid();
+  void prepRestoreIdentity(uid, opts.docId);
   const state = EditorState.create({
     doc,
     schema,
@@ -3766,7 +4010,7 @@ function buildDocRecord(
       if (!mounted) return;
       // Stamp collab metas (sync-origin on the Loro binding's remote
       // transactions) BEFORE apply, mirroring the single-doc dispatch.
-      tagCollabTransaction(tx);
+      tagCollabTransaction(tx, view.state);
       // Reject a user edit inside a region an AI op has leased; flash the
       // locked region. AI writes carry a bypass tag and pass through.
       if (coordinatorBlocks(view.state, tx)) {
@@ -4023,6 +4267,7 @@ export function mountMultiPaneShell(): void {
   shell = new MultiPaneShell();
   setMultiDocReloadFromDisk((handle) => shell!.reloadFromDisk(handle));
   enableMultiDocMode({
+    prep: { documents: () => shell!.prepDocuments(), create: doc => shell!.createPrepDocument(doc), closeNonPrep: () => shell!.closeNonPrep(), discard: uid => shell!.discardDoc(uid) },
     onFileOpen: (file) => shell!.onFileOpen(file),
     onFilesOpen: (files) => shell!.onFilesOpen(files),
     showInContext: (req) => shell!.showInContext(req),
@@ -4051,6 +4296,7 @@ export function mountMultiPaneShell(): void {
     findViewForDocId: (id) => shell!.findViewForDocId(id),
     getAllFilenames: () => shell!.getAllFilenames(),
     getFilenameForUid: (uid) => shell!.filenameForUid(uid),
+    focusDocument: (uid) => shell!.focusDocument(uid),
     getDocIdForUid: (uid) => shell!.docIdForUid(uid),
     createSessionDoc: () => shell!.createSessionDocIntoSlot(),
     setFilenameForUid: (uid, name) => shell!.setFilenameForUid(uid, name),

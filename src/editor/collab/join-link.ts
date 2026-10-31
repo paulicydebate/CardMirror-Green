@@ -7,7 +7,7 @@
  * fragments are not sent to any server, don't hit logs, and don't
  * leak through referrers:
  *
- *   https://cardmirror.app/#join=<shareCode>&pass=<guestPass>
+ *   https://paulicydebate.github.io/CardMirror-Green/#join=<shareCode>&pass=<guestPass>
  *
  * The pass is what lets a browser with no account and no token join:
  * the relay accepts it on room-data endpoints (see relay_auth's guest
@@ -18,7 +18,7 @@
  * the room key shouldn't linger in the address bar or history.
  */
 
-export const JOIN_LINK_ORIGIN = 'https://cardmirror.app';
+export const JOIN_LINK_ORIGIN = 'https://paulicydebate.github.io/CardMirror-Green';
 
 export interface JoinLinkParts {
   shareCode: string;

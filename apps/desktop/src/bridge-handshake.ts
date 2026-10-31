@@ -26,6 +26,7 @@
  * never see tokens or sockets.
  */
 import { app } from 'electron';
+import { BRIDGE_ID } from './app-identity.js';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -93,20 +94,20 @@ export async function writeCardmirrorHandshake(port: number, token: string): Pro
   const dir = await ensureBridgeDir();
   const identity: IdentityFile = {
     schema: BRIDGE_SCHEMA,
-    app: 'cardmirror',
+    app: BRIDGE_ID,
     appVersion: app.getVersion(),
     kind: 'editor',
   };
   const session: SessionFile = { port, token, pid: process.pid };
-  await writeFileAtomic0600(path.join(dir, 'cardmirror.json'), identity);
-  await writeFileAtomic0600(path.join(dir, 'cardmirror.session.json'), session);
+  await writeFileAtomic0600(path.join(dir, `${BRIDGE_ID}.json`), identity);
+  await writeFileAtomic0600(path.join(dir, `${BRIDGE_ID}.session.json`), session);
 }
 
 /** Quit path: clear ONLY the session half. The identity file persists by
  *  design — that's what keeps a closed CardMirror selectable in flow-app
  *  pickers (and vice versa for flow apps in ours). */
 export async function deleteCardmirrorHandshake(): Promise<void> {
-  await fs.unlink(path.join(bridgeDirPath(), 'cardmirror.session.json')).catch(() => {});
+  await fs.unlink(path.join(bridgeDirPath(), `${BRIDGE_ID}.session.json`)).catch(() => {});
 }
 
 async function readJsonCapped<T>(filePath: string): Promise<Partial<T> | null> {

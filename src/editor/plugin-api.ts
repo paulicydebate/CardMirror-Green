@@ -8,6 +8,7 @@ import { postNotice } from './status-notices.js';
 import { getElectronHost } from './host/index.js';
 import { showToast } from './toast.js';
 import { extractSelection } from './plugin-extract.js';
+import { extractStructuredCards, type StructuredCard } from './structured-card-extract.js';
 import { jumpToTokenInView } from './plugin-jump.js';
 import { getPluginSettingValue, subscribePluginSettings } from './plugin-settings.js';
 import { parseSourceToken } from './plugin-source-token.js';
@@ -87,6 +88,8 @@ export interface PluginSettingsApi {
 export interface CardMirrorPluginApi {
   readonly appVersion: string;
   extractSelection(): ExtractResult | ExtractError;
+  /** Read-only full-card snapshot of the active document; never stamps a doc ID. */
+  structuredCards(): { ok: true; cards: StructuredCard[] } | ExtractError;
   jumpToSource(token: string): Promise<JumpResult>;
   flowApps(): Promise<FlowAppInfo[]>;
   flowPost(appId: string, route: string, body: unknown): Promise<FlowPostResult>;
@@ -138,6 +141,11 @@ export function createPluginApi(pluginId: string, deps: PluginApiDeps): CardMirr
       const docId = deps.ensureDocId();
       if (!docId) return { ok: false, error: 'no-active-doc' };
       return extractSelection(view, { docId, docTitle: ident.docTitle });
+    },
+    structuredCards() {
+      const view = deps.getView();
+      if (!view) return { ok: false, error: 'no-active-doc' };
+      return { ok: true, cards: extractStructuredCards(view.state.doc) };
     },
     async jumpToSource(token) {
       const payload = parseSourceToken(token);

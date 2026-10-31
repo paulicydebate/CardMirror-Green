@@ -1,3 +1,4 @@
+import { prepHandle } from "./prep-desktop.js";
 /**
  * Verbatim Flow bridge (Windows only).
  *
@@ -170,17 +171,17 @@ function runVerb(verb: Verb, opts: { payload?: unknown; force?: boolean } = {}):
 /** Register the Flow IPC channels. Safe to call on any platform — the
  *  handlers just resolve "windows-only" off Windows. */
 export function registerFlowIpc(): void {
-  ipcMain.handle('host:flow-available', () => runVerb('available'));
-  ipcMain.handle('host:flow-send', (_e, payload: { cells: string[] }, force?: boolean) =>
+  prepHandle('host:flow-available', () => runVerb('available'));
+  prepHandle('host:flow-send', (_e, payload: { cells: string[] }, force?: boolean) =>
     runVerb('send', { payload, force: !!force }),
   );
-  ipcMain.handle('host:flow-pull', () => runVerb('pull'));
-  ipcMain.handle('host:flow-create', (_e, templatePath?: string) =>
+  prepHandle('host:flow-pull', () => runVerb('pull'));
+  prepHandle('host:flow-create', (_e, templatePath?: string) =>
     runVerb('create', { payload: templatePath ? { templatePath } : {} }),
   );
   // Pre-warm: spin the host up (paying the cold start now) and confirm it
   // answers, without touching Excel.
-  ipcMain.handle('host:flow-start', () => runVerb('ping'));
+  prepHandle('host:flow-start', () => runVerb('ping'));
 
   // Never leave an orphaned PowerShell behind. `before-quit` covers the
   // normal path; `will-quit` catches quits that bypass it (e.g. another

@@ -163,6 +163,8 @@ export interface BulkCompressProgress extends BulkCompressSummary {
  *  (and not imported from the desktop workspace) so the editor
  *  doesn't take a build-time dependency on Electron-specific code. */
 interface ElectronAPI {
+  flowDocumentTags?(uid: string): Promise<import('../../flow/doc-tags.js').FlowTagSnapshot>;
+  onFlowDocumentTags?(handler: (uid: string) => import('../../flow/doc-tags.js').FlowTagSnapshot): () => void;
   clipboardReadText(): Promise<string>;
   /** Main-process read of the html + plain clipboard flavors.
    *  Optional so a renderer against an older packaged shell falls
@@ -312,6 +314,9 @@ interface ElectronAPI {
   pickHistoryFile(): Promise<string | null>;
   readLearnStore(): Promise<string | null>;
   applyLearnOp(op: LearnOp): Promise<string>;
+  /** OpenCaselist panel bridge (main holds the session token). Older
+   *  preloads lack it. */
+  opencaselist?(op: string, ...args: unknown[]): Promise<unknown>;
   onLearnStoreChanged(handler: (json: string) => void): () => void;
   spawnWindow(payload: SpawnWindowPayload | null): Promise<void>;
   getInitialDoc(): Promise<SpawnWindowPayload | null>;
@@ -1018,6 +1023,13 @@ export class ElectronHost implements Host {
     return api().pickHistoryFile();
   }
 
+  /** OpenCaselist panel: forwards one operation to main. */
+  async opencaselist(op: string, ...args: unknown[]): Promise<unknown> {
+    const fn = api().opencaselist;
+    if (!fn) return { ok: false, error: 'This build cannot reach OpenCaselist.', signedOut: false };
+    return fn(op, ...args);
+  }
+
   async readLearnStore(): Promise<string | null> {
     return api().readLearnStore();
   }
@@ -1304,6 +1316,15 @@ export class ElectronHost implements Host {
     }>
   > {
     return api().listDocs();
+  }
+
+  async flowDocumentTags(uid: string): Promise<import('../../flow/doc-tags.js').FlowTagSnapshot> {
+    const read = api().flowDocumentTags;
+    if (!read) throw new Error('Update CardMirror Green to import tags across windows.');
+    return read(uid);
+  }
+  onFlowDocumentTags(handler: (uid: string) => import('../../flow/doc-tags.js').FlowTagSnapshot): () => void {
+    return api().onFlowDocumentTags?.(handler) ?? (() => {});
   }
 
   /** Cross-window duplicate-open guard. `openPathCheck` is the

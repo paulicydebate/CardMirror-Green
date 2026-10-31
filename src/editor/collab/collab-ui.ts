@@ -1,3 +1,5 @@
+import { prepDoc, prepRound, prepRuntime } from '../prep-runtime.js';
+import { prepMarkCreated, copyPrepInvite } from '../prep-controller.js';
 /**
  * Collaboration-session UI flows: start / join / copy-code / end,
  * wired to the ribbon commands, plus the status-bar chip. Lazily
@@ -15,6 +17,7 @@
  * the Receive pill's Join).
  */
 
+import type { EditorState } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { LoroUndoPlugin, loroSyncPluginKey, loroUndoPluginKey } from 'loro-prosemirror';
 import { createUndoGuard } from './undo-guard.js';
@@ -25,6 +28,7 @@ import { warmCausalMarkIndex } from './causal-mark-heal.js';
 import { RELAY_FIX_PATH } from '../relay-decline.js';
 import { clearNotice, postNotice } from '../status-notices.js';
 import { promptForText, promptForRouteChoice, confirmDialog } from '../text-prompt.js';
+import { PREP_LOCAL_HISTORY_META, PREP_FLOW_RECONCILE_ORIGIN } from '../prep-document-guard.js';
 import { markSyncOrigin } from '../sync-origin.js';
 import { readModePlugin } from '../read-mode-plugin.js';
 import {
@@ -114,6 +118,9 @@ export interface CollabUiDeps {
    *  never stranded). Returns false to join in THIS window (starter open, or
    *  single-window / web). */
   spawnJoinWindow?(shareCode: string): boolean;
+  /** Close the doc with `uid` WITHOUT saving or prompting, and drop its
+   *  recovery journal. Used for a partner's copy of an Isolation prep doc. */
+  discardDoc?(uid: string): Promise<void>;
 }
 
 /** One live co-editing session, owned by a single open doc (the map key). A
@@ -122,9 +129,11 @@ interface ActiveSession {
   session: CollabSession;
   shareCode: string;
   ownerUid: string;
+  deps: CollabUiDeps;
   cursors: CursorsHandle;
   commentsSync: CommentsSyncHandle;
   persist: PersistHandle;
+  recovery: { savedAt: number | null; failed: boolean };
   /** Session-history writer ({roomId}.cmir-history). Disposed at
    *  teardown but its FILE is always retained — unlike the session
    *  record, which is deleted on Leave/End/tombstone. */
@@ -147,6 +156,66 @@ interface ActiveSession {
 }
 
 const sessions = new Map<string, ActiveSession>();
+
+export interface CollaborationPanelSession {
+  uid: string; roomId: string; title: string; role: 'host' | 'participant' | 'spectator';
+  connected: boolean; queued: number; peers: string[]; watchers: number;
+  prep: boolean; roundMode: 'isolation' | 'coflow'; isolationCopy: boolean;
+  recovery: { savedAt: number | null; failed: boolean };
+}
+/** UI-safe snapshot: never expose room keys or invitation credentials in DOM. */
+export function collaborationPanelSessions(): CollaborationPanelSession[] {
+  return [...sessions.values()].map(s => ({ uid: s.ownerUid, roomId: s.session.roomId,
+    title: sessionDocTitle(s.ownerUid) || sharedDocTitle(s.session) || 'Untitled document',
+    role: s.session.role, connected: s.lastStatus?.connected ?? false,
+    queued: s.session.queuedUpdates, peers: s.cursors.presence().filter(p => !p.self).map(p => p.name),
+    watchers: s.watchers, prep: isPrepSessionDoc(s.session), roundMode: sessionRoundMode(s.session),
+    isolationCopy: isIsolationGuestCopy(s), recovery: { ...s.recovery } }));
+}
+export async function verifyPanelRecovery(uid: string): Promise<boolean> {
+  const s = sessions.get(uid);
+  if (!s || isIsolationGuestCopy(s)) return false;
+  const ok = await s.persist.verifiedFlush();
+  if (!ok) s.recovery.failed = true;
+  notifyCollabCopresenceChange(); return ok;
+}
+
+/** How Round Mode treats a shared prep doc, as its host chose when sharing.
+ *  Docs shared before the option existed act as Isolation. */
+function sessionRoundMode(session: CollabSession): 'isolation' | 'coflow' {
+  return session.loroDoc.getMap('meta').get('cardmirrorGreenRoundMode') === 'coflow' ? 'coflow' : 'isolation';
+}
+function isPrepSessionDoc(session: CollabSession): boolean {
+  return session.loroDoc.getMap('meta').get('cardmirrorGreenPrep') === true;
+}
+/** A partner's (not the host's) copy of an Isolation prep doc: it must not
+ *  outlive the session, be saved, or be kept in session history. */
+function isIsolationGuestCopy(sess: ActiveSession): boolean {
+  return sess.session.role !== 'host' && isPrepSessionDoc(sess.session) && sessionRoundMode(sess.session) === 'isolation';
+}
+/** True when the doc with `uid` is a partner's copy of an Isolation prep doc
+ *  (Save and Save As refuse it). */
+export function isIsolationGuestCopyUid(uid: string | null | undefined): boolean {
+  const sess = uid ? sessions.get(uid) : undefined;
+  return !!sess && isIsolationGuestCopy(sess);
+}
+/** True while a Co-Flowing prep doc is still being co-edited (Round Mode
+ *  keeps those sessions). */
+export function hasLiveCoflowSession(): boolean {
+  for (const sess of sessions.values()) if (isPrepSessionDoc(sess.session) && sessionRoundMode(sess.session) === 'coflow') return true;
+  return false;
+}
+/** Close a partner's copy of an Isolation prep doc: no save prompt, no
+ *  recovery journal, no session record or session history left behind. */
+async function discardIsolationGuestCopy(sess: ActiveSession, why: string): Promise<void> {
+  const { ownerUid, deps } = sess;
+  const roomId = sess.session.roomId;
+  if (sessions.get(ownerUid) === sess) await teardownSession(sess, false, true);
+  void getElectronHost()?.deleteHistory(roomId).catch(() => {});
+  void deleteRecentRoom(roomId).catch(() => {});
+  if (deps.discardDoc) await deps.discardDoc(ownerUid);
+  showToast(why);
+}
 
 /** Commit origin for session meta-map writes (title publishing) — excluded
  *  from the session UndoManager alongside comment writes, so Ctrl+Z never
@@ -414,7 +483,8 @@ let presenceTimer: ReturnType<typeof setInterval> | null = null;
  *  remote-update imports and the init-time content replace carry the
  *  binding's meta, and neither is a user edit — read mode and the AI
  *  coordinator must admit them (rejection desyncs editor from CRDT). */
-function collabTagger(tr: Parameters<typeof markSyncOrigin>[0]): void {
+function collabTagger(tr: Parameters<typeof markSyncOrigin>[0], state?: EditorState): void {
+  if (state && loroUndoPluginKey.getState(state)?.isUndoing.current) tr.setMeta(PREP_LOCAL_HISTORY_META, true);
   if (tr.getMeta(loroSyncPluginKey) !== undefined || tr.getMeta(loroUndoPluginKey) !== undefined) {
     markSyncOrigin(tr);
   }
@@ -517,12 +587,14 @@ function installSeams(
   // Recent rooms: kept past a Leave so Join session can offer a rejoin.
   rememberRecentRoom(session, shareCode, sessionDocTitle(ownerUid) || sharedDocTitle(session));
   // M3: crash-surviving session record (home-screen Sessions list resumes it).
+  const recovery = { savedAt: null as number | null, failed: false };
   const persist = attachSessionPersistence(
     session,
     shareCode,
     () => sessionDocTitle(ownerUid) || sharedDocTitle(session),
     () => docIdResolver?.(ownerUid) ?? null,
-    { onFailure: (n) => noteWriterFailure('collab-persist-failing', 'crash-resume record', n) },
+    { onFailure: (n) => { recovery.failed = n > 0; noteWriterFailure('collab-persist-failing', 'crash-resume record', n); notifyCollabCopresenceChange(); },
+      onSaved: at => { recovery.savedAt = at; recovery.failed = false; notifyCollabCopresenceChange(); } },
   );
   // Recover Previous Version's durable record: full-history snapshots
   // that survive session end (deliberately including a remote
@@ -568,9 +640,11 @@ function installSeams(
     session,
     shareCode,
     ownerUid,
+    deps,
     cursors,
     commentsSync,
     persist,
+    recovery,
     history,
     wakeCleanup,
     unloadCleanup,
@@ -582,6 +656,7 @@ function installSeams(
     undoGuardDispose: () => undoGuard.dispose(),
   };
   sessions.set(ownerUid, sess);
+  if (isIsolationGuestCopy(sess)) prepRuntime.isolationCopies.add(ownerUid);
   // Editors fetch the room's view pass once so "Copy view link" / spectate
   // invites work from any seat, not just the host's. Fire-and-forget: the
   // getters read session.viewPass lazily; a relay without spectators
@@ -598,7 +673,7 @@ function installSeams(
   // A session just appeared — repaint slot footers (this doc's may be visible).
   notifyCollabCopresenceChange();
   const undoManager = new UndoManager(session.loroDoc, {
-    excludeOriginPrefixes: [COMMENTS_COMMIT_ORIGIN, META_COMMIT_ORIGIN],
+    excludeOriginPrefixes: [COMMENTS_COMMIT_ORIGIN, META_COMMIT_ORIGIN, PREP_FLOW_RECONCILE_ORIGIN],
   });
   // Container-safe undo: an undo/redo that would delete a container a
   // partner edited since is reversed and explained (see undo-guard.ts).
@@ -671,6 +746,7 @@ function teardownSession(
   void sess.session.stop().catch(() => {});
   unregisterCollabPluginSource(sess.ownerUid);
   sessions.delete(sess.ownerUid);
+  prepRuntime.isolationCopies.delete(sess.ownerUid);
   // Release the cross-window live-session claim (registered in installSeams).
   releaseRoomClaim(sess.session.roomId);
   // A session went away — repaint slot footers (this doc's may be visible).
@@ -880,6 +956,14 @@ function sessionCallbacks(deps: CollabUiDeps, getSess: () => ActiveSession | nul
       const sess = getSess();
       if (!sess || !sessions.has(sess.ownerUid)) return;
       const wasHost = sess.session.role === 'host';
+      if (isIsolationGuestCopy(sess)) {
+        // Isolation prep doc: the partner keeps no copy once the host ends it.
+        prepRuntime.record('collaboration-ended', sess.ownerUid, { room: sess.session.roomId, by: 'host', closedCopy: true });
+        void discardIsolationGuestCopy(sess, 'The host ended the shared prep doc. Your copy was closed (Isolation Round Mode).')
+          .then(() => refreshChipForFocus())
+          .catch((e) => surfaceError('collab teardown', e));
+        return;
+      }
       void teardownSession(sess, false, /* roomOver */ true).catch((e) => surfaceError('collab teardown', e));
       refreshChipForFocus(); // repaint from live truth (a stale snapshot left ghost chips — field find, 2026-08-12)
       // Rebuild the OWNER doc's plugin stack — refreshing the focused view
@@ -970,7 +1054,7 @@ export function relayFailureMessage(err: unknown, opts: { initiating: boolean; v
  *  this). The message holds in both modes — single-pane always has a doc;
  *  multi-pane hits this only with every slot empty/unfocused. */
 function guardReady(deps: CollabUiDeps): EditorView | null {
-  if (!collabEnabled()) return null;
+  if (!collabEnabled({ duringRound: hasLiveCoflowSession() })) return null;
   const view = deps.getView();
   if (!view) {
     showToast('Open and focus a document to start a co-editing session');
@@ -984,11 +1068,12 @@ function guardReady(deps: CollabUiDeps): EditorView | null {
  *  (audit find, 2026-07-10). */
 const startsInFlight = new Set<string>();
 
-export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
+export async function startSessionFlow(deps: CollabUiDeps, confirmedUid?: string): Promise<void> {
   if (!collabEnabled()) return; // desktop-only; inert on the web edition
   const view = guardReady(deps);
   if (!view) return;
   const ownerUid = deps.getOwnerUid?.() ?? '';
+  if (confirmedUid !== undefined && confirmedUid !== ownerUid) { showToast('The active document changed. Choose your partner again.'); return; }
   if (sessionFor(ownerUid)) {
     showToast('This document already has a session — end or leave it first');
     return;
@@ -999,7 +1084,7 @@ export async function startSessionFlow(deps: CollabUiDeps): Promise<void> {
   }
   startsInFlight.add(ownerUid);
   try {
-    await startSessionFlowInner(deps, view, ownerUid);
+    await startSessionFlowInner(deps, view, ownerUid, confirmedUid !== undefined);
   } finally {
     startsInFlight.delete(ownerUid);
   }
@@ -1009,6 +1094,7 @@ async function startSessionFlowInner(
   deps: CollabUiDeps,
   view: EditorView,
   ownerUid: string,
+  partnerChosen = false,
 ): Promise<void> {
   // Confirm, naming the doc the session will be created for — removes any
   // ambiguity about which doc is being shared (multi-pane: the focused one).
@@ -1016,7 +1102,7 @@ async function startSessionFlowInner(
   // A plain yes/no — two equal buttons (confirmDialog), NOT the big
   // route-choice cards, which are reserved for genuine multi-option
   // decisions (field feedback, 2026-07-11).
-  const startConfirm = await confirmDialog(
+  const startConfirm = partnerChosen || await confirmDialog(
     'Anyone you share the code with can edit this document with you in real time.',
     {
       title: `Start a co-editing session for ${startName ? `"${startName}"` : 'this document'}?`,
@@ -1046,10 +1132,13 @@ async function startSessionFlowInner(
     let sess: ActiveSession;
     try {
       ({ session, shareCode } = await CollabSession.host({
+        prep: prepDoc(ownerUid),
+        roundMode: settings.get('prepRoundCoflow') ? 'coflow' : 'isolation',
         pmDoc: view.state.doc,
         client,
         callbacks: sessionCallbacks(deps, () => sessRef),
       }));
+      if (prepRound()) { await session.stop(); await endRoomOnRelay(session.roomId); return; }
       // ownerUid captured at flow start (line ~427), under the doc that was
       // focused when Start was chosen — host() shared THAT doc's content, so
       // the seams must bind to it even if focus has since moved.
@@ -1074,6 +1163,9 @@ async function startSessionFlowInner(
     }
     sess.lastStatus = { connected: true, queuedUpdates: 0 };
     updateChip({ connected: true, queuedUpdates: 0 });
+    // The explicit named-partner picker sends the invitation directly below;
+    // do not overwrite the clipboard or ask the user to send a redundant code.
+    if (partnerChosen) return;
     // Web hosts copy the INVITE LINK (their partner most likely joins in
     // a browser; the link carries the guest pass so an account-less
     // joiner works). Desktop keeps the bare code — its partners are
@@ -1081,10 +1173,7 @@ async function startSessionFlowInner(
     const inviteText = getElectronHost()
       ? shareCode
       : buildJoinLink({ shareCode, guestPass: session.guestPass });
-    const copied = await navigator.clipboard?.writeText(inviteText).then(
-      () => true,
-      () => false,
-    );
+    const copied = await copySessionText(inviteText);
     showToast(
       copied
         ? getElectronHost()
@@ -1216,6 +1305,9 @@ async function joinSessionWithCodeInner(
     showToast('That does not look like a share code');
     return false;
   }
+  if (decoded.prep && prepRuntime.status.session?.mode !== 'prep') {
+    showToast('Start Prep Mode in CardMirror Green before joining this prep document.'); return false;
+  }
   let client: RoomsClient | null;
   if (decoded.view) {
     // SPECTATOR join: authenticate with the room's view pass and NOTHING
@@ -1310,6 +1402,11 @@ async function joinSessionWithCodeInner(
       });
       joinedOffline = true;
     }
+    if (prepRound()) { await session.stop(); return false; }
+    const isPrepSession = session.loroDoc.getMap('meta').get('cardmirrorGreenPrep') === true;
+    if (isPrepSession && prepRuntime.status.session?.mode !== 'prep') {
+      await session.stop(); showToast('This is a prep document. Start Prep Mode in CardMirror Green before joining.'); return false;
+    }
     // Create the fresh unsaved session doc — its uid is the session owner
     // (single-pane swaps this window's doc; multi-pane slot-picks). A false
     // return = the user balked (overwrite prompt / slot picker) — unwind
@@ -1323,6 +1420,7 @@ async function joinSessionWithCodeInner(
     // The session owner is the doc newSessionDoc() just created — capture its
     // uid NOW, before any later focus change, so the seams bind into it.
     const ownerUid = deps.getOwnerUid?.() ?? '';
+    if (isPrepSession) await prepMarkCreated(ownerUid);
     sessRef = installSeams(session, deps, code.trim(), ownerUid);
     // Add the binding to the fresh doc's view — its init replaces the
     // empty content with the session's CRDT state synchronously (~10s
@@ -1404,7 +1502,9 @@ async function resumeSessionFlowInner(
   roomId: string,
   opts?: { existingDoc?: boolean },
 ): Promise<boolean> {
-  if (!collabEnabled()) return false; // desktop-only; inert on the web edition
+  // Round Mode closes the gate, except for reconnecting a Co-Flowing prep doc
+  // (checked once the session is decrypted below).
+  if (!collabEnabled({ duringRound: true })) return false; // desktop-only; inert on the web edition
   // No up-front view requirement: unless resuming into an existing doc, the
   // flow creates its own via deps.newSessionDoc (multi-pane may be an empty
   // workspace reached from the home screen's Sessions list).
@@ -1468,6 +1568,13 @@ async function resumeSessionFlowInner(
       callbacks: sessionCallbacks(deps, () => sessRef),
     });
     session.guestPass = record.guestPass ?? null;
+    const isPrepSession = isPrepSessionDoc(session);
+    // Round Mode allows only reconnecting to a Co-Flowing prep doc.
+    const coflowInRound = prepRound() && isPrepSession && sessionRoundMode(session) === 'coflow';
+    if (prepRound() && !coflowInRound) { await session.stop(); return false; }
+    if (isPrepSession && !coflowInRound && prepRuntime.status.session?.mode !== 'prep') {
+      await session.stop(); showToast('Start Prep Mode before resuming this prep document.'); return false;
+    }
     if (record.role === 'spectator') session.viewPass = record.guestPass ?? null;
     // Host resume without a stored pass: re-mint so fresh invite links
     // stay possible (no-op 404 while the relay flip is off, and guests
@@ -1491,6 +1598,7 @@ async function resumeSessionFlowInner(
     // already-open doc under its uid; otherwise the fresh doc newSessionDoc()
     // just made (single-pane swap, or multi-pane slot). Capture past the awaits.
     const ownerUid = deps.getOwnerUid?.() ?? '';
+    if (isPrepSession && !prepDoc(ownerUid)) await prepMarkCreated(ownerUid);
     sessRef = installSeams(session, deps, record.shareCode, ownerUid);
     deps.refreshPlugins();
     sessRef.commentsSync.pull();
@@ -1518,6 +1626,13 @@ async function resumeSessionFlowInner(
   }
 }
 
+async function copySessionText(text: string): Promise<boolean> {
+  let code = text;
+  if (text.startsWith('https://')) { try { code = new URLSearchParams(new URL(text).hash.slice(1)).get('join') ?? text; } catch {} }
+  if (/^(cmshare3|cmview2)\./.test(code)) return copyPrepInvite(code);
+  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
+}
+
 export async function copyInviteLinkFlow(): Promise<void> {
   const sess = actionSession();
   if (!sess) {
@@ -1528,10 +1643,7 @@ export async function copyInviteLinkFlow(): Promise<void> {
     shareCode: sess.shareCode,
     guestPass: sess.session.guestPass,
   });
-  const ok = await navigator.clipboard?.writeText(link).then(
-    () => true,
-    () => false,
-  );
+  const ok = await copySessionText(link);
   showToast(ok ? 'Invite link copied' : 'Could not copy the invite link');
 }
 
@@ -1543,10 +1655,7 @@ export async function copyViewCodeFlow(): Promise<void> {
     showToast('This document has no active session');
     return;
   }
-  const ok = await navigator.clipboard?.writeText(code).then(
-    () => true,
-    () => false,
-  );
+  const ok = await copySessionText(code);
   showToast(ok ? 'View code copied — whoever joins with it watches, without editing' : 'Could not copy the view code');
 }
 
@@ -1564,10 +1673,7 @@ export async function copyViewLinkFlow(): Promise<void> {
     return;
   }
   const link = buildJoinLink({ shareCode: code, guestPass: pass });
-  const ok = await navigator.clipboard?.writeText(link).then(
-    () => true,
-    () => false,
-  );
+  const ok = await copySessionText(link);
   showToast(ok ? 'View link copied — whoever opens it watches, without editing' : 'Could not copy the view link');
 }
 
@@ -1577,10 +1683,7 @@ export async function copyShareCodeFlow(): Promise<void> {
     showToast('This document has no active session');
     return;
   }
-  const ok = await navigator.clipboard?.writeText(sess.shareCode).then(
-    () => true,
-    () => false,
-  );
+  const ok = await copySessionText(sess.shareCode);
   showToast(ok ? 'Share code copied' : 'Could not copy the share code');
 }
 
@@ -1637,7 +1740,7 @@ async function sendInviteTo(
   shareCode: string,
   ownerUid: string | null | undefined,
   mode: 'edit' | 'view' = 'edit',
-): Promise<void> {
+): Promise<boolean> {
   const item = buildRoomInviteItem({
     shareCode,
     title: sessionDocTitle(ownerUid),
@@ -1651,9 +1754,10 @@ async function sendInviteTo(
     minReceiverVersion: roomInviteFloor(format, mode),
   });
   const verb = mode === 'view' ? 'Invited to watch' : 'Invited';
-  if (res.fail === 0) showToast(`${verb} ${target.label} ✓`);
+  if (res.fail === 0) showToast(`${verb} ${target.label} ✓ — waiting for them to choose ${mode === 'view' ? 'Watch' : 'Join'} in Receive.`);
   else if (res.ok === 0) showToast(`Couldn't reach ${target.label}`);
   else showToast(`${verb} ${target.label} (${res.fail} failed)`);
+  return res.ok > 0;
 }
 
 /** Send a session invite to the starred partner/group. */
@@ -1690,29 +1794,30 @@ export async function inviteStarredFlow(): Promise<void> {
 export async function inviteTargetFlow(
   deps: CollabUiDeps,
   target: { codes: string[]; label: string; via?: string; mode?: 'edit' | 'view' },
-): Promise<void> {
-  if (!collabEnabled()) return;
+  confirmedUid?: string,
+): Promise<boolean> {
+  if (!collabEnabled()) return false;
+  if (confirmedUid !== undefined && deps.getOwnerUid?.() !== confirmedUid) { showToast('The active document changed. Choose your partner again.'); return false; }
   if (!settings.get('pairingEnabled')) {
     showToast('Card sharing is off — invites travel through it');
-    return;
+    return false;
   }
   if (target.codes.length === 0) {
     showToast('That group has no recipients yet');
-    return;
+    return false;
   }
   let sess = sessionFor(deps.getOwnerUid?.());
   if (!sess) {
-    await startSessionFlow(deps);
-    sess = sessionFor(deps.getOwnerUid?.());
-    if (!sess) return; // start failed/cancelled — its toast explains
+    await startSessionFlow(deps, confirmedUid);
+    sess = sessionFor(confirmedUid ?? deps.getOwnerUid?.());
+    if (!sess) return false; // start failed/cancelled — its toast explains
   }
   if (target.mode === 'view') {
     const viewCode = viewCodeFromShareCode(sess.shareCode);
-    if (!viewCode) return;
-    await sendInviteTo(target, viewCode, sess.ownerUid, 'view');
-    return;
+    if (!viewCode) return false;
+    return sendInviteTo(target, viewCode, sess.ownerUid, 'view');
   }
-  await sendInviteTo(target, sess.shareCode, sess.ownerUid);
+  return sendInviteTo(target, sess.shareCode, sess.ownerUid);
 }
 
 /** Terminate/leave a session and clear its resumable record — the shared core
@@ -1788,15 +1893,23 @@ async function closeEndOrLeaveSession(uid: string): Promise<boolean> {
   return endOrLeaveSession(sess);
 }
 
-export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
+export async function endSessionFlow(deps: CollabUiDeps, panelUid?: string): Promise<void> {
   // Ends the FOCUSED doc's session (the one the user is looking at).
-  const sess = sessionFor(deps.getOwnerUid?.());
+  const sess = sessionFor(panelUid ?? deps.getOwnerUid?.());
   if (!sess) {
     showToast('No active session');
     return;
   }
   const isHost = sess.session.role === 'host';
   const isSpectator = sess.session.role === 'spectator';
+  const panelReady = (): boolean => {
+    if (panelUid === undefined || isSpectator) return true;
+    if (sessions.get(sess.ownerUid) !== sess) return false;
+    sess.session.flush();
+    if (sess.lastStatus?.connected && sess.session.queuedUpdates === 0) return true;
+    showToast('Changes are not synchronized yet. Reconnect or keep a recovery copy before disconnecting.'); return false;
+  };
+  if (!panelReady()) return;
   // In-app overlay, NOT window.confirm: Electron's native confirm on
   // Windows/Linux never hands keyboard focus back to the renderer —
   // the editor was untypeable until a reload (field bug, 2026-07-03).
@@ -1812,6 +1925,7 @@ export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
     },
   );
   if (!choice) return;
+  if (!panelReady()) return;
   // A failed host End (relay unreachable) already toasted and left the
   // session live — don't repaint plugins or claim success.
   if (!(await endOrLeaveSession(sess))) return;
@@ -1825,6 +1939,33 @@ export async function endSessionFlow(deps: CollabUiDeps): Promise<void> {
  *  session), or null. */
 export function activeSession(): CollabSession | null {
   return chipSession()?.session ?? null;
+}
+
+/** Round transition: disconnect all local sessions, aborting on failed host
+ * termination. Ending Prep only disconnects protected shared documents. */
+/** Prep / Round transitions.
+ *  - `round`: ends every session except Co-Flowing prep docs. A partner's
+ *    copy of an Isolation prep doc closes without saving.
+ *  - `end`: ends every prep-doc session (a partner's Isolation copy closes).
+ *  - `failure`: logging failed, so every session stops, locally if need be. */
+export async function disconnectForPrep(action: 'round' | 'end' | 'failure', forceLocal = false): Promise<boolean> {
+  for (const sess of [...sessions.values()]) {
+    const isPrep = prepDoc(sess.ownerUid);
+    if (action === 'end' && !isPrep) continue;
+    if (action === 'round' && isPrep && isPrepSessionDoc(sess.session) && sessionRoundMode(sess.session) === 'coflow') {
+      prepRuntime.record('collaboration-kept', sess.ownerUid, { room: sess.session.roomId, roundMode: 'coflow' });
+      continue;
+    }
+    const discard = isPrep && isIsolationGuestCopy(sess);
+    if (!(await endOrLeaveSession(sess))) {
+      if (!forceLocal && !discard) return false;
+      await sess.session.stop();
+      await teardownSession(sess, true);
+    }
+    prepRuntime.record('collaboration-ended', sess.ownerUid, { room: sess.session.roomId, ...(discard ? { closedCopy: true } : {}) });
+    if (discard) await discardIsolationGuestCopy(sess, 'Your copy of the shared prep doc was closed (Isolation Round Mode). Your own prep docs stay open.');
+  }
+  return true;
 }
 
 /** Recover Previous Version command body. Lives here (not in the

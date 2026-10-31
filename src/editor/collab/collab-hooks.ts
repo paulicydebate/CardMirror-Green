@@ -16,7 +16,7 @@
  * cannot guarantee that once remote transactions interleave).
  */
 
-import type { Command, Plugin, Transaction } from 'prosemirror-state';
+import type { Command, EditorState, Plugin, Transaction } from 'prosemirror-state';
 import type { SessionRole } from './session-role.js';
 
 export interface CollabPluginSource {
@@ -37,18 +37,18 @@ export interface CollabPluginSource {
   canRedo(): boolean;
 }
 
-let tagger: ((tr: Transaction) => void) | null = null;
+let tagger: ((tr: Transaction, state?: EditorState) => void) | null = null;
 // One live session per OWNING doc uid. A multi-pane window can therefore hold
 // several independent sessions; each doc's view only ever sees its own.
 const pluginSources = new Map<string, CollabPluginSource>();
 
-export function setCollabTransactionTagger(fn: ((tr: Transaction) => void) | null): void {
+export function setCollabTransactionTagger(fn: ((tr: Transaction, state?: EditorState) => void) | null): void {
   tagger = fn;
 }
 
 /** Called from dispatchTransaction on every tr; no-op when dormant. */
-export function tagCollabTransaction(tr: Transaction): void {
-  tagger?.(tr);
+export function tagCollabTransaction(tr: Transaction, state?: EditorState): void {
+  tagger?.(tr, state);
 }
 
 /** Register a live session's binding plugins, keyed by the doc it owns. */

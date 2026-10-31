@@ -82,6 +82,11 @@ export interface HomeScreenCallbacks {
    *  hosts that can't do recursive folder I/O (the web edition), in
    *  which case the button isn't shown. */
   bulkConvert?: () => void;
+  /** Open the OpenCaselist browser (CardMirror Green). Desktop only;
+   *  omitted → no tile. */
+  openCaselist?: () => void;
+  /** Start a new spreadsheet flow (CardMirror Green); omitted → no tile. */
+  newFlow?: () => void;
   /** Open the (temporary) bulk-compress migration tool. Electron-only,
    *  same as bulkConvert. */
   bulkCompress?: () => void;
@@ -162,7 +167,7 @@ class HomeScreen {
     header.appendChild(this.backBtn);
     const title = document.createElement('h1');
     title.className = 'pmd-home-title';
-    title.textContent = 'CardMirror';
+    title.textContent = 'CardMirror Green';
     header.appendChild(title);
     const tagline = document.createElement('p');
     tagline.className = 'pmd-home-tagline';
@@ -205,6 +210,10 @@ class HomeScreen {
     runners.push(() => openLearnManage());
     // Settings — the last tile (9 in the normal layout).
     if (callbacks.openSettings) runners.push(() => this.callbacks?.openSettings?.());
+    // OpenCaselist (Green) — after Settings so upstream's 1-9 numbering
+    // is unchanged; it gets a number only when one is left over.
+    if (callbacks.openCaselist) runners.push(() => this.callbacks?.openCaselist?.());
+    if (callbacks.newFlow) runners.push(() => this.callbacks?.newFlow?.());
     this.actionRunners = runners;
     const actions = document.createElement('div');
     actions.className = 'pmd-home-actions';
@@ -221,6 +230,13 @@ class HomeScreen {
     actions.appendChild(
       this.actionCard('Open…', 'Browse for a .cmir or .docx file.', this.actionRunners[2]!),
     );
+    if (callbacks.newFlow) {
+      const tabletFlow = this.actionCard('New Flow', 'Create an editable spreadsheet flow.', () => this.callbacks?.newFlow?.());
+      tabletFlow.classList.add('pmd-home-tablet-flow'); actions.appendChild(tabletFlow);
+    }
+    if (collabEnabled({ duringRound: true })) {
+      actions.append(this.actionCard('Collaboration', 'Partners, shared documents and invitations.', () => { void import('./index.js').then(m => m.openCoeditWith()); }));
+    }
     inner.appendChild(actions);
 
     // Last workspace — "pick up where you left off", above Recent
@@ -378,6 +394,30 @@ class HomeScreen {
             'Settings',
             'Appearance, keyboard shortcuts, files, and everything else.',
             () => this.callbacks?.openSettings?.(),
+          ),
+        ),
+      );
+    }
+    if (callbacks.openCaselist) {
+      qcGrid.appendChild(
+        labeledGroup(
+          'OpenCaselist',
+          this.actionCard(
+            'Browse OpenCaselist',
+            'Sign in with Tabroom and open a team’s disclosed files.',
+            () => this.callbacks?.openCaselist?.(),
+          ),
+        ),
+      );
+    }
+    if (callbacks.newFlow) {
+      qcGrid.appendChild(
+        labeledGroup(
+          'Flow',
+          this.actionCard(
+            'New flow',
+            'A spreadsheet flow with tabs; open any speech as a document.',
+            () => this.callbacks?.newFlow?.(),
           ),
         ),
       );

@@ -31,7 +31,7 @@ const OWNER = 'ui-flows-doc';
 import { settings } from '../../src/editor/settings.js';
 import { CollabSession } from '../../src/editor/collab/collab-session.js';
 import * as collabUi from '../../src/editor/collab/collab-ui.js';
-import { decodeShareCode, viewCodeFromShareCode } from '../../src/editor/collab/collab-crypto.js';
+import { decodeShareCode, viewCodeFromShareCode, encodeShareCode, generateRoomKeyBytes } from '../../src/editor/collab/collab-crypto.js';
 import { RoomsClient } from '../../src/editor/collab/room-client.js';
 import { startRoomsMock, type RoomsMock } from './_rooms-mock.js';
 import { settle, sleep, simpleDoc, docText, typeAfter, mkView } from './_loro-helpers.js';
@@ -104,6 +104,52 @@ function mkIndexStyleView(ownerUid = OWNER): EditorView {
 }
 
 describe('collab UI flows through the editor seams', () => {
+  it('the panel refuses to end an offline session and verifies a local recovery copy instead', async () => {
+    const uid='panel-offline';const hostView=mkIndexStyleView(uid);
+    const deps={getView:()=>hostView,getOwnerUid:()=>uid,newSessionDoc:()=>true,refreshPlugins:()=>hostView.updateState(hostView.state.reconfigure({plugins:buildMiniPlugins(uid)}))};
+    try {
+      await collabUi.startSessionFlow(deps,uid);await settle();
+      mock.pause();hostView.dispatch(hostView.state.tr.insertText(' unsent',hostView.state.doc.content.size-1));
+      await sleep(250);
+      await collabUi.endSessionFlow(deps,uid);
+      expect(document.querySelector('.pmd-text-prompt-dialog')).toBeNull();
+      expect(collabPluginSourceFor(uid)).not.toBeNull();
+      expect(await collabUi.verifyPanelRecovery(uid)).toBe(true);
+      const saved=await loadSessionRecord(collabUi.activeSession()!.roomId);expect(saved).not.toBeNull();
+      expect(collabUi.collaborationPanelSessions().find(s=>s.uid===uid)!.recovery.savedAt).not.toBeNull();
+    } finally {mock.resume();await collabEndOrLeaveSession(uid);hostView.destroy();}
+  });
+  it('starts an explicitly chosen document without a redundant prompt or clipboard code', async () => {
+    const uid='named-partner-doc'; const hostView=mkIndexStyleView(uid);
+    const copied=vi.fn(async()=>{});
+    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:copied}});
+    const deps={getView:()=>hostView,getOwnerUid:()=>uid,newSessionDoc:()=>true,
+      refreshPlugins:()=>hostView.updateState(hostView.state.reconfigure({plugins:buildMiniPlugins(uid)}))};
+    const api=(window as unknown as {electronAPI:Record<string,unknown>}).electronAPI;
+    const send=vi.fn(async()=>({ok:1,fail:0,authFail:0}));
+    const oldSend=api['pairingSend'], oldEnabled=settings.get('pairingEnabled');
+    api['pairingSend']=send; settings.set('pairingEnabled',true);
+    try {
+      await collabUi.startSessionFlow(deps,'wrong-doc');
+      expect(collabPluginSourceFor(uid)).toBeNull();
+      await collabUi.inviteTargetFlow(deps,{codes:['synthetic-partner'],label:'Alex'},uid); await settle();
+      expect(collabPluginSourceFor(uid)).not.toBeNull();
+      expect(copied).not.toHaveBeenCalled();
+      expect(document.querySelector('.pmd-text-prompt-dialog')).toBeNull();
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({recipientCodes:['synthetic-partner'],item:expect.objectContaining({type:'room-invite'})}));
+      const room=collabUi.activeSession()!.roomId;
+      await collabUi.inviteTargetFlow(deps,{codes:['synthetic-partner-2'],label:'Blair'},uid);
+      expect(collabUi.activeSession()!.roomId).toBe(room); // reuse the document session
+      await collabEndOrLeaveSession(uid);
+    } finally { api['pairingSend']=oldSend; settings.set('pairingEnabled',oldEnabled); hostView.destroy(); }
+  });
+  it('declines a Green prep invite before mounting anything when Prep Mode is off', async () => {
+    const create = vi.fn(() => true);
+    const code = encodeShareCode('ab'.repeat(16), generateRoomKeyBytes(), '1.0.0', true);
+    const joined = await collabUi.joinSessionWithCode({ getView: () => null, getOwnerUid: () => 'prep-mode-off', refreshPlugins: () => {}, newSessionDoc: create }, code);
+    expect(joined).toBe(false);
+    expect(create).not.toHaveBeenCalled();
+  });
   it('start → partner joins → read-mode host still receives edits → end', async () => {
     let hostView = mkIndexStyleView();
     const deps = {
@@ -610,7 +656,9 @@ describe('collab UI flows through the editor seams', () => {
         signal: ac.signal,
       }).catch(() => {});
     }
-    await sleep(150);
+    // Wait for the actual capacity condition: runner load can delay socket
+    // registration beyond an arbitrary sleep and accidentally admit the joiner.
+    await vi.waitFor(() => expect(mock.streamCount(decoded.roomId)).toBe(10), { timeout: 5000, interval: 25 });
     expect(mock.streamCount(decoded.roomId)).toBe(10);
 
     const viewJ = mkIndexStyleView('doc-J');
@@ -888,7 +936,7 @@ describe('spectators through the UI flows (view-only sessions, 2026-10-24)', () 
         signal: ac.signal,
       }).catch(() => {});
     }
-    await sleep(150);
+    await vi.waitFor(() => expect(mock.streamCount(decoded.roomId)).toBe(10), { timeout: 5000, interval: 25 });
     const viewF = mkIndexStyleView('doc-F');
     const depsF = {
       getView: () => viewF,
@@ -901,14 +949,14 @@ describe('spectators through the UI flows (view-only sessions, 2026-10-24)', () 
     try {
       const joined = await collabUi.joinSessionWithCode(depsF, shareCode);
       expect(joined).toBe(true); // REST half; the stream 409s with a view pass
-      await sleep(300);
-      // The editor session is torn down and the offer is up.
-      clickPromptButton('Watch');
-      await sleep(400);
-      expect(collabCopresenceFor('doc-F')?.role).toBe('spectator');
-      expect(mock.viewerCount(decoded.roomId)).toBe(1);
-      expect(docText(viewF.state.doc)).toContain('full room, watch me');
-      expect((await loadSessionRecord(decoded.roomId))?.role).toBe('spectator');
+      // Wait for the asynchronous full-room offer instead of relying on runner speed.
+      await vi.waitFor(() => clickPromptButton('Watch'), { timeout: 5000, interval: 25 });
+      await vi.waitFor(async () => {
+        expect(collabCopresenceFor('doc-F')?.role).toBe('spectator');
+        expect(mock.viewerCount(decoded.roomId)).toBe(1);
+        expect(docText(viewF.state.doc)).toContain('full room, watch me');
+        expect((await loadSessionRecord(decoded.roomId))?.role).toBe('spectator');
+      }, { timeout: 5000, interval: 25 });
     } finally {
       mock.setViewPass(null);
       for (const ac of raws) ac.abort();

@@ -1,3 +1,4 @@
+import { prepHandle } from "./prep-desktop.js";
 /**
  * Pairing main-process bridge — cross-machine card sharing.
  *
@@ -719,7 +720,7 @@ export function registerPairingIpc(): void {
   // the renderer can display it and the user can share it. The private key
   // stays in main.
   let configured = false;
-  ipcMain.handle(
+  prepHandle(
     'host:pairing-configure',
     (_event, cfg: Partial<PairingConfig>): { ownCode: string } => {
       const prev = config;
@@ -761,7 +762,7 @@ export function registerPairingIpc(): void {
   // as the LAST fallback after settings/dev-env. The rooms transport is
   // E2E encrypted, so the renderer holding the shared bearer token is
   // equivalent exposure to the web edition.
-  ipcMain.handle(
+  prepHandle(
     'host:collab-relay-defaults',
     async (): Promise<{ url: string; token: string; routingCode: string }> => {
       // Await the entitlement load so the FIRST rooms fetch after launch
@@ -780,7 +781,7 @@ export function registerPairingIpc(): void {
     },
   );
 
-  ipcMain.handle('host:pairing-regenerate-key', (): { ownCode: string } => {
+  prepHandle('host:pairing-regenerate-key', (): { ownCode: string } => {
     // The entitlement is bound to the OLD routing code — a new keypair
     // needs a fresh connect from the blog page. Capture the old identity
     // first: the seat release must name the routing id the entitlement
@@ -805,7 +806,7 @@ export function registerPairingIpc(): void {
 
   // Blog-account entitlement surface. An entitlement gates nothing
   // while the relay runs ungated; enforcement is a server-side flip.
-  ipcMain.handle(
+  prepHandle(
     'host:pairing-connect-account',
     async (_e, payload: { connectCode: string; confirmEvict?: boolean; evict?: string }) => {
       if (typeof payload?.connectCode !== 'string' || !payload.connectCode.trim()) {
@@ -816,11 +817,11 @@ export function registerPairingIpc(): void {
       return connectAccount(payload.connectCode, !!payload.confirmEvict, evict);
     },
   );
-  ipcMain.handle('host:pairing-account-status', async () => {
+  prepHandle('host:pairing-account-status', async () => {
     await ensureEntitlementLoaded();
     return accountStatus();
   });
-  ipcMain.handle('host:pairing-disconnect-account', async () => {
+  prepHandle('host:pairing-disconnect-account', async () => {
     await ensureEntitlementLoaded();
     if (entitlementState !== null || membershipLapsed) {
       const entitlement = entitlementState?.entitlement ?? '';
@@ -854,7 +855,7 @@ export function registerPairingIpc(): void {
     else void pollOnce();
   });
 
-  ipcMain.handle(
+  prepHandle(
     'host:pairing-send',
     async (
       _event,
@@ -934,12 +935,12 @@ export function registerPairingIpc(): void {
     },
   );
 
-  ipcMain.handle('host:pairing-inbox-list', async () => {
+  prepHandle('host:pairing-inbox-list', async () => {
     await ensureInboxLoaded();
     return inbox;
   });
 
-  ipcMain.handle('host:pairing-inbox-remove', async (_event, id: string) => {
+  prepHandle('host:pairing-inbox-remove', async (_event, id: string) => {
     if (typeof id !== 'string' || !id) return;
     await ensureInboxLoaded();
     const next = inbox.filter((it) => it.id !== id);
@@ -949,7 +950,7 @@ export function registerPairingIpc(): void {
     await persistInbox();
   });
 
-  ipcMain.handle('host:pairing-inbox-clear', async () => {
+  prepHandle('host:pairing-inbox-clear', async () => {
     await ensureInboxLoaded();
     if (inbox.length === 0) return;
     inbox = [];
@@ -957,7 +958,7 @@ export function registerPairingIpc(): void {
     await persistInbox();
   });
 
-  ipcMain.handle('host:pairing-inbox-mark-read', async () => {
+  prepHandle('host:pairing-inbox-mark-read', async () => {
     await ensureInboxLoaded();
     if (!inbox.some((it) => !it.read)) return;
     inbox = inbox.map((it) => (it.read ? it : { ...it, read: true }));

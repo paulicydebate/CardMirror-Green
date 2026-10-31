@@ -1,3 +1,4 @@
+import { prepRuntime } from './prep-runtime.js';
 /**
  * UI tour — spotlight onboarding for the editor chrome.
  *
@@ -671,6 +672,7 @@ export function maybeAutoStartUiTour(): void {
   }
   let tries = 0;
   const poll = window.setInterval(() => {
+    if (prepRuntime.status.session) { window.clearInterval(poll); return; }
     tries++;
     if (settings.get('hasSeenUiTour')) {
       window.clearInterval(poll);

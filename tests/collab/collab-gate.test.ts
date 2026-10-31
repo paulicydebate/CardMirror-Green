@@ -46,6 +46,16 @@ describe('collabEnabled — open by default, mobile shell excluded', () => {
     expect((await loadGate())()).toBe(false);
   });
 
+  it('allows an editable iPad workspace, including narrow split view', async () => {
+    const oldTouch = Object.getOwnPropertyDescriptor(navigator, 'maxTouchPoints');
+    const oldPlatform = Object.getOwnPropertyDescriptor(navigator, 'platform');
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 5 });
+    Object.defineProperty(navigator, 'platform', { configurable: true, value: 'MacIntel' });
+    window.localStorage.setItem('pmd-settings', JSON.stringify({ mobileLayout: 'mobile' }));
+    try { expect((await loadGate())()).toBe(true); }
+    finally { if(oldTouch)Object.defineProperty(navigator,'maxTouchPoints',oldTouch);else Reflect.deleteProperty(navigator,'maxTouchPoints'); if(oldPlatform)Object.defineProperty(navigator,'platform',oldPlatform);else Reflect.deleteProperty(navigator,'platform'); }
+  });
+
   it('the retired prototype flag changes nothing either way', async () => {
     delete (window as unknown as WinStub).electronAPI;
     window.localStorage.setItem('pmd-collab-web', '1');

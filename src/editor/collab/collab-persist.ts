@@ -38,6 +38,8 @@ export interface PersistCadence {
    *  swallows them by design; this is how the UI learns crash-resume
    *  has silently stopped working. Reset to 0 on the next success. */
   onFailure?: (consecutive: number) => void;
+  /** A durable write completed, distinct from sending edits to the relay. */
+  onSaved?: (at: number) => void;
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -80,6 +82,10 @@ export function attachSessionPersistence(
   // In-memory mirror of the stored record; rebuilt from scratch when
   // absent so a resume continues the SAME record.
   let record: PersistedSessionRecord | null = null;
+  const noteSaved = (at: number): void => {
+    cadence.onSaved?.(at);
+    if (failures > 0) { failures = 0; cadence.onFailure?.(0); }
+  };
 
   const writeInner = async (): Promise<void> => {
     if (disposed) return;
@@ -122,6 +128,7 @@ export function attachSessionPersistence(
           record.docTitle === getDocTitle() &&
           (record.docId ?? null) === docId
         ) {
+          noteSaved(record.updatedAt);
           return;
         }
         record = {
@@ -134,6 +141,7 @@ export function attachSessionPersistence(
           updatedAt: Date.now(),
         };
         await saveSessionRecord(record);
+        noteSaved(record.updatedAt);
         return;
       }
       if (record && record.increments.length < COMPACT_EVERY) {
@@ -168,11 +176,11 @@ export function attachSessionPersistence(
       }
       lastSnapshotBytes = record.snapshot.byteLength;
       await saveSessionRecord(record);
-      if (failures > 0) {
-        failures = 0;
-        cadence.onFailure?.(0);
-      }
+      noteSaved(record.updatedAt);
     } catch {
+      // Retry from the last durable prefix. An optimistic in-memory record
+      // must never make a failed write look unchanged on the next cadence.
+      record = null;
       /* storage denied/full — persistence degrades, the session still works */
       cadence.onFailure?.(++failures);
     }
@@ -222,8 +230,11 @@ export function attachSessionPersistence(
       await write();
       try {
         const stored = await loadSessionRecord(session.roomId);
-        return stored != null && bytesEqual(stored.persistedVersion, session.encodedVersion());
+        const verified = stored != null && bytesEqual(stored.persistedVersion, session.encodedVersion());
+        if (!verified) { record = null; cadence.onFailure?.(++failures); }
+        return verified;
       } catch {
+        record = null; cadence.onFailure?.(++failures);
         return false;
       }
     },

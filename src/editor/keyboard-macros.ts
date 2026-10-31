@@ -13,6 +13,7 @@
 import type { Command } from 'prosemirror-state';
 import type { KeyboardMacro } from './settings.js';
 import { REPEAT_TYPING_META } from './repeat-last-action.js';
+import { PREP_EXPANSION_META } from './prep-document-guard.js';
 
 /** Produce a `keymap()`-ready binding object from the macro list. Macros
  *  with no key or no text are skipped; a later macro on the same key
@@ -23,7 +24,7 @@ export function buildMacroKeymap(macros: KeyboardMacro[]): Record<string, Comman
     if (!m.key || !m.text) continue;
     const text = m.text;
     out[m.key] = (state, dispatch) => {
-      if (dispatch) dispatch(state.tr.insertText(text).setMeta(REPEAT_TYPING_META, text).scrollIntoView());
+      if (dispatch) dispatch(state.tr.insertText(text).setMeta(REPEAT_TYPING_META, text).setMeta(PREP_EXPANSION_META, 'macro').scrollIntoView());
       return true;
     };
   }

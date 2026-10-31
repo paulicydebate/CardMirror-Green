@@ -133,26 +133,18 @@ export default defineConfig(({ command }) => {
             // Electron renderer, which never sees this plugin.
             registerType: 'prompt',
             injectRegister: 'auto',
-            includeAssets: ['favicon.png', 'apple-touch-icon.png'],
+            includeAssets: ['green-app-icon.png'],
             manifest: {
-              name: 'CardMirror',
-              short_name: 'CardMirror',
+              name: 'CardMirror Green',
+              short_name: 'Green',
               description:
                 'A debate-card editor that interoperates with Advanced Verbatim — cut, format, and organize evidence offline.',
-              theme_color: '#2563eb',
+              theme_color: '#15803d',
               background_color: '#ffffff',
               display: 'standalone',
               categories: ['productivity', 'education'],
-              icons: [
-                { src: 'pwa-192.png', sizes: '192x192', type: 'image/png' },
-                { src: 'pwa-512.png', sizes: '512x512', type: 'image/png' },
-                {
-                  src: 'pwa-maskable-512.png',
-                  sizes: '512x512',
-                  type: 'image/png',
-                  purpose: 'maskable',
-                },
-              ],
+              id: './', start_url: './', scope: './',
+              icons: [{ src: 'green-app-icon.png', sizes: '1024x1024', type: 'image/png', purpose: 'any' }],
             },
             workbox: {
               // The editor bundle is large; raise the precache cap so the main
@@ -171,6 +163,8 @@ export default defineConfig(({ command }) => {
         : []),
     ],
     server: {
+      // Local Electron smoke-test profiles contain locked Chromium databases.
+      watch: { ignored: ['**/tests/scratch/**'] },
       fs: { allow: [path.resolve(__dirname), path.resolve(__dirname, '../card-cutter')] },
       // Pre-transform the collab chain (and the loro wasm loader
       // behind it) on dev-server start. Without this, the renderer's

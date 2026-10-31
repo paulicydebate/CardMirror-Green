@@ -1,0 +1,2 @@
+# Keep source fixtures and source-text assertions identical on every runner.
+* text=auto eol=lf

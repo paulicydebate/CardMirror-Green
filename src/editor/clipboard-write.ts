@@ -1,3 +1,4 @@
+import { prepTransferBlocked } from './prep-runtime.js';
 /**
  * The one clipboard-write path for the whole editor.
  *
@@ -49,6 +50,7 @@ export async function writeClipboardWithRetry(
 /** Write an html + plain-text pair (rich copies: cards, references,
  *  headings). */
 export async function writeClipboardHtml(html: string, text: string): Promise<boolean> {
+  if (prepTransferBlocked(undefined, 'copy-html')) return false;
   const host = getElectronHost();
   return writeClipboardWithRetry(async () => {
     if (host?.clipboardWriteHtml) {
@@ -73,6 +75,7 @@ export async function writeClipboardHtml(html: string, text: string): Promise<bo
 
 /** Write plain text. */
 export async function writeClipboardText(text: string): Promise<boolean> {
+  if (prepTransferBlocked(undefined, 'copy-text')) return false;
   const host = getElectronHost();
   const ok = await writeClipboardWithRetry(async () => {
     if (host?.clipboardWriteHtml) {

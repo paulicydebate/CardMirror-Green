@@ -18,7 +18,7 @@ export interface RibbonGroup {
 export const RIBBON_GROUPS: RibbonGroup[] = [
   {
     title: 'File',
-    commands: ['newDocument', 'openFile', 'save', 'saveAs', 'saveSendDoc', 'saveReadDoc', 'saveMarkedCards', 'toggleAutosave', 'openContainingFolder', 'saveWorkspace', 'reopenWorkspace', 'goHome'],
+    commands: ['newDocument', 'openFile', 'save', 'saveAs', 'saveSendDoc', 'saveReadDoc', 'saveMarkedCards', 'toggleAutosave', 'openContainingFolder', 'saveWorkspace', 'reopenWorkspace', 'openOpenCaselist', 'newFlow', 'startPrep', 'newPrep', 'newPrepFlow', 'markPrep', 'startRound', 'endPrep', 'prepLogs', 'checkPrepDoc', 'goHome'],
   },
   {
     title: 'Speech',
@@ -278,6 +278,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
       'sendDocToSlot3',
       'toggleSlotExpand',
       'hideSlot',
+      'popOutPane',
       'revealAllSlots',
       'cycleDocNext',
       'cycleDocPrev',
@@ -289,6 +290,7 @@ export const RIBBON_GROUPS: RibbonGroup[] = [
     commands: [
       'aiAskAboutSelection',
       'aiCreateCite',
+      'chatCutCard',
       'reformatAllCites',
       'translate',
       'repairText',

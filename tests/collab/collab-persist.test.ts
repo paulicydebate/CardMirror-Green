@@ -8,7 +8,8 @@
  */
 
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import * as store from '../../src/editor/collab/collab-store.js';
 import { CollabSession } from '../../src/editor/collab/collab-session.js';
 import { RoomsClient } from '../../src/editor/collab/room-client.js';
 import { decodeShareCode } from '../../src/editor/collab/collab-crypto.js';
@@ -35,6 +36,33 @@ afterAll(async () => {
 });
 
 describe('M3 session persistence', () => {
+  it('retries failed content and metadata writes without requiring another edit, then clears the failure state', async () => {
+    const {session,shareCode}=await CollabSession.host({pmDoc:simpleDoc('recover me'),client});
+    const view=mkView(session.plugins());await settle();
+    const failure=vi.fn(),saved=vi.fn();let title='Original';
+    const persist=attachSessionPersistence(session,shareCode,()=>title,()=>null,{persistMs:60000,onFailure:failure,onSaved:saved});
+    const write=vi.spyOn(store,'saveSessionRecord');
+    try {
+      await persist.flush();expect(saved).toHaveBeenCalled();
+      const old=(await loadSessionRecord(session.roomId))!.persistedVersion;
+      typeAfter(view,'recover',' typed');
+      write.mockRejectedValueOnce(new Error('Quota exceeded'));
+      await persist.flush();expect(failure).toHaveBeenLastCalledWith(1);
+      expect((await loadSessionRecord(session.roomId))!.persistedVersion).toEqual(old);
+      await persist.flush(); // no new edit: retry must still happen
+      expect(Array.from((await loadSessionRecord(session.roomId))!.persistedVersion)).toEqual(Array.from(session.encodedVersion()));
+      expect(failure).toHaveBeenLastCalledWith(0);
+      title='Renamed';write.mockRejectedValueOnce(new Error('Storage temporarily unavailable'));
+      await persist.flush();expect(failure).toHaveBeenLastCalledWith(1);
+      expect((await loadSessionRecord(session.roomId))!.docTitle).toBe('Original');
+      await persist.flush();expect((await loadSessionRecord(session.roomId))!.docTitle).toBe('Renamed');
+      expect(failure).toHaveBeenLastCalledWith(0);expect(await persist.verifiedFlush()).toBe(true);
+      await deleteSessionRecord(session.roomId);
+      expect(await persist.verifiedFlush()).toBe(false); // missing durable record must not look saved
+      await persist.flush(); // force a fresh snapshot even with no intervening typing
+      expect(await persist.verifiedFlush()).toBe(true);
+    } finally {write.mockRestore();await persist.clear();await session.stop();view.destroy();}
+  });
   it('offline edits survive a nuke: resume flushes the unsent diff to the partner', async () => {
     // Host a session and get a partner attached.
     const { session: host, shareCode } = await CollabSession.host({

@@ -14,6 +14,7 @@
  * keeping large multi-image documents light.
  */
 
+import { flowNodeViews } from './flow-nodeview.js';
 import { DOMSerializer } from 'prosemirror-model';
 import type { Node as PMNode } from 'prosemirror-model';
 import type { EditorView, NodeView } from 'prosemirror-view';
@@ -244,4 +245,5 @@ export const editorNodeViews = {
   ): NodeView => new ImageResizeView(node, view, getPos),
   ...transclusionNodeViews,
   ...selfRefNodeViews,
+  ...flowNodeViews,
 };

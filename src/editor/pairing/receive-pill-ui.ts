@@ -135,7 +135,7 @@ export class ReceivePillController {
     this.bar.className = 'pmd-pill-bar pmd-receive-bar';
     this.bar.setAttribute('role', 'button');
     this.bar.setAttribute('tabindex', '0');
-    this.bar.title = 'Cards other people sent you';
+    this.bar.title = 'Cards and co-edit invitations sent to you — choose Join on a live document';
     const icon = document.createElement('span');
     icon.className = 'pmd-pill-icon';
     icon.setAttribute('aria-hidden', 'true');

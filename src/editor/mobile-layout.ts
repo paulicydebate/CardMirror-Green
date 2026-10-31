@@ -15,6 +15,8 @@ export interface MobileLayoutEnv {
   /** `getHost().kind` — only `'browser'` is eligible; native hosts
    *  (electron, tauri) always get the desktop UI. */
   hostKind: string;
+  /** Tablet workspaces remain touch-friendly in landscape and split view. */
+  tablet?: boolean;
   /** `matchMedia('(pointer: coarse)').matches` at boot. */
   coarsePointer: boolean;
   /** `window.innerWidth` at boot (CSS px). */
@@ -39,6 +41,7 @@ export function resolveMobileLayout(
   if (env.hostKind !== 'browser') return false;
   if (setting === 'desktop') return false;
   if (setting === 'mobile') return true;
+  if (env.tablet) return true;
   if (env.viewportWidth < MOBILE_AUTO_ANY_POINTER_WIDTH) return true;
   return env.coarsePointer && env.viewportWidth < MOBILE_AUTO_MAX_WIDTH;
 }
@@ -48,4 +51,16 @@ export function resolveMobileLayout(
  *  `pmd-mobile-tablet` pins it as a persistent rail. */
 export function mobileDensity(viewportWidth: number): 'phone' | 'tablet' {
   return viewportWidth >= 768 ? 'tablet' : 'phone';
+}
+
+/** iPadOS can identify itself as a Mac when a keyboard/trackpad is attached. */
+export function tabletDevice(env: { userAgent: string; platform: string; maxTouchPoints: number; coarsePointer: boolean; screenWidth: number; screenHeight: number }): boolean {
+  return /iPad/.test(env.userAgent) || (env.platform === 'MacIntel' && env.maxTouchPoints > 1) ||
+    (env.coarsePointer && Math.min(env.screenWidth, env.screenHeight) >= 768);
+}
+export function mobileLayoutEnv(hostKind: string): MobileLayoutEnv {
+  const coarsePointer = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+  return { hostKind, coarsePointer, viewportWidth: window.innerWidth,
+    tablet: hostKind === 'browser' && tabletDevice({ userAgent: navigator.userAgent, platform: navigator.platform,
+      maxTouchPoints: navigator.maxTouchPoints ?? 0, coarsePointer, screenWidth: window.screen.width, screenHeight: window.screen.height }) };
 }

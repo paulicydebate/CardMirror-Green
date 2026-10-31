@@ -72,6 +72,21 @@ export interface NativeFile {
    *  (flashcards / AI threads / schedule) to this doc across renames and
    *  format changes. Minted on first save; absent on older files. */
   docId?: string;
+  /** Prep / Round seal certificate (the sealed log entries that record this
+   *  document's fingerprint), so "Check Prep Document" works from the file
+   *  alone. Present only on prep docs saved after their session ended. */
+  prepSeal?: unknown;
+}
+
+/** Seal certificates by document id. Filled when a session ends (for its
+ *  prep docs) and when a sealed file opens, so every later save of that
+ *  document carries its seal along. */
+const prepSeals = new Map<string, unknown>();
+export function setPrepSeal(docId: string, certificate: unknown): void {
+  if (docId) prepSeals.set(docId, certificate);
+}
+export function prepSealFor(docId: string | null | undefined): unknown {
+  return docId ? prepSeals.get(docId) : undefined;
 }
 
 export interface SerializeNativeOptions {
@@ -158,6 +173,8 @@ function buildNativeEnvelope(doc: PMNode, opts: SerializeNativeOptions): Uint8Ar
   }
   if (opts.docId) {
     file.docId = opts.docId;
+    const seal = prepSeals.get(opts.docId);
+    if (seal !== undefined) file.prepSeal = seal;
   }
   return new TextEncoder().encode(JSON.stringify(file));
 }
@@ -184,6 +201,7 @@ export function serializeNativeAsync(
   if (last && last.doc === doc && sameSerializeInputs(last.opts, opts)) return last.bytes;
   const bytes = gzipAsync(buildNativeEnvelope(doc, opts));
   lastAsyncSerialize = { doc, opts: { ...opts, threads: opts.threads ? [...opts.threads] : undefined }, bytes };
+  lastAsyncSerializeSeal = prepSealFor(opts.docId);
   // A failed gzip must not be served to the next caller.
   bytes.catch(() => {
     if (lastAsyncSerialize?.bytes === bytes) lastAsyncSerialize = null;
@@ -202,9 +220,12 @@ let lastAsyncSerialize: {
   opts: SerializeNativeOptions;
   bytes: Promise<Uint8Array>;
 } | null = null;
+/** The seal the cached bytes were built with: a seal added since means rebuild. */
+let lastAsyncSerializeSeal: unknown;
 
 function sameSerializeInputs(a: SerializeNativeOptions, b: SerializeNativeOptions): boolean {
   if (a.docId !== b.docId || a.appVersion !== b.appVersion) return false;
+  if (prepSealFor(a.docId) !== lastAsyncSerializeSeal) return false;
   const ta = a.threads ?? [];
   const tb = b.threads ?? [];
   return ta.length === tb.length && ta.every((t, i) => t === tb[i]);
@@ -216,6 +237,8 @@ export interface ParseNativeResult {
   threads: Thread[];
   /** Stable per-document UUID, or null on files that predate it. */
   docId: string | null;
+  /** Prep / Round seal certificate, when the file carries one. */
+  prepSeal?: unknown;
   meta: {
     createdBy: string;
     createdAt: string;
@@ -365,10 +388,12 @@ function parseNativeImpl(
       }).`,
     );
   }
+  if (file.prepSeal !== undefined && typeof file.docId === 'string' && file.docId) prepSeals.set(file.docId, file.prepSeal);
   return {
     doc,
     threads: Array.isArray(file.threads) ? file.threads : [],
     docId: typeof file.docId === 'string' && file.docId ? file.docId : null,
+    ...(file.prepSeal !== undefined ? { prepSeal: file.prepSeal } : {}),
     meta: {
       createdBy: typeof file.createdBy === 'string' ? file.createdBy : '',
       createdAt: typeof file.createdAt === 'string' ? file.createdAt : '',

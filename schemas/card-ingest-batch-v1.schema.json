@@ -1,0 +1,386 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CardMirror ingest batch version 1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "cardmirror.ingest.batch"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "fingerprintAlgorithm": {
+      "const": "sha256-canonical-json-v1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^batch:[a-f0-9]{64}$"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/source"
+      }
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/record"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "sources": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "records": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "uniqueRecords": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duplicates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "byType": {
+          "type": "object",
+          "properties": {
+            "evidence": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "analytic": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "tag_only": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "incomplete": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "evidence",
+            "analytic",
+            "tag_only",
+            "incomplete"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "sources",
+        "records",
+        "uniqueRecords",
+        "duplicates",
+        "byType"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "schemaVersion",
+    "fingerprintAlgorithm",
+    "id",
+    "sources",
+    "records",
+    "summary"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "mark": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "attrs": {
+          "type": "object"
+        }
+      },
+      "required": [
+        "type",
+        "attrs"
+      ],
+      "additionalProperties": false
+    },
+    "paragraph": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "marks": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/mark"
+                }
+              }
+            },
+            "required": [
+              "text",
+              "marks"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "runs"
+      ],
+      "additionalProperties": false
+    },
+    "content": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "card",
+            "analytic_unit"
+          ]
+        },
+        "from": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "to": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/paragraph"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/paragraph"
+          }
+        },
+        "bodies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/paragraph"
+          }
+        },
+        "undertags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/paragraph"
+          }
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/paragraph"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "from",
+        "to",
+        "tag",
+        "citations",
+        "bodies",
+        "undertags"
+      ],
+      "additionalProperties": false
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "format": {
+          "enum": [
+            "docx",
+            "cmir"
+          ]
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "uri": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "document": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "doc"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "id",
+        "format",
+        "sha256",
+        "document"
+      ],
+      "additionalProperties": false
+    },
+    "record": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^record:[a-f0-9]{64}$"
+        },
+        "recordType": {
+          "enum": [
+            "evidence",
+            "analytic",
+            "tag_only",
+            "incomplete"
+          ]
+        },
+        "sourceId": {
+          "type": "string"
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provenance": {
+          "type": "object",
+          "properties": {
+            "sourceSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "headingId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "from": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "to": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "sourceSha256",
+            "headingId",
+            "from",
+            "to"
+          ],
+          "additionalProperties": false
+        },
+        "warnings": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "missing-tag",
+              "missing-citation",
+              "missing-body",
+              "tag-only",
+              "missing-heading-id",
+              "rich-content"
+            ]
+          }
+        },
+        "content": {
+          "$ref": "#/definitions/content"
+        },
+        "rawNode": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "enum": [
+                "card",
+                "analytic_unit"
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": true
+        },
+        "contentHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "duplicateOf": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^record:[a-f0-9]{64}$"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "recordType",
+        "sourceId",
+        "ordinal",
+        "provenance",
+        "warnings",
+        "content",
+        "rawNode",
+        "contentHash",
+        "duplicateOf"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
