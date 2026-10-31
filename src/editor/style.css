@@ -11164,6 +11164,8 @@ body.pmd-recovery-active.pmd-multi-doc #app {
 .pmd-flow-root.pmd-flow-selected { outline: none; }
 .pmd-flow-root *:not(textarea)::selection { background: transparent; }
 .pmd-flow-root button { font-family: var(--pmd-ui-font, system-ui, sans-serif); transition: background 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
+.pmd-flow-tabs, .pmd-flow-topbar, .pmd-flow-docbar, .pmd-flow-head { font-family: var(--pmd-ui-font, system-ui, sans-serif); font-weight: 400; }
+:is(#editor, .pmd-pane-editor) .pmd-flow-root textarea::selection { background: var(--flow-text); color: var(--flow-bg); }
 
 /* Sheet list (left) */
 .pmd-flow-tabs {
@@ -11422,9 +11424,11 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   top: 3.1rem;
   right: 0.75rem;
   z-index: 3;
-  width: 19.5rem;
+  box-sizing: border-box;
+  width: min(23rem, calc(100% - 1.5rem));
   max-height: calc(100% - 3.6rem);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 0.85rem;
   border-radius: 12px;
   border: 1px solid var(--flow-line);
@@ -11436,7 +11440,10 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   gap: 0.45rem;
   font-family: var(--pmd-ui-font, system-ui, sans-serif);
   font-size: 0.82rem;
+  font-weight: 400;
 }
+.pmd-flow-appearance :is(button, input, select) { font-family: inherit; }
+.pmd-flow-appearance > * { min-width: 0; flex-shrink: 0; }
 .pmd-flow-app-head { display: flex; align-items: center; justify-content: space-between; font-size: 0.95rem; }
 .pmd-flow-app-label {
   margin-top: 0.35rem;
@@ -11447,7 +11454,8 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   color: var(--flow-muted);
 }
 .pmd-flow-segment {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 3px;
   gap: 2px;
   border-radius: 9px;
@@ -11462,11 +11470,15 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   background: transparent;
   color: var(--flow-muted);
   cursor: pointer;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  min-height: 2.25rem;
 }
 .pmd-flow-seg:hover { color: var(--flow-text); }
 .pmd-flow-seg-on { background: var(--flow-bg); color: var(--flow-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
-.pmd-flow-colorways { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3rem; }
+.pmd-flow-colorways { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.3rem; }
+.pmd-flow-colorway span { min-width: 0; overflow-wrap: anywhere; }
 .pmd-flow-colorway {
   display: flex;
   align-items: center;
@@ -11503,7 +11515,7 @@ body.pmd-recovery-active.pmd-multi-doc #app {
   background: var(--flow-bg);
   cursor: pointer;
 }
-.pmd-flow-colorpick input {
+.pmd-flow-colorpick input[type="color"] {
   width: 1.4rem;
   height: 1.4rem;
   padding: 0;
@@ -11514,6 +11526,20 @@ body.pmd-recovery-active.pmd-multi-doc #app {
 }
 .pmd-flow-colorpick input::-webkit-color-swatch-wrapper { padding: 0; }
 .pmd-flow-colorpick input::-webkit-color-swatch { border: none; border-radius: 50%; }
+.pmd-flow-shortcut { display: flex; flex-direction: column; gap: .4rem; }
+.pmd-flow-shortcut input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: .55rem .65rem;
+  border: 1px solid var(--flow-line);
+  border-radius: 8px;
+  background: var(--flow-bg);
+  color: var(--flow-text);
+  font: inherit;
+  cursor: pointer;
+}
+.pmd-flow-shortcut input:focus-visible { outline: 2px solid var(--flow-accent); outline-offset: 2px; }
 .pmd-flow-select {
   font: inherit;
   font-size: 0.78rem;
@@ -17367,8 +17393,8 @@ body:not(.pmd-multi-doc):has(#editor .pmd-flow-workspace) :is(#app, #status-bar,
 .pmd-flow-usefills .pmd-flow-grid .pmd-flow-head.pmd-flow-fill-1 { background-color: var(--flow-fill-1) !important; }
 .pmd-flow-usefills .pmd-flow-grid .pmd-flow-head.pmd-flow-fill-2 { background-color: var(--flow-fill-2) !important; }
 .pmd-flow-usefills .pmd-flow-grid .pmd-flow-head.pmd-flow-fill-3 { background-color: var(--flow-fill-3) !important; }
-.pmd-flow-td.pmd-flow-cell-selected { box-shadow: inset 0 0 0 2px var(--flow-accent); }
-.pmd-flow-td.pmd-flow-cell-selected .pmd-flow-cell { background: color-mix(in srgb, var(--flow-accent) 13%, transparent); }
+.pmd-flow-root .pmd-flow-td.pmd-flow-cell-selected { background: var(--flow-selection-bg, var(--flow-bg)); box-shadow: inset 0 0 0 2px var(--flow-accent); }
+.pmd-flow-td.pmd-flow-cell-selected .pmd-flow-cell { background: transparent; }
 .pmd-flow-tab[draggable='true'] { cursor: grab; }
 .pmd-flow-tab[draggable='true']:active { cursor: grabbing; }
 .pmd-flow-tab.pmd-flow-drop-target { box-shadow: inset 0 3px 0 var(--flow-accent); }

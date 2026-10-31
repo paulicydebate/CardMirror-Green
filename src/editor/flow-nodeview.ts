@@ -61,6 +61,7 @@ import { EditHistory, maxFlowClock, mergeIncoming, recordLocalEdit, stampFlowEdi
 import {
   applyFlowTheme,
   colorwayColors,
+  flowColorPickerValue,
   DEFAULT_FLOW_THEME,
   FLOW_BASES,
   FLOW_COLORWAYS,
@@ -588,7 +589,7 @@ export class FlowWorkbookView implements NodeView {
       const label = el('label', 'pmd-flow-colorpick');
       const input = el('input');
       input.type = 'color';
-      input.value = colors[side];
+      input.value = flowColorPickerValue(colors[side]);
       input.addEventListener('input', () => saveFlowTheme({ ...this.theme, [side === 'aff' ? 'affText' : 'negText']: input.value }));
       label.append(input, el('span', undefined, sideName(this.book.event, side)));
       custom.appendChild(label);
@@ -607,14 +608,21 @@ export class FlowWorkbookView implements NodeView {
     shortcut.value = displayFlowShortcut(this.theme.highlightKey, isMac);
     shortcut.setAttribute('aria-label', 'Highlight shortcut');
     shortcut.title = 'Focus here and press a function key or a modified key. Escape cancels.';
+    const shortcutHelp = el('div', 'pmd-flow-app-note', 'Click the shortcut, then press a function key or key combination to change it.');
+    shortcutHelp.id = `pmd-flow-shortcut-help-${this.actor}`;
+    shortcutHelp.setAttribute('role', 'status'); shortcut.setAttribute('aria-describedby', shortcutHelp.id);
     shortcut.addEventListener('keydown', event => {
+      if (event.key === 'Tab') return;
       event.preventDefault(); event.stopPropagation();
       if (event.key === 'Escape') { shortcut.blur(); return; }
       const key = flowKeyForEvent(event);
-      if (!key || !validFlowShortcut(key)) { shortcut.value = 'Use an F-key or modifier chord'; return; }
+      if (!key) return;
+      if (!validFlowShortcut(key)) { shortcutHelp.textContent = 'Use a function key or modifier combination. Common editing shortcuts are reserved.'; return; }
       saveFlowTheme({ ...this.theme, highlightKey: key });
     });
-    shortcutLabel.append(el('span', undefined, 'Highlight shortcut'), shortcut); panel.append(shortcutLabel);
+    shortcutLabel.className = 'pmd-flow-shortcut';
+    shortcutLabel.append(el('span', undefined, 'Highlight shortcut'), shortcut);
+    panel.append(shortcutLabel, shortcutHelp);
 
     section('Text');
     const sizes = el('div', 'pmd-flow-segment');

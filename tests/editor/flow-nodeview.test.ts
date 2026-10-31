@@ -240,6 +240,11 @@ describe('flow NodeView', () => {
     const color = v.dom.querySelector<HTMLInputElement>('input[aria-label="Highlight color"]')!;
     color.value = '#ffcc00'; color.dispatchEvent(new Event('change'));
     const shortcut = v.dom.querySelector<HTMLInputElement>('input[aria-label="Highlight shortcut"]')!;
+    const original = shortcut.value;
+    key(shortcut, 'Control', {ctrlKey: true}); expect(shortcut.value).toBe(original);
+    key(shortcut, 'v', {ctrlKey: true}); expect(shortcut.value).toBe(original);
+    const tab = new KeyboardEvent('keydown', {key: 'Tab', bubbles: true, cancelable: true});
+    shortcut.dispatchEvent(tab); expect(tab.defaultPrevented).toBe(false);
     key(shortcut, 'F9'); await frame();
     expect(loadFlowTheme()).toMatchObject({highlightColor: '#ffcc00', highlightKey: 'F9'});
     expect((v.dom.querySelector('.pmd-flow-root') as HTMLElement).style.getPropertyValue('--flow-hl')).toBe('#ffcc00');

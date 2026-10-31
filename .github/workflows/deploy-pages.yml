@@ -39,6 +39,8 @@ jobs:
         env:
           PANEL_ONLY: '1'
           PREP_CHROMIUM: '1'
+      - name: Verify Flow appearance fit, fonts and selection contrast
+        run: node scripts/test-flow-appearance.cjs
       - name: Verify PWA offline caching in the supported browser engine
         run: node scripts/test-green-pwa.cjs
       - name: Verify tablet Prep restart and readable log export
@@ -50,7 +52,9 @@ jobs:
         if: always()
         with:
           name: green-ipad-webkit-checks
-          path: tests/scratch/ipad-check
+          path: |
+            tests/scratch/ipad-check
+            tests/scratch/flow-appearance
           if-no-files-found: ignore
       - uses: actions/upload-pages-artifact@v3
         with:

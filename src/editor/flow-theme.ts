@@ -140,10 +140,19 @@ interface Colorway {
   /** Text colors on light backgrounds (darker shades) and dark backgrounds (lighter shades). */
   light: { aff: string; neg: string };
   dark: { aff: string; neg: string };
+  /** Muted shades tuned for the Soft backgrounds instead of hue-only conversion. */
+  softLight?: { aff: string; neg: string };
+  softDark?: { aff: string; neg: string };
 }
 
 /** Curated two-color sets; the first color is the first side (aff / gov). */
 export const FLOW_COLORWAYS: Record<string, Colorway> = {
+  'sage-plum': { label: 'Sage & Plum', light: { aff: '#32644c', neg: '#764565' }, dark: { aff: '#add6bd', neg: '#dfb2d1' }, softLight: { aff: '#32644c', neg: '#764565' }, softDark: { aff: '#add6bd', neg: '#dfb2d1' } },
+  'slate-rose': { label: 'Slate & Rose', light: { aff: '#405e7d', neg: '#8c4559' }, dark: { aff: '#afcae4', neg: '#efb5c4' }, softLight: { aff: '#405e7d', neg: '#8c4559' }, softDark: { aff: '#afcae4', neg: '#efb5c4' } },
+  'periwinkle-apricot': { label: 'Periwinkle & Apricot', light: { aff: '#57568a', neg: '#89502f' }, dark: { aff: '#c5c1ee', neg: '#edc3a1' }, softLight: { aff: '#57568a', neg: '#89502f' }, softDark: { aff: '#c5c1ee', neg: '#edc3a1' } },
+  'seafoam-lilac': { label: 'Seafoam & Lilac', light: { aff: '#28686a', neg: '#795387' }, dark: { aff: '#a9dcd5', neg: '#d8bce6' }, softLight: { aff: '#28686a', neg: '#795387' }, softDark: { aff: '#a9dcd5', neg: '#d8bce6' } },
+  'denim-copper': { label: 'Denim & Copper', light: { aff: '#3b5c82', neg: '#8b4c38' }, dark: { aff: '#b0cbe9', neg: '#edbba7' }, softLight: { aff: '#3b5c82', neg: '#8b4c38' }, softDark: { aff: '#b0cbe9', neg: '#edbba7' } },
+  'olive-mauve': { label: 'Olive & Mauve', light: { aff: '#586329', neg: '#805272' }, dark: { aff: '#cad59e', neg: '#dcb7d0' }, softLight: { aff: '#586329', neg: '#805272' }, softDark: { aff: '#cad59e', neg: '#dcb7d0' } },
   'green-pink': { label: 'Green & Pink', light: { aff: '#15803d', neg: '#db2777' }, dark: { aff: '#4ade80', neg: '#f472b6' } },
   'yellow-purple': { label: 'Yellow & Purple', light: { aff: '#a16207', neg: '#7e22ce' }, dark: { aff: '#facc15', neg: '#c084fc' } },
   'teal-orange': { label: 'Teal & Orange', light: { aff: '#0f766e', neg: '#c2410c' }, dark: { aff: '#2dd4bf', neg: '#fb923c' } },
@@ -178,11 +187,28 @@ function hexHueSat(hex: string): { h: number; s: number } {
   return { h: h < 0 ? h + 360 : h, s };
 }
 
-/** Flower's pastel side color for a colorway shade: hsl(h 60% 80%) on dark, hsl(h 90% 30%) on light; grays stay gray. */
+/** Pastels on dark; deepen bright light-theme hues until text stays readable. */
 export function pastelSideColor(hex: string, dark: boolean): string {
   const { h, s } = hexHueSat(hex);
   if (s < 0.1) return dark ? 'hsl(0 0% 85%)' : 'hsl(0 0% 25%)';
-  return dark ? `hsl(${h} 60% 80%)` : `hsl(${h} 90% 30%)`;
+  if (dark) return `hsl(${h} 60% 80%)`;
+  let lightness = 30;
+  while (lightness > 20 && hexLuminance(flowColorPickerValue(`hsl(${h} 90% ${lightness}%)`)) > .16) lightness--;
+  return `hsl(${h} 90% ${lightness}%)`;
+}
+function hexLuminance(hex: string): number {
+  const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+  return c[0]! * .2126 + c[1]! * .7152 + c[2]! * .0722;
+}
+/** Native color inputs require hex, even when the theme uses HSL. */
+export function flowColorPickerValue(color: string): string {
+  if (/^#[0-9a-f]{6}$/i.test(color)) return color.toLowerCase();
+  const hsl = /^hsl\(([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\)$/.exec(color);
+  if (!hsl) return '#000000';
+  const h = Number(hsl[1]), s = Number(hsl[2]) / 100, l = Number(hsl[3]) / 100;
+  const a = s * Math.min(l, 1 - l);
+  const channel = (n: number) => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0'); };
+  return '#' + channel(0) + channel(8) + channel(4);
 }
 const SIZES: Record<FlowTextSize, string> = { small: '0.8rem', medium: '0.9rem', large: '1.05rem' };
 
@@ -244,6 +270,8 @@ export function onFlowThemeChange(fn: (theme: FlowTheme) => void): () => void {
 export function colorwayColors(colorway: string, base: FlowBaseId): { aff: string; neg: string } {
   const cw = FLOW_COLORWAYS[colorway] ?? FLOW_COLORWAYS[DEFAULT_FLOW_THEME.colorway]!;
   const spec = FLOW_BASES[base];
+  if (base === 'soft' && cw.softLight) return cw.softLight;
+  if (base === 'soft-dark' && cw.softDark) return cw.softDark;
   const shade = spec.dark ? cw.dark : cw.light;
   if (!spec.pastel) return shade;
   return { aff: pastelSideColor(shade.aff, spec.dark), neg: pastelSideColor(shade.neg, spec.dark) };
@@ -267,6 +295,7 @@ export function applyFlowTheme(root: HTMLElement, theme: FlowTheme): void {
   root.style.setProperty('--flow-accent', colors.aff);
   root.style.setProperty('--flow-font', FONT_STACKS[theme.font ?? base.font]);
   root.style.setProperty('--flow-weight', FONT_WEIGHTS[theme.font ?? base.font]);
+  root.style.setProperty('--flow-selection-bg', base.dark ? 'color-mix(in srgb, var(--flow-bg) 72%, black)' : 'var(--flow-bg)');
   root.style.setProperty('--flow-size', SIZES[theme.size]);
   root.dataset['flowTheme'] = theme.base;
   root.dataset['flowColorway'] = theme.colorway;
