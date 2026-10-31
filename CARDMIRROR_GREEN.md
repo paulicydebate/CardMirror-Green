@@ -1,10 +1,12 @@
 # CardMirror Green
 
-## Latest Flow clarification (2026-10-30, preparing 1.16.21)
+## Latest Flow clarification (2026-10-30, released 1.16.21)
 
 The user's Flower screenshot clarifies that speech columns should alternate between two neutral shades, independently of text color. Soft now alternates white / 97% gray; Soft dark alternates 16% / 18% gray. The opaque speech headers follow the same bands. This uses existing column indexes, so consecutive speeches from the same side still alternate. No Flower source was copied.
 
-Validation: 32 focused Flow/theme tests, TypeScript and web build passed. The isolated headless appearance check passed both Soft bases across all 17 text palettes, plus narrow-pane/small-screen cases, verifying neutral alternating backgrounds, matching headers, palette independence and selection contrast. No visible desktop apps were launched. This is source work beyond published 1.16.20; desktop packaging/publication remains the next step.
+Validation: 32 focused Flow/theme tests, TypeScript and web build passed. The isolated headless appearance check passed both Soft bases across all 17 text palettes, plus narrow-pane/small-screen cases, verifying neutral alternating backgrounds, matching headers, palette independence and selection contrast. No visible desktop apps were launched.
+
+Published [1.16.21](https://github.com/paulicydebate/CardMirror-Green/releases/tag/v1.16.21) from f590f9893ab533bf92feb982a1df56233818ce59. [Release workflow](https://github.com/paulicydebate/CardMirror-Green/actions/runs/41171098615): Windows x64 and Mac ARM64 full suites, packaging, architecture/resources and updater checks passed; release artifacts 13030504819 (Windows) and 13031525047 (Mac) present/unexpired. [Preview workflow](https://github.com/paulicydebate/CardMirror-Green/actions/runs/41171096385): both platforms passed, artifacts 13030844056 (Windows) and 13031311838 (Mac) present/unexpired at the same source. [Feature checks](https://github.com/paulicydebate/CardMirror-Green/actions/runs/41171096460) and [web build/deployment](https://github.com/paulicydebate/CardMirror-Green/actions/runs/41171096483), including browser appearance tests, passed. Public latest.yml and latest-mac.yml independently verified at 1.16.21 with Green filenames and SHA512 metadata. User desktop acceptance remains pending. Continue on feature/full-card-api; main was not changed.
 
 Personal fork: https://github.com/paulicydebate/CardMirror-Green
 Active branch: `feature/full-card-api`. PR #1 remains draft; do not merge or modify main.

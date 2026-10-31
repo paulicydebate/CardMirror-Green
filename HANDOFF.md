@@ -1,6 +1,6 @@
 # CardMirror Green handoff
 
-Latest source change (2026-10-30): Soft/Soft dark now alternate neutral column shades, including headers, matching the user's Flower screenshot. Text palettes do not affect the bands. Focused tests (32), typecheck, build and headless appearance checks passed. Not yet released beyond 1.16.20; see CARDMIRROR_GREEN.md for details. Desktop packaging/publication remains pending.
+Latest verified release (2026-10-30): 1.16.21, source f590f989. Soft/Soft dark now alternate neutral column shades, including headers, matching the user's Flower screenshot. Text palettes do not affect the bands. Both platform release and preview jobs/artifacts, web deployment and feature checks passed; public Windows/Mac updater feeds verified at 1.16.21. Use Help > Check for Updates, save work, then Restart to install. See CARDMIRROR_GREEN.md for validation links. No main changes or visible desktop launches were made.
 
 This document is the starting point for a new LLM or developer. The previous chat and the Windows desktop do not need to be available.
 
