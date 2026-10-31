@@ -1,6 +1,6 @@
-CardMirror Green 1.16.20 — Neutral Soft Flow backgrounds
+CardMirror Green 1.16.21 — Alternating neutral Flow columns
 
-Soft and Soft dark now use neutral background layers instead of speech-colored column tints. Text keeps the chosen side colors. Speech-label pills, active sheet tabs, Prep cells and focus shading also use neutral backgrounds, with clear outlines for the active cell.
+Soft and Soft dark now alternate between two neutral column shades, including the speech headers. Text keeps the chosen side colors, independently of column shading. This makes adjacent speeches easier to distinguish, including consecutive speeches from the same side.
 
 Choose Soft or Soft dark under Flow > Appearance. All 17 text colorways, the full highlight-shortcut field, wrapping background options and earlier Flow improvements remain available. Other backgrounds and document contents are unchanged.
 

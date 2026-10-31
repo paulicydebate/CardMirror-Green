@@ -1,6 +1,6 @@
 # CardMirror Green
 
-## Latest Flow clarification (2026-10-30, unreleased)
+## Latest Flow clarification (2026-10-30, preparing 1.16.21)
 
 The user's Flower screenshot clarifies that speech columns should alternate between two neutral shades, independently of text color. Soft now alternates white / 97% gray; Soft dark alternates 16% / 18% gray. The opaque speech headers follow the same bands. This uses existing column indexes, so consecutive speeches from the same side still alternate. No Flower source was copied.
 
