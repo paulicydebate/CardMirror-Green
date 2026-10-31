@@ -69,6 +69,29 @@ function clickPromptButton(label: string): void {
   btn.click();
 }
 
+/** Own the raw SSE readers for the entire capacity test. Dropping fetch's
+ * Response left the dummy editing seats dependent on network/GC lifetime. */
+async function fillRawEditingSeats(roomId: string, prefix: string): Promise<Array<() => Promise<void>>> {
+  const close: Array<() => Promise<void>> = [];
+  try {
+    for (let i = 0; i < 9; i++) {
+      const controller = new AbortController();
+      const response = await fetch(`${mock.url}/rooms/${roomId}/stream?sid=${prefix}${i}`, {
+        headers: {Authorization: `Bearer ${mock.token}`}, signal: controller.signal,
+      });
+      if (!response.ok || !response.body) { controller.abort(); throw new Error(`Dummy editing seat refused: ${response.status}`); }
+      const reader = response.body.getReader();
+      const drain = (async () => {
+        try { while (!(await reader.read()).done) { /* Keep this seat alive. */ } }
+        catch (error) { if (!controller.signal.aborted) throw error; }
+        finally { reader.releaseLock(); }
+      })();
+      close.push(async () => { controller.abort(); await drain; });
+    }
+    return close;
+  } catch (error) { await Promise.all(close.map(stop => stop())); throw error; }
+}
+
 /** Start a session, clicking through the confirm-on-start dialog (names the
  *  doc; "Start Session" / Cancel). Mirrors how the end flow is driven below. */
 async function startSession(deps: Parameters<typeof collabUi.startSessionFlow>[0]): Promise<void> {
@@ -647,15 +670,7 @@ describe('collab UI flows through the editor seams', () => {
     await sleep(80);
     const decoded = decodeShareCode(shareCode)!;
     // Fill the room: the host holds one stream; nine raw ones reach the cap.
-    const raws: AbortController[] = [];
-    for (let i = 0; i < 9; i++) {
-      const ac = new AbortController();
-      raws.push(ac);
-      void fetch(`${mock.url}/rooms/${decoded.roomId}/stream?sid=raw${i}`, {
-        headers: { Authorization: `Bearer ${mock.token}` },
-        signal: ac.signal,
-      }).catch(() => {});
-    }
+    const raws = await fillRawEditingSeats(decoded.roomId, 'raw');
     // Wait for the actual capacity condition: runner load can delay socket
     // registration beyond an arbitrary sleep and accidentally admit the joiner.
     await vi.waitFor(() => expect(mock.streamCount(decoded.roomId)).toBe(10), { timeout: 5000, interval: 25 });
@@ -685,7 +700,7 @@ describe('collab UI flows through the editor seams', () => {
     } finally {
       // Clean up even on failure — leftover live sessions poison later tests.
       stopSpy.mockRestore();
-      for (const ac of raws) ac.abort();
+      await Promise.all(raws.map(stop => stop()));
       await rawHost.stop();
       hostView.destroy();
       viewJ.destroy();
@@ -927,15 +942,7 @@ describe('spectators through the UI flows (view-only sessions, 2026-10-24)', () 
     rawHost.start();
     await sleep(80);
     const decoded = decodeShareCode(shareCode)!;
-    const raws: AbortController[] = [];
-    for (let i = 0; i < 9; i++) {
-      const ac = new AbortController();
-      raws.push(ac);
-      void fetch(`${mock.url}/rooms/${decoded.roomId}/stream?sid=rawf${i}`, {
-        headers: { Authorization: `Bearer ${mock.token}` },
-        signal: ac.signal,
-      }).catch(() => {});
-    }
+    const raws = await fillRawEditingSeats(decoded.roomId, 'rawf');
     await vi.waitFor(() => expect(mock.streamCount(decoded.roomId)).toBe(10), { timeout: 5000, interval: 25 });
     const viewF = mkIndexStyleView('doc-F');
     const depsF = {
@@ -959,7 +966,7 @@ describe('spectators through the UI flows (view-only sessions, 2026-10-24)', () 
       }, { timeout: 5000, interval: 25 });
     } finally {
       mock.setViewPass(null);
-      for (const ac of raws) ac.abort();
+      await Promise.all(raws.map(stop => stop()));
       await collabEndOrLeaveSession('doc-F').catch(() => {});
       await rawHost.stop();
       hostView.destroy();
