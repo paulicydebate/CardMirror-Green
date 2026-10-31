@@ -63,6 +63,11 @@ async function run(){
         for(const colorway of palettes){
           await panel.locator(`[data-colorway="${colorway}"]`).click();
           await panel.getByTitle('Close',{exact:true}).click();
+          const surfaces=await page.locator('.pmd-flow-root').evaluate(root=>{
+            const neutral=element=>{const canvas=document.createElement('canvas');canvas.width=canvas.height=1;const ctx=canvas.getContext('2d');ctx.fillStyle=getComputedStyle(element).backgroundColor;ctx.fillRect(0,0,1,1);const [r,g,b]=ctx.getImageData(0,0,1,1).data;return Math.abs(r-g)<=1&&Math.abs(g-b)<=1;};
+            return [...root.querySelectorAll('.pmd-flow-td,.pmd-flow-chip,.pmd-flow-tab-active')].every(neutral);
+          });
+          assert.equal(surfaces,true,`${base}/${colorway}: speech-colored background remains`);
           for(const col of [0,1]){
             const contrast=await page.locator(`textarea[data-row="0"][data-col="${col}"]`).evaluate(area=>{
               area.dispatchEvent(new MouseEvent('mousedown',{button:0,bubbles:true}));area.dispatchEvent(new MouseEvent('mouseup',{button:0,bubbles:true}));area.focus();

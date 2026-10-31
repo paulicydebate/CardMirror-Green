@@ -100,7 +100,7 @@ export const FLOW_BASES: Record<FlowBaseId, BaseSpec> = {
     },
   },
   // Flower-inspired (Ashwagandhae/debate-flow): softened gray text, pastel
-  // sides, and layers told apart by tint, not lines or shadows.
+  // text colors over neutral layers, without speech-colored column fills.
   soft: {
     label: 'Soft',
     dark: false,
@@ -111,8 +111,8 @@ export const FLOW_BASES: Record<FlowBaseId, BaseSpec> = {
     vars: {
       '--flow-bg': 'hsl(0 0% 100%)', '--flow-panel': 'hsl(0 0% 95%)', '--flow-line': 'hsl(0 0% 94%)', '--flow-text': 'hsl(0 0% 30%)',
       '--flow-muted': 'hsl(0 0% 50%)', '--flow-shadow': 'none',
-      '--flow-tint-aff': 'color-mix(in srgb, var(--flow-aff) 7%, transparent)',
-      '--flow-tint-neg': 'color-mix(in srgb, var(--flow-neg) 7%, transparent)',
+      '--flow-tint-aff': 'var(--flow-bg)',
+      '--flow-tint-neg': 'var(--flow-bg)',
       '--flow-stripe': 'transparent',
       '--flow-hl': 'rgba(34, 230, 80, 0.30)',
     },
@@ -127,8 +127,8 @@ export const FLOW_BASES: Record<FlowBaseId, BaseSpec> = {
     vars: {
       '--flow-bg': 'hsl(0 0% 16%)', '--flow-panel': 'hsl(0 0% 10%)', '--flow-line': 'hsl(0 0% 19%)', '--flow-text': 'hsl(0 0% 80%)',
       '--flow-muted': 'hsl(0 0% 60%)', '--flow-shadow': 'none',
-      '--flow-tint-aff': 'color-mix(in srgb, var(--flow-aff) 8%, transparent)',
-      '--flow-tint-neg': 'color-mix(in srgb, var(--flow-neg) 8%, transparent)',
+      '--flow-tint-aff': 'var(--flow-bg)',
+      '--flow-tint-neg': 'var(--flow-bg)',
       '--flow-stripe': 'transparent',
       '--flow-hl': 'rgba(57, 255, 20, 0.22)',
     },
@@ -302,6 +302,7 @@ export function applyFlowTheme(root: HTMLElement, theme: FlowTheme): void {
   root.classList.toggle('pmd-flow-dark', base.dark);
   root.classList.toggle('pmd-flow-usefills', base.fills);
   root.classList.toggle('pmd-flow-stripes', base.stripes);
+  root.classList.toggle('pmd-flow-neutral', theme.base === 'soft' || theme.base === 'soft-dark');
 }
 
 /** Template fill slot for a speech column: the parli template colors each

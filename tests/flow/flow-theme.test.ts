@@ -55,6 +55,7 @@ describe('flow theme', () => {
     expect(FLOW_BASES['soft-dark']).toMatchObject({ label: 'Soft dark', dark: true, font: 'soft', pastel: true });
     expect(FLOW_BASES['soft-dark'].vars).toMatchObject({ '--flow-text': 'hsl(0 0% 80%)', '--flow-bg': 'hsl(0 0% 16%)', '--flow-panel': 'hsl(0 0% 10%)', '--flow-shadow': 'none' });
     expect(FLOW_BASES.soft.vars).toMatchObject({ '--flow-text': 'hsl(0 0% 30%)', '--flow-panel': 'hsl(0 0% 95%)', '--flow-shadow': 'none' });
+    for (const base of ['soft', 'soft-dark'] as const) expect(FLOW_BASES[base].vars).toMatchObject({'--flow-tint-aff':'var(--flow-bg)','--flow-tint-neg':'var(--flow-bg)'});
     expect(normalizeTheme({ base: 'soft-dark' }).base).toBe('soft-dark');
     expect(pastelSideColor('#4ade80', true)).toMatch(/^hsl\(\d+ 60% 80%\)$/);
     expect(pastelSideColor('#15803d', false)).toMatch(/^hsl\(\d+ 90% (?:2\d|30)%\)$/);

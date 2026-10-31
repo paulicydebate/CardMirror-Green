@@ -11372,6 +11372,12 @@ body.pmd-recovery-active.pmd-multi-doc #app {
 .pmd-flow-prep .pmd-flow-cell { color: var(--flow-text); caret-color: var(--flow-text); }
 .pmd-flow-prep .pmd-flow-cell:focus { box-shadow: 0 0 0 2px var(--flow-text), 0 0 0 6px color-mix(in srgb, var(--flow-text) 14%, transparent); }
 .pmd-flow-cell:focus { position: relative; z-index: 1; }
+/* Soft themes separate layers with gray tones; side colors belong to text. */
+.pmd-flow-neutral .pmd-flow-head .pmd-flow-chip,
+.pmd-flow-neutral .pmd-flow-tab-active { background: color-mix(in srgb, var(--flow-text) 7%, transparent); }
+.pmd-flow-neutral .pmd-flow-td.pmd-flow-prep { background: var(--flow-panel); }
+.pmd-flow-neutral .pmd-flow-cell:focus { box-shadow: 0 0 0 2px currentColor, 0 0 0 6px color-mix(in srgb, var(--flow-text) 10%, transparent); }
+.pmd-flow-neutral .pmd-flow-docsec:focus { background: color-mix(in srgb, var(--flow-text) 6%, transparent); }
 .pmd-flow-bold { font-weight: 700; }
 .pmd-flow-crossed { text-decoration: line-through; text-decoration-thickness: 2px; opacity: 0.5; }
 .pmd-flow-extended { box-shadow: inset 3px 0 0 currentColor; }
