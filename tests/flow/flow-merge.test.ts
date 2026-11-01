@@ -1,25 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { EditHistory, maxFlowClock, mergeIncoming, stampFlowEdit } from '../../src/flow/flow-merge.js';
-import { newWorkbook, parseFlow, serializeFlow, setCell, setPrep, moveSheet, addPrepOption, setNamedPrep, insertRows, deleteRows } from '../../src/flow/flow-model.js';
+import { newWorkbook, parseFlow, serializeFlow, setCell, setPrep, moveSheet, addPrepOption, setNamedPrep, insertRows, deleteRows, DEFAULT_FLOW_ROWS } from '../../src/flow/flow-model.js';
 
 describe('versioned flow cell merges', () => {
   it('keeps a newly appended row when receiving a stale snapshot', () => {
     const base = newWorkbook(), id = base.sheets[0]!.id;
-    const appended = insertRows(base, id, 50);
-    const mine = stampFlowEdit(base, setCell(appended, id, 50, 0, {text:'New argument'}), 'a', 1);
+    const appended = insertRows(base, id, DEFAULT_FLOW_ROWS);
+    const mine = stampFlowEdit(base, setCell(appended, id, DEFAULT_FLOW_ROWS, 0, {text:'New argument'}), 'a', 1);
     const theirs = stampFlowEdit(base, setCell(base, id, 0, 1, {text:'Partner'}), 'b', 1);
     const merged = mergeIncoming(theirs, mine, new EditHistory(), 0).book;
     expect(merged.sheets[0]!.rows.some(row => row.cells[0]!.text === 'New argument')).toBe(true);
   });
   it('converges when both sides add rows at the same position', () => {
     const base = newWorkbook(), id = base.sheets[0]!.id;
-    const a = stampFlowEdit(base, setCell(insertRows(base,id,50),id,50,0,{text:'A'}),'a',1);
-    const b = stampFlowEdit(base, setCell(insertRows(base,id,50),id,50,1,{text:'B'}),'b',1);
+    const n = DEFAULT_FLOW_ROWS;
+    const a = stampFlowEdit(base, setCell(insertRows(base,id,n),id,n,0,{text:'A'}),'a',1);
+    const b = stampFlowEdit(base, setCell(insertRows(base,id,n),id,n,1,{text:'B'}),'b',1);
     const ab = mergeIncoming(a,b,new EditHistory(),0).book;
     const ba = mergeIncoming(b,a,new EditHistory(),0).book;
     expect(serializeFlow(ab)).toBe(serializeFlow(ba));
-    expect(ab.sheets[0]!.rows.slice(50).map(row => [row.cells[0]!.text,row.cells[1]!.text])).toEqual([['A',''],['','B']]);
-    expect(parseFlow(serializeFlow(ab)).sheets[0]!.rows.length).toBe(52);
+    expect(ab.sheets[0]!.rows.slice(n).map(row => [row.cells[0]!.text,row.cells[1]!.text])).toEqual([['A',''],['','B']]);
+    expect(parseFlow(serializeFlow(ab)).sheets[0]!.rows.length).toBe(n + 2);
   });
   it('does not resurrect a deliberately deleted row from an old snapshot', () => {
     const base = newWorkbook(), id = base.sheets[0]!.id;

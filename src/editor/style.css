@@ -4815,6 +4815,15 @@ html.pmd-pill-tray-active body:not(.pmd-multi-doc) #editor .ProseMirror {
 html.pmd-pill-tray-active .pmd-pane-pill-anchored .pmd-pane-editor .ProseMirror {
   padding-bottom: 4.5rem;
 }
+/* A flow scrolls inside its own grid, so the editor runway above doesn't
+   reach it: add the same runway after the grid's last row, so the bottom
+   cells can scroll clear of the Send / Receive pills. */
+html.pmd-pill-tray-active body:not(.pmd-multi-doc) .pmd-flow-gridwrap::after,
+html.pmd-pill-tray-active .pmd-pane-pill-anchored .pmd-flow-gridwrap::after {
+  content: '';
+  display: block;
+  height: 4.5rem;
+}
 
 /* ---- Dropzone shelf (cross-window scratch space) ----
    The visible "pill" is `.pmd-dropzone-bar`; the root has no chrome of

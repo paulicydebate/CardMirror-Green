@@ -86,7 +86,7 @@ describe('flow NodeView', () => {
     const heads = Array.from(v.dom.querySelectorAll('.pmd-flow-head'));
     expect(heads.map((h) => h.textContent)).toEqual(['PMC', 'LOC', 'MG', 'MO', 'LOR', 'PMR']);
     expect(heads.map((h) => h.classList.contains('pmd-flow-side-aff'))).toEqual([true, false, true, false, false, true]);
-    expect(v.dom.querySelectorAll('textarea.pmd-flow-cell')).toHaveLength(6 * 50);
+    expect(v.dom.querySelectorAll('textarea.pmd-flow-cell')).toHaveLength(6 * 100);
   });
 
   it('commits typing to the document, survives save/load, and undoes', () => {
@@ -130,20 +130,38 @@ describe('flow NodeView', () => {
     expect(c.classList.contains('pmd-flow-crossed')).toBe(true);
   });
 
+  it('a click in the empty space below a short cell selects that cell', async () => {
+    const v = mount();
+    const target = cell(v, 3, 2);
+    type(target, 'MG answer');
+    const td = target.closest('td')!;
+    const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 });
+    td.dispatchEvent(down);
+    expect(down.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(target);
+    expect(target.selectionStart).toBe('MG answer'.length);
+    expect(td.classList.contains('pmd-flow-cell-selected')).toBe(true);
+    // Clicks on the text box itself keep their normal behavior.
+    const direct = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1 });
+    cell(v, 4, 2).dispatchEvent(direct);
+    expect(direct.defaultPrevented).toBe(false);
+    window.dispatchEvent(new MouseEvent('mouseup'));
+  });
+
   it('appends a row in the Prep column and keeps its content on save', async () => {
     const v = mount();
-    const last = cell(v, 49, 1);
+    const last = cell(v, 99, 1);
     last.focus();
     key(last, 'P', { ctrlKey: true, metaKey: true, shiftKey: true });
     await frame();
-    const prep = v.dom.querySelector<HTMLTextAreaElement>('textarea[data-row="49"][data-col="prep"]')!;
+    const prep = v.dom.querySelector<HTMLTextAreaElement>('textarea[data-row="99"][data-col="prep"]')!;
     prep.focus();
     key(prep, 'Enter');
-    const next = v.dom.querySelector<HTMLTextAreaElement>('textarea[data-row="50"][data-col="prep"]')!;
+    const next = v.dom.querySelector<HTMLTextAreaElement>('textarea[data-row="100"][data-col="prep"]')!;
     expect(document.activeElement).toBe(next);
     type(next, 'Next answer');
     const reopened = parseNative(serializeNative(v.state.doc)).doc;
-    expect(parseFlow(String(reopened.firstChild!.attrs['data'])).sheets[0]!.rows[50]!.prep?.text).toBe('Next answer');
+    expect(parseFlow(String(reopened.firstChild!.attrs['data'])).sheets[0]!.rows[100]!.prep?.text).toBe('Next answer');
   });
 
   it('adds, renames and deletes sheets', async () => {

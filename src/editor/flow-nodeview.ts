@@ -836,17 +836,36 @@ export class FlowWorkbookView implements NodeView {
       td.setAttribute('role', 'gridcell');
       td.setAttribute('aria-selected', 'false');
       td.appendChild(this.renderCell(cellAt(sheet, r, col), r, col));
+      td.addEventListener('mousedown', this.onCellPadMouseDown);
       tr.appendChild(td);
       if (col === prepAfter) {
         const ptd = el('td', 'pmd-flow-td pmd-flow-prep');
         ptd.setAttribute('role', 'gridcell');
         ptd.setAttribute('aria-selected', 'false');
         ptd.appendChild(this.renderCell(this.cellOf(r, 'prep'), r, 'prep'));
+        ptd.addEventListener('mousedown', this.onCellPadMouseDown);
         tr.appendChild(ptd);
       }
     });
     return tr;
   }
+
+  /** A row is as tall as its longest cell, so a shorter cell's text box ends
+   *  above the bottom of the row. A click in that empty space lands on the
+   *  table cell: treat it as a click on the cell's text box (selection, Shift
+   *  and Ctrl/Cmd clicks, dragging across cells), with the caret at the end. */
+  private onCellPadMouseDown = (event: MouseEvent): void => {
+    if (event.button !== 0 || !(event.target instanceof Element) || event.target.closest('textarea')) return;
+    const area = (event.currentTarget as HTMLElement).querySelector<HTMLTextAreaElement>('textarea.pmd-flow-cell');
+    if (!area) return;
+    event.preventDefault(); // keep focus from landing on the table
+    area.dispatchEvent(new MouseEvent('mousedown', {
+      button: event.button, buttons: event.buttons, clientX: event.clientX, clientY: event.clientY,
+      shiftKey: event.shiftKey, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, cancelable: true,
+    }));
+    area.focus();
+    if (!event.shiftKey && !event.ctrlKey && !event.metaKey) area.setSelectionRange(area.value.length, area.value.length);
+  };
 
   /** A cell: a textarea over a backdrop that paints its highlighted ranges. */
   private renderCell(cell: FlowCell, row: number, col: ColKey): HTMLElement {

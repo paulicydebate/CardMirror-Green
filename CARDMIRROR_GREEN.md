@@ -417,3 +417,16 @@ A live co-edited document can move from a pane to a separate desktop window, inc
 ### Find in Flow (1.16.25, 2026-11-01)
 
 Cmd+F / Ctrl+F and the Flow Find button search speech cells and all default and named Prep columns across the workbook, including hidden sheets. Enter / Shift+Enter and arrow buttons navigate, reveal the target sheet and Prep, and mark the matched text. Escape closes the bar and selects the match for editing. Search is read-only and leaves collaboration data unchanged. Normal document Find remains separate. Automated NodeView, co-edit, and document-search tests cover the behavior; no live desktop UI test was run.
+
+### Flow cell clicks, 100 rows, pill clearance (1.16.26, Claude, 2026-11-01)
+
+Redone in the cloud session: the previous assistant's local edits for these were never pushed.
+- **Click anywhere in a cell:** a `mousedown` on a table cell outside its text box is forwarded to the cell's text box, so selection, Shift-click, Ctrl/Cmd-click and drag behave the same, and the caret goes to the end of the text. This is `onCellPadMouseDown` in `src/editor/flow-nodeview.ts`.
+- **100 rows:** `DEFAULT_FLOW_ROWS` is now 100. New sheets get 100 rows, and `parseFlow` pads existing flows to 100 with deterministic row ids.
+- **Pill clearance:** while the pill tray is shown, the Flow grid gets a 4.5rem runway after its last row (`.pmd-flow-gridwrap::after`). This uses the same gating as the editor runway, including only the anchored pane in three-pane mode.
+- **Verification:** a headless Chromium check on the web build showed:
+  - a click 100px below a short cell's text focused that cell with the caret at the end;
+  - 100 rows;
+  - 72px of space below the last row when scrolled to the bottom.
+
+  The flow tests (77) pass, including a new test for clicking below a short cell. No desktop app was launched.

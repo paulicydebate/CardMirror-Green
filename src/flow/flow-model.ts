@@ -114,7 +114,7 @@ export const FLOW_FORMATS: Record<string, FlowFormatPreset> = {
   },
 };
 
-export const DEFAULT_FLOW_ROWS = 50;
+export const DEFAULT_FLOW_ROWS = 100;
 const MAX_TEXT = 100_000;
 const MAX_ROWS = 5_000;
 const MAX_COLUMNS = 40;

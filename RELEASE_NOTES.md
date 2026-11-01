@@ -1,6 +1,7 @@
-CardMirror Green 1.16.25 — Find in Flow
+CardMirror Green 1.16.26 — Easier Flow cell clicks, more rows, bottom clearance
 
-- Press Cmd+F on Mac or Ctrl+F on Windows inside a Flow, or use the Find button. Search across all sheets and speech cells, including hidden default and named Prep columns. Enter moves to the next match; Shift+Enter moves back. Escape closes Find and selects the match.
-- Includes the Flow co-edit repair and co-edited document pop-out from previous releases. All Flow collaborators need 1.16.23 or later.
+- Click anywhere in a Flow cell to select it. A row is as tall as its longest cell, and the empty space below a shorter cell's text now selects that cell, with the cursor at the end of its text. Shift-click, Ctrl/Cmd-click and dragging across cells work there too.
+- Flows start with 100 rows instead of 50. Existing flows open with at least 100 rows; rows you already have are unchanged.
+- The last rows of a Flow can now scroll above the Send / Receive pills instead of staying hidden behind them.
 
 Use Help > Check for Updates, then restart to install.
