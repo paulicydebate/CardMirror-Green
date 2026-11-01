@@ -96,6 +96,7 @@ function autoGrow(area: HTMLTextAreaElement): void {
 /** A grid cell: a speech column index, or 'prep' for the row's Prep cell. */
 type ColKey = number | 'prep';
 interface FocusSpot { row: number; col: ColKey; caret: number | 'end' }
+interface FlowFindMatch { sheetId: string; rowId: string; col: ColKey; prepId: string; start: number; end: number }
 
 const colAttr = (col: ColKey): string => String(col);
 const parseCol = (v: string | undefined): ColKey => (v === 'prep' ? 'prep' : Number(v));
@@ -165,10 +166,19 @@ export class FlowWorkbookView implements NodeView {
   private readonly unsubscribeTheme: () => void;
   private resizeObserver: ResizeObserver | null = null;
   private fitFrame = 0;
+  private findBar: HTMLElement | null = null;
+  private findInput: HTMLInputElement | null = null;
+  private findStatus: HTMLElement | null = null;
+  private findIndex = 0;
 
   constructor(node: PMNode, private readonly view: EditorView, private readonly getPos: () => number | undefined) {
     this.dom = el('div', 'pmd-flow-root');
     this.dom.contentEditable = 'false';
+    this.dom.addEventListener('keydown', event => {
+      if (modKey(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'f') {
+        event.preventDefault(); event.stopPropagation(); this.openFind();
+      }
+    }, true);
     this.lastData = String(node.attrs['data'] ?? '');
     this.book = this.parse(this.lastData);
     this.clock = maxFlowClock(this.book);
@@ -412,12 +422,105 @@ export class FlowWorkbookView implements NodeView {
     const main = el('div', 'pmd-flow-main');
     main.append(this.renderTopbar(), this.expandedCol === null ? this.renderGrid() : this.renderColumnDoc());
     this.dom.replaceChildren(this.renderSidebar(), main);
+    if (this.findBar) this.dom.appendChild(this.findBar);
     this.paintSelection();
     if (this.appearanceOpen) this.dom.appendChild(this.renderAppearance());
     requestAnimationFrame(() => {
       this.dom.querySelectorAll('textarea').forEach((t) => autoGrow(t));
-      if (focus) this.focusCell(focus);
+      if (focus && !this.findBar?.contains(document.activeElement)) this.focusCell(focus);
     });
+  }
+
+  /** Search the underlying workbook, including sheets and Prep columns not currently visible. */
+  private findMatches(): FlowFindMatch[] {
+    const query = this.findInput?.value.toLowerCase() ?? '';
+    if (!query) return [];
+    const matches: FlowFindMatch[] = [];
+    for (const sheet of this.book.sheets) for (const row of sheet.rows) {
+      const scan = (text: string, col: ColKey, prepId = ''): void => {
+        const haystack = text.toLowerCase();
+        for (let start = 0, at = haystack.indexOf(query, start); at >= 0; at = haystack.indexOf(query, start)) {
+          matches.push({sheetId: sheet.id, rowId: row.id, col, prepId, start: at, end: at + query.length});
+          start = at + Math.max(1, query.length);
+        }
+      };
+      row.cells.forEach((cell, col) => scan(cell.text, col));
+      scan(row.prep?.text ?? '', 'prep');
+      for (const option of sheet.prepOptions ?? []) scan(row.namedPrep?.[option.id]?.text ?? '', 'prep', option.id);
+    }
+    return matches;
+  }
+
+  private openFind(): void {
+    if (!this.findBar) {
+      const bar = el('div', 'pmd-flow-find');
+      bar.setAttribute('role', 'search'); bar.setAttribute('aria-label', 'Find in Flow');
+      const input = el('input', 'pmd-flow-find-input'); input.type = 'search'; input.placeholder = 'Find in Flow'; input.setAttribute('aria-label', 'Find in Flow');
+      const status = el('span', 'pmd-flow-find-status'); status.setAttribute('aria-live', 'polite');
+      const prev = this.tool('↑', 'Previous match', () => this.showFindMatch(-1));
+      const next = this.tool('↓', 'Next match', () => this.showFindMatch(1));
+      const close = this.tool('×', 'Close find', () => this.closeFind());
+      input.addEventListener('input', () => { this.findIndex = 0; this.showFindMatch(0); });
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') { event.preventDefault(); this.showFindMatch(event.shiftKey ? -1 : 1); }
+        else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.closeFind(); }
+      });
+      bar.append(input, status, prev, next, close); this.findBar = bar; this.findInput = input; this.findStatus = status;
+      this.dom.appendChild(bar);
+    }
+    this.findInput!.focus(); this.findInput!.select();
+  }
+
+  private closeFind(): void {
+    const current = this.dom.querySelector<HTMLTextAreaElement>('textarea.pmd-flow-find-current');
+    const start = current?.selectionStart, end = current?.selectionEnd;
+    this.clearFindHighlight();
+    this.findBar?.remove(); this.findBar = null; this.findInput = null; this.findStatus = null;
+    if (current) { current.focus(); current.setSelectionRange(start!, end!); }
+    else if (this.lastCell && this.expandedCol === null) this.focusCell(this.lastCell);
+  }
+
+  private clearFindHighlight(): void {
+    for (const area of this.dom.querySelectorAll<HTMLTextAreaElement>('textarea.pmd-flow-find-current')) {
+      area.classList.remove('pmd-flow-find-current');
+      this.styleCell(area, this.cellOf(Number(area.dataset['row']), parseCol(area.dataset['col'])));
+    }
+  }
+
+  private showFindMatch(direction: number): void {
+    const matches = this.findMatches();
+    this.clearFindHighlight();
+    if (!matches.length) { if (this.findStatus) this.findStatus.textContent = this.findInput?.value ? 'No matches' : ''; return; }
+    this.findIndex = (Math.min(this.findIndex, matches.length - 1) + direction + matches.length) % matches.length;
+    const match = matches[this.findIndex]!;
+    if (this.findStatus) this.findStatus.textContent = `${this.findIndex + 1} of ${matches.length}`;
+    const needsRender = this.sheetId !== match.sheetId || this.expandedCol !== null ||
+      match.col === 'prep' && (this.prepAfter === null || this.activePrep !== match.prepId);
+    this.sheetId = match.sheetId;
+    if (match.col === 'prep') { this.activePrepBySheet.set(this.sheetId, match.prepId); if (this.prepAfter === null || this.prepAfter >= this.sheet.columns.length) this.prepAfter = 0; }
+    if (needsRender) { this.expandedCol = null; this.resetCellSelection(); this.render(); }
+    const row = this.sheet.rows.findIndex(item => item.id === match.rowId);
+    const area = this.dom.querySelector<HTMLTextAreaElement>(`textarea.pmd-flow-cell[data-row="${row}"][data-col="${colAttr(match.col)}"]`);
+    if (area) {
+      area.classList.add('pmd-flow-find-current'); area.setSelectionRange(match.start, match.end);
+      const backdrop = area.parentElement?.querySelector<HTMLElement>('.pmd-flow-backdrop');
+      if (backdrop) {
+        const cell = this.cellOf(row, match.col);
+        const boundaries = new Set([0, cell.text.length, match.start, match.end]);
+        for (const [start, end] of cell.hl ?? []) { boundaries.add(start); boundaries.add(end); }
+        const points = [...boundaries].sort((a, b) => a - b); backdrop.replaceChildren();
+        for (let i = 0; i < points.length - 1; i++) {
+          const start = points[i]!, end = points[i + 1]!, part = cell.text.slice(start, end);
+          const searchHit = start >= match.start && end <= match.end;
+          const highlight = cell.hl?.some(([a, b]) => start >= a && end <= b);
+          if (searchHit || highlight) { const mark = el('mark', searchHit ? 'pmd-flow-find-mark' : 'pmd-flow-mark', part); backdrop.append(mark); }
+          else backdrop.append(part);
+        }
+        if (cell.text.endsWith('\n')) backdrop.append('\u200b');
+      }
+      area.scrollIntoView?.({block: 'nearest', inline: 'nearest'});
+      this.lastCell = {row, col: match.col, caret: match.start};
+    }
   }
 
   private renderSidebar(): HTMLElement {
@@ -514,6 +617,7 @@ export class FlowWorkbookView implements NodeView {
     const inGrid = this.expandedCol === null;
     if (['nfald', 'policy'].includes(this.book.event)) tools.append(this.tool('Import tags', 'Create a named sheet from an open document’s tags', () => { void this.importTags(); }));
     tools.append(
+      this.tool('Find', `Find in all sheets (${isMac ? 'Cmd' : 'Ctrl'}+F)`, () => this.openFind()),
       this.tool('B', `Bold (${isMac ? 'Cmd' : 'Ctrl'}+B)`, flag('bold'), !inGrid),
       this.tool('S\u0336', `Cross out (${isMac ? 'Cmd' : 'Ctrl'}+Shift+X)`, flag('crossed'), !inGrid),
       this.tool('\u21A6', `Extend (${isMac ? 'Cmd' : 'Ctrl'}+Shift+L)`, flag('extended'), !inGrid),

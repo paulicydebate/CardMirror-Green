@@ -1,6 +1,6 @@
-CardMirror Green 1.16.24 — Live collaboration windows
+CardMirror Green 1.16.25 — Find in Flow
 
-- Pop a co-edited document from a pane into its own window, including during Prep and Round. The session reconnects in the new window before the original pane closes; if the move cannot finish, the app attempts to restore the original session. An active connection is required.
-- Includes the 1.16.23 Flow co-editing repair for concurrently added rows and expanded columns. All Flow collaborators need version 1.16.23 or later.
+- Press Cmd+F on Mac or Ctrl+F on Windows inside a Flow, or use the Find button. Search across all sheets and speech cells, including hidden default and named Prep columns. Enter moves to the next match; Shift+Enter moves back. Escape closes Find and selects the match.
+- Includes the Flow co-edit repair and co-edited document pop-out from previous releases. All Flow collaborators need 1.16.23 or later.
 
-Use Help > Check for Updates, then restart to install. Test the move with your partner before relying on it in a round.
+Use Help > Check for Updates, then restart to install.

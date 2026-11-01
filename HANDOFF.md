@@ -354,3 +354,8 @@ Tests exercise stale incoming snapshots, simultaneous new rows over real Loro pe
 ### Live collaboration pop-out (1.16.24, 2026-11-01)
 
 A live co-edited document can move from a pane to a separate desktop window, including Prep and Round. The source is locked and its session persisted until the target reconnects; a failed move attempts to restore the source. Prep state and Isolation guest restrictions remain enforced. The move requires a connection and an unchanged Prep/Round state during handoff. Synthetic relay and mode-transition tests cover the handoff; a real two-computer desktop test is still needed. Version 1.16.23 was published with both desktop update feeds verified. All Flow collaborators must use 1.16.23 or newer.
+
+
+### Find in Flow (1.16.25, 2026-11-01)
+
+Cmd+F / Ctrl+F and the Flow Find button search speech cells and all default and named Prep columns across the workbook, including hidden sheets. Enter / Shift+Enter and arrow buttons navigate, reveal the target sheet and Prep, and mark the matched text. Escape closes the bar and selects the match for editing. Search is read-only and leaves collaboration data unchanged. Normal document Find remains separate. Automated NodeView, co-edit, and document-search tests cover the behavior; no live desktop UI test was run.

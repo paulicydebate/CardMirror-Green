@@ -11164,6 +11164,12 @@ body.pmd-recovery-active.pmd-multi-doc #app {
 .pmd-flow-root.pmd-flow-selected { outline: none; }
 .pmd-flow-root *:not(textarea)::selection { background: transparent; }
 .pmd-flow-root button { font-family: var(--pmd-ui-font, system-ui, sans-serif); transition: background 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease; }
+.pmd-flow-find { position: absolute; z-index: 20; top: 0.6rem; right: 0.6rem; display: flex; align-items: center; gap: 0.35rem; padding: 0.45rem; border: 1px solid var(--flow-line); border-radius: 8px; background: var(--flow-bg); box-shadow: 0 3px 14px #0003; }
+.pmd-flow-find-input { width: 12rem; min-width: 0; padding: 0.35rem; color: var(--flow-text); background: var(--flow-bg); border: 1px solid var(--flow-line); border-radius: 4px; user-select: text; }
+.pmd-flow-root input.pmd-flow-find-input::selection { background: var(--flow-text); color: var(--flow-bg); }
+.pmd-flow-find-status { min-width: 4.5rem; font-size: 0.8rem; text-align: center; }
+.pmd-flow-cellwrap textarea.pmd-flow-find-current { outline: 3px solid #e29000; outline-offset: -3px; }
+.pmd-flow-find-mark { background: #ffb72c; color: transparent; border-radius: 2px; }
 .pmd-flow-tabs, .pmd-flow-topbar, .pmd-flow-docbar, .pmd-flow-head { font-family: var(--pmd-ui-font, system-ui, sans-serif); font-weight: 400; }
 :is(#editor, .pmd-pane-editor) .pmd-flow-root textarea::selection { background: var(--flow-text); color: var(--flow-bg); }
 

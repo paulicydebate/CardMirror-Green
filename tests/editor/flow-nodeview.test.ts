@@ -48,6 +48,37 @@ function key(area: HTMLElement, k: string, opts: KeyboardEventInit = {}): void {
 }
 
 describe('flow NodeView', () => {
+  it('finds matches across sheets and hidden named Prep columns without changing the workbook', async () => {
+    const v = mount();
+    const data = book(v);
+    data.sheets[0]!.rows[0]!.cells[0]!.text = 'Energy and ENERGY';
+    data.sheets[1]!.rows[2]!.cells[1]!.text = 'energy response';
+    data.sheets[1]!.prepOptions = [{id: 'prep-test', name: 'A2 T'}];
+    data.sheets[1]!.rows[3]!.namedPrep = {'prep-test': {text: 'energy prep'}};
+    v.dispatch(v.state.tr.setNodeMarkup(0, undefined, {data: serializeFlow(data)}));
+    const before = String(v.state.doc.firstChild!.attrs['data']);
+    cell(v, 0, 0).focus(); key(cell(v, 0, 0), 'f', {ctrlKey: true, metaKey: true});
+    const input = v.dom.querySelector<HTMLInputElement>('[aria-label="Find in Flow"] input')!;
+    input.value = 'energy'; input.dispatchEvent(new Event('input', {bubbles: true}));
+    expect(v.dom.querySelector('.pmd-flow-find-status')!.textContent).toBe('1 of 4');
+    expect(cell(v, 0, 0).classList.contains('pmd-flow-find-current')).toBe(true);
+    expect(v.dom.querySelector('.pmd-flow-find-mark')!.textContent).toBe('Energy');
+    key(input, 'Enter'); expect(v.dom.querySelector('.pmd-flow-find-status')!.textContent).toBe('2 of 4');
+    expect(v.dom.querySelector('.pmd-flow-find-mark')!.textContent).toBe('ENERGY');
+    key(input, 'Enter'); expect(v.dom.querySelector('.pmd-flow-title')!.textContent).toBe('Off 1');
+    expect(cell(v, 2, 1).classList.contains('pmd-flow-find-current')).toBe(true);
+    key(input, 'Enter');
+    expect(v.dom.querySelector<HTMLSelectElement>('[aria-label="Choose Prep column"]')!.value).toBe('prep-test');
+    expect(v.dom.querySelector<HTMLTextAreaElement>('textarea[data-row="3"][data-col="prep"]')!.classList.contains('pmd-flow-find-current')).toBe(true);
+    key(input, 'Enter'); expect(v.dom.querySelector('.pmd-flow-title')!.textContent).toBe('Gov case');
+    key(input, 'Enter', {shiftKey: true}); expect(v.dom.querySelector('.pmd-flow-title')!.textContent).toBe('Off 1');
+    input.value = 'not found'; input.dispatchEvent(new Event('input', {bubbles: true}));
+    expect(v.dom.querySelector('.pmd-flow-find-status')!.textContent).toBe('No matches');
+    key(input, 'Escape'); expect(v.dom.querySelector('.pmd-flow-find')).toBeNull();
+    expect(String(v.state.doc.firstChild!.attrs['data'])).toBe(before);
+    await frame();
+  });
+
   it('renders NPDA sheets and colors speeches by side', () => {
     const v = mount();
     const tabs = Array.from(v.dom.querySelectorAll('.pmd-flow-tab')).map((t) => t.textContent);
