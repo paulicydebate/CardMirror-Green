@@ -45,6 +45,10 @@ function audit(kind: Parameters<PrepSession['record']>[0], data: unknown, sender
 export function prepIsProtected(uid: string | null | undefined): boolean {
   return !!uid && !!prepStatus().session?.prepDocIds.includes(uid);
 }
+/** A guarded cross-window handoff may transfer only the source's own document. */
+export function prepWindowOwns(sender: number, uid: string): boolean {
+  return windows.get(sender)?.docs.has(uid) ?? false;
+}
 export function prepNativeRefusal(sender: number, action: string, uid?: string | null): void {
   const state = prepStatus();
   const focused = uid ?? windows.get(sender)?.focused;
@@ -76,7 +80,8 @@ export const prepHandle: typeof ipcMain.handle = (channel, listener) => {
   ipcMain.handle(channel, async (event, ...args: unknown[]) => {
     const sourceUid = windows.get(event.sender.id)?.focused ?? null;
     const check = (): void => {
-      if (roundReadChannels.has(channel) || channel === 'host:opencaselist' && args[0] !== 'status' && args[0] !== 'logout') prepNativeRefusal(event.sender.id, 'open');
+      const roomClaimCheck = channel === 'host:open-path-check' && typeof args[0] === 'string' && /^cardmirror-collab-room:\/\/[0-9a-f]{16,64}$/i.test(args[0]);
+      if (roundReadChannels.has(channel) && !roomClaimCheck || channel === 'host:opencaselist' && args[0] !== 'status' && args[0] !== 'logout') prepNativeRefusal(event.sender.id, 'open');
       if (transferChannels.has(channel)) prepNativeRefusal(event.sender.id, 'transfer');
       if (channel === 'host:spawn-window' && args[0]) {
         const payload = args[0] as { uid?: string; prepBlank?: boolean };

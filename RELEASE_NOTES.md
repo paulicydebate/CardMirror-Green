@@ -1,9 +1,6 @@
-CardMirror Green 1.16.23 — Flow co-editing data-loss repair
+CardMirror Green 1.16.24 — Live collaboration windows
 
-- Preserve newly inserted Flow rows and their contents when a partner concurrently sends an older sheet state; simultaneous additions are kept in a consistent order. Intentional deletions remain tracked, and concurrent edits to a deleted row are preserved.
-- In expanded column view, typing or pressing Enter no longer clears a partner’s new, not-yet-displayed argument. Reopen the expanded column to refresh its list.
-- Keep the cursor on the same row when a partner inserts a row above it.
+- Pop a co-edited document from a pane into its own window, including during Prep and Round. The session reconnects in the new window before the original pane closes; if the move cannot finish, the app attempts to restore the original session. An active connection is required.
+- Includes the 1.16.23 Flow co-editing repair for concurrently added rows and expanded columns. All Flow collaborators need version 1.16.23 or later.
 
-All collaborators must update to 1.16.23 or later before using this repair; older versions do not understand the row metadata. The precise circumstances of the student report are still unconfirmed, and simultaneous edits to the same cell remain whole-cell conflicts. Keep backups of important work.
-
-Co-edit document pop-out remains under separate development. Use Help > Check for Updates, then Restart to install.
+Use Help > Check for Updates, then restart to install. Test the move with your partner before relying on it in a round.

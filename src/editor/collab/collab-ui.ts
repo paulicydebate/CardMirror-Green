@@ -39,6 +39,7 @@ import {
   notifyCollabCopresenceChange,
   setCollabCloseActions,
   setCollabHandoffProvider,
+  setCollabWindowMoveProvider,
   setCollabSessionCountProvider,
   setCollabLiveRoomProbe,
   setCollabFocusChangeHandler,
@@ -252,6 +253,30 @@ export function roomLiveInWindow(roomId: string): boolean {
   return false;
 }
 
+/** A moved session is not acknowledged until its stream is connected and its
+ * pending updates have drained. This also prevents an Isolation copy from
+ * being exposed after the host ended the room during the move. */
+export async function waitForWindowMoveConnection(uid: string, roomId: string, timeoutMs = 20_000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const sess = sessions.get(uid);
+    if (!sess || sess.session.roomId !== roomId) return false;
+    if (sess.lastStatus?.connected && sess.lastStatus.queuedUpdates === 0) return true;
+    await new Promise<void>(resolve => setTimeout(resolve, 100));
+  } while (Date.now() < deadline);
+  return false;
+}
+
+/** Quiesce a failed target before the main process lets the source restore. */
+export async function abortWindowMove(uid: string): Promise<void> {
+  const sess = sessions.get(uid);
+  if (!sess) return;
+  await sess.session.stop().catch(() => {});
+  await sess.persist.flush().catch(() => {});
+  await sess.history.flush().catch(() => {});
+  await teardownSession(sess, true);
+}
+
 /** The session owned by `uid`, or null. */
 function sessionFor(uid: string | null | undefined): ActiveSession | null {
   return uid != null ? sessions.get(uid) ?? null : null;
@@ -278,6 +303,42 @@ setCollabCopresenceProvider((uid) => {
 setCollabCloseActions({
   keepResumable: (uid) => closeKeepResumableSession(uid),
   endOrLeave: (uid) => closeEndOrLeaveSession(uid),
+});
+
+// Moving a session between windows: persist and release the old room claim
+// before the destination starts. The source stays frozen until acknowledgement.
+setCollabWindowMoveProvider(async uid => {
+  const sess = sessionFor(uid);
+  if (!sess) return null;
+  const roomId = sess.session.roomId;
+  const deps = sess.deps;
+  const isolationGuest = isIsolationGuestCopy(sess);
+  const pinned = {
+    ...deps,
+    getOwnerUid: () => uid,
+    getView: () => deps.getViewForUid?.(uid) ?? deps.getView(),
+    refreshPlugins: () => deps.refreshPluginsForUid ? deps.refreshPluginsForUid(uid) : deps.refreshPlugins(),
+  };
+  const restore = async (): Promise<boolean> => {
+    const ok = await resumeSessionFlow(pinned, roomId, {existingDoc:true});
+    return ok && roomLiveInWindow(roomId);
+  };
+  if (!(await closeKeepResumableSession(uid))) return null;
+  // Teardown drops the live flag; keep the guest save restriction while the
+  // original pane is frozen and the transfer is in flight.
+  if (isolationGuest) prepRuntime.isolationCopies.add(uid);
+  const discard = async (): Promise<void> => {
+    await deleteSessionRecord(roomId);
+    await deleteRecentRoom(roomId);
+    await getElectronHost()?.deleteHistory(roomId);
+  };
+  let ready = true;
+  const electron = getElectronHost();
+  if (electron) {
+    try { await electron.openPathRelease(collabRoomClaimKey(roomId)); }
+    catch { ready = false; }
+  }
+  return { roomId, ready, isolationGuest, restore, discard };
 });
 
 // Mode-switch hand-off: flush every live session's record (so unsynced edits
@@ -1870,16 +1931,21 @@ async function endOrLeaveSession(sess: ActiveSession): Promise<boolean> {
 async function closeKeepResumableSession(uid: string): Promise<boolean> {
   const sess = sessionFor(uid);
   if (!sess) return true;
-  await sess.session.stop(); // disconnect only — the room + record survive
+  try { await sess.session.stop(); } // disconnect only — the room + record survive
+  catch { sess.session.start(); return false; }
   // Capture the final state (incl. any still-unsynced edits) AFTER the drain so
   // sentVersion is accurate — VERIFIED: the close path drops the recovery
   // journal, so this record is about to be the doc's only copy. A silent
   // storage failure must abort the close, not lose the doc (audit find,
   // 2026-07-10).
-  if (!(await sess.persist.verifiedFlush())) {
+  let persisted = false;
+  try { persisted = await sess.persist.verifiedFlush(); } catch { persisted = false; }
+  if (!persisted) {
     sess.session.start(); // reconnect; the session stays live, caller aborts
     return false;
   }
+  try { await sess.history.flush(); }
+  catch { sess.session.start(); return false; }
   void teardownSession(sess, /* keepRecord */ true).catch((e) => surfaceError('collab teardown', e));
   refreshChipForFocus(); // repaint from live truth (a stale snapshot left ghost chips — field find, 2026-08-12)
   return true;

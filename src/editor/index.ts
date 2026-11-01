@@ -1038,6 +1038,7 @@ const zoomPct = document.getElementById('zoom-pct')!;
 // so that `applyReadMode` can read `view` without a temporal-dead-zone
 // ReferenceError on initial call.
 let view: EditorView | null = null;
+let receivingCollabPopout = false;
 let currentDoc: PMNode = makeNewDocBody();
 
 /** Multi-doc workspace gate. When true, the multi-pane shell has
@@ -6224,6 +6225,7 @@ function mountView(doc: PMNode, threads: Thread[] = []): void {
       // transactions) BEFORE apply so every filterTransaction sees them.
       // No-op when no session is active.
       tagCollabTransaction(tx, view.state);
+      if (receivingCollabPopout && tx.docChanged && !isSyncOrigin(tx)) return;
       // A user edit inside a region an AI op has leased is rejected and the
       // locked region flashes. AI writes carry a bypass tag, so they pass.
       if (coordinatorBlocks(view.state, tx)) {
@@ -6694,12 +6696,12 @@ async function stampActiveFileDocId(docId: string): Promise<void> {
 /** Adopt the docId read from an opened file (null ⇒ minted on next save)
  *  and register the doc so the Learn "By file" view + open-in-context can
  *  find it. */
-function adoptDocId(docId: string | null, name: string, handle: unknown, format: 'cmir' | 'docx' | null): void {
+function adoptDocId(docId: string | null, name: string, handle: unknown, format: 'cmir' | 'docx' | null, skipSessionPrompt = false): void {
   currentDocId = docId;
   if (docId) {
     learnStore.registerDoc({ docId, path: typeof handle === 'string' ? handle : null, name, format });
   }
-  void checkSessionRejoinForOpenedDoc(docId);
+  if (!skipSessionPrompt) void checkSessionRejoinForOpenedDoc(docId);
 }
 
 /** RoomIds currently mid-prompt — a re-open while the dialog is up
@@ -10800,6 +10802,10 @@ async function initSingleDocBoot(): Promise<void> {
       await mountResumedSession(payload.resumeRoomId);
       return;
     }
+    if (payload.popoutCollabRoomId) {
+      await mountCollabPopout(payload);
+      return;
+    }
     await mountFromSpawnPayload(payload);
     return;
   }
@@ -10933,6 +10939,36 @@ async function mountResumedSession(roomId: string): Promise<void> {
   }
 }
 
+/** Mount the moved document, then rebind its persisted live session before
+ * allowing edits. The main process destroys this window on any failure. */
+async function mountCollabPopout(payload: NonNullable<Awaited<ReturnType<ReturnType<typeof getHost>['getInitialDoc']>>>): Promise<void> {
+  const electron = getElectronHost();
+  receivingCollabPopout = true;
+  document.documentElement.inert = true;
+  let ready = false;
+  let module: Awaited<ReturnType<typeof loadCollabUi>> | null = null;
+  try {
+    await mountFromSpawnPayload(payload);
+    if (!view || !payload.uid || currentDocUid !== payload.uid || !payload.popoutCollabRoomId) throw new Error('Could not mount the moved document');
+    view.dom.inert = true;
+    module = await loadCollabUi();
+    const resumed = await module.resumeSessionFlow(collabDeps, payload.popoutCollabRoomId, {existingDoc:true});
+    ready = resumed && module.roomLiveInWindow(payload.popoutCollabRoomId) &&
+      await module.waitForWindowMoveConnection(payload.uid, payload.popoutCollabRoomId);
+  } catch (err) { console.error('Collaboration pop-out failed:', err); }
+  const accepted = await electron?.collabPopoutReady(ready).catch(() => false) ?? false;
+  if (!accepted) {
+    if (payload.uid) await module?.abortWindowMove(payload.uid).catch(() => {});
+    await electron?.collabPopoutAborted().catch(() => false);
+  }
+  if (ready && accepted && view) {
+    receivingCollabPopout = false;
+    document.documentElement.inert = false;
+    view.dom.inert = false;
+    view.focus();
+  }
+}
+
 /** Mount a SpawnWindowPayload into this freshly-spawned window.
  *  Parses the bytes (cmir → parseNative, docx → fromDocxFull, off-thread),
  *  mounts the result, and sets the doc-state module vars. */
@@ -10981,6 +11017,7 @@ async function mountFromSpawnPayload(
       docId = result.docId;
     }
     currentDocUid = payload.uid ?? newSessionDocUid();
+    if (payload.popoutIsolationGuest) prepRuntime.isolationCopies.add(currentDocUid);
     void prepRestoreIdentity(currentDocUid, docId);
     if (payload.prepMark) prepRuntime.pending.add(currentDocUid);
     mountView(docNode, docThreads);
@@ -10994,7 +11031,7 @@ async function mountFromSpawnPayload(
     if (payload.uid && payload.recoveredFromSavedAt) {
       markRecoveredDraft(payload.uid, payload.recoveredFromSavedAt);
     }
-    adoptDocId(docId, payload.filename, payload.handle, format);
+    adoptDocId(docId, payload.filename, payload.handle, format, !!payload.popoutCollabRoomId);
     // Newly spawned window starts clean — even though it has
     // pre-loaded content from the originating window, it hasn't
     // been edited in THIS window's session. Exception: a mode-

@@ -1,4 +1,5 @@
-import { prepHandle, registerPrepDesktop, trackPrepWindow, prepNativeRefusal, prepIsProtected } from './prep-desktop.js';
+import { CollabPopoutCoordinator, popoutPrepAllowed } from './collab-popout-coordinator.js';
+import { prepHandle, registerPrepDesktop, trackPrepWindow, prepNativeRefusal, prepIsProtected, prepStatus, prepWindowOwns } from './prep-desktop.js';
 /**
  * CardMirror desktop — Electron main process.
  *
@@ -283,6 +284,9 @@ interface InitialDocPayload {
   /** Resume a persisted collaboration session instead of mounting a doc.
    *  Passed through opaquely, like joinShareCode. */
   resumeRoomId?: string;
+  /** Resume this room into the mounted document before acknowledging a move. */
+  popoutCollabRoomId?: string;
+  popoutIsolationGuest?: boolean;
 }
 const pendingInitialDocs = new Map<number, InitialDocPayload>();
 
@@ -1920,6 +1924,8 @@ prepHandle(
 
 prepHandle('host:delete-history', async (_event, roomId: string) => {
   if (typeof roomId !== 'string' || !roomId) return;
+  // A renderer may have been destroyed with a history write still in flight.
+  await historyWriteTails.get(roomId)?.catch(() => {});
   try {
     await fs.unlink(historyPathFor(roomId));
   } catch (err) {
@@ -2043,20 +2049,7 @@ prepHandle('host:learn-op', (_event, op: unknown): Promise<string> => getLearnSt
 // boot to retrieve the payload (or `null` if it was just opened
 // blank). Main owns the pending-map keyed by window id.
 
-prepHandle('host:spawn-window', async (_event, payload: InitialDocPayload | null) => {
-  // `payload.bytes` may arrive as a Buffer / typed array depending on
-  // the IPC transfer; stored as-is — the renderer normalizes at read
-  // time.
-  const newWin = createWindow(payload ?? undefined);
-  // If the spawn carries an on-disk path, claim it for the new
-  // window right away so a concurrent open in a third window
-  // can't sneak in between spawn and the new window's mount.
-  // The spawner doesn't claim in `runOpenFlow` for this path
-  // (it isn't going to host the doc itself), so there's nothing
-  // to transfer FROM — just claim for the new window directly.
-  // (Stale-owner override handles the rare case where the path
-  // was previously owned by a window that died without
-  // releasing.)
+function claimSpawnedDocumentPath(newWin: BrowserWindow, payload: InitialDocPayload | null): void {
   if (payload && typeof payload.handle === 'string' && payload.handle) {
     grantReadPath(payload.handle); // doc handed to a new window stays readable there
     const norm = canonicalOpenPath(payload.handle);
@@ -2072,7 +2065,62 @@ prepHandle('host:spawn-window', async (_event, payload: InitialDocPayload | null
     }
     set.add(norm);
   }
+}
+
+prepHandle('host:spawn-window', async (_event, payload: InitialDocPayload | null) => {
+  // `payload.bytes` may arrive as a Buffer / typed array depending on
+  // the IPC transfer; stored as-is — the renderer normalizes at read
+  // time.
+  const newWin = createWindow(payload ?? undefined);
+  // If the spawn carries an on-disk path, claim it for the new
+  // window right away so a concurrent open in a third window
+  // can't sneak in between spawn and the new window's mount.
+  // The spawner doesn't claim in `runOpenFlow` for this path
+  // (it isn't going to host the doc itself), so there's nothing
+  // to transfer FROM — just claim for the new window directly.
+  // (Stale-owner override handles the rare case where the path
+  // was previously owned by a window that died without
+  // releasing.)
+  claimSpawnedDocumentPath(newWin, payload);
 });
+
+// A pop-out does not succeed until the destination has mounted the document
+// and rebound the live session. Close/timeout/failure always destroys it before
+// the source is allowed to reconnect.
+const collabPopouts = new CollabPopoutCoordinator();
+const collabPopoutPolicies = new Map<number, {uid:string; started:string | null; mode:string | null}>();
+ipcMain.handle('host:spawn-collab-popout', async (event, payload: InitialDocPayload) => {
+  const source = BrowserWindow.fromWebContents(event.sender);
+  if (!source || !payload?.uid || !payload.popoutCollabRoomId) throw new Error('Invalid collaboration window handoff.');
+  const status = prepStatus();
+  if (status.transitioning || status.error || status.session && (!prepIsProtected(payload.uid) || !prepWindowOwns(event.sender.id, payload.uid))) throw new Error('This document cannot be moved during the current Prep / Round state.');
+  const target = createWindow({...payload, popout:true});
+  const targetSender = target.webContents.id;
+  const ready = collabPopouts.wait(targetSender);
+  collabPopoutPolicies.set(targetSender, {uid:payload.uid, started:status.session?.sessionId ?? null, mode:status.session?.mode ?? null});
+  const cancel = (): void => { collabPopouts.complete(targetSender, false); };
+  target.once('closed', cancel); source.once('closed', cancel);
+  try { claimSpawnedDocumentPath(target, payload); }
+  catch { cancel(); }
+  const accepted = await ready;
+  collabPopoutPolicies.delete(targetSender);
+  source.removeListener('closed', cancel);
+  if (!accepted && !target.isDestroyed()) {
+    await new Promise<void>(resolve => { target.once('closed', resolve); target.destroy(); });
+  }
+  return accepted;
+});
+ipcMain.handle('host:collab-popout-ready', async (event, ready: boolean) => {
+  const status = prepStatus();
+  const policy = collabPopoutPolicies.get(event.sender.id);
+  const allowed = ready === true && !!policy && popoutPrepAllowed(policy, {
+    started:status.session?.sessionId ?? null, mode:status.session?.mode ?? null,
+    transitioning:status.transitioning, error:status.error,
+  }, prepIsProtected(policy.uid));
+  if (!allowed) return false; // target first stops and flushes its writers
+  return collabPopouts.complete(event.sender.id, true);
+});
+ipcMain.handle('host:collab-popout-aborted', async event => collabPopouts.complete(event.sender.id, false));
 
 prepHandle('host:get-initial-doc', async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);

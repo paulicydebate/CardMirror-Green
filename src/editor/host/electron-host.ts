@@ -319,6 +319,9 @@ interface ElectronAPI {
   opencaselist?(op: string, ...args: unknown[]): Promise<unknown>;
   onLearnStoreChanged(handler: (json: string) => void): () => void;
   spawnWindow(payload: SpawnWindowPayload | null): Promise<void>;
+  spawnCollabPopout?(payload: SpawnWindowPayload): Promise<boolean>;
+  collabPopoutReady?(ready: boolean): Promise<boolean>;
+  collabPopoutAborted?(): Promise<boolean>;
   getInitialDoc(): Promise<SpawnWindowPayload | null>;
   isFirstWindow(): Promise<boolean>;
   isAppQuitting?(): boolean;
@@ -1044,6 +1047,18 @@ export class ElectronHost implements Host {
 
   async spawnWindow(payload: SpawnWindowPayload | null): Promise<void> {
     await api().spawnWindow(payload);
+  }
+
+  async spawnCollabPopout(payload: SpawnWindowPayload): Promise<boolean> {
+    return await api().spawnCollabPopout?.(payload) ?? false;
+  }
+
+  async collabPopoutReady(ready: boolean): Promise<boolean> {
+    return await api().collabPopoutReady?.(ready) ?? false;
+  }
+
+  async collabPopoutAborted(): Promise<boolean> {
+    return await api().collabPopoutAborted?.() ?? false;
   }
 
   async getInitialDoc(): Promise<SpawnWindowPayload | null> {

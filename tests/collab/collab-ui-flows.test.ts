@@ -23,6 +23,7 @@ import {
   collabCloseKeepResumable,
   collabEndOrLeaveSession,
   collabCaptureSessionHandoff,
+  suspendCollabForWindowMove,
 } from '../../src/editor/collab/collab-hooks.js';
 import { loadSessionRecord, loadRecentRoom } from '../../src/editor/collab/collab-store.js';
 
@@ -807,6 +808,64 @@ describe('collab UI flows through the editor seams', () => {
 
     viewK.destroy();
     viewE.destroy();
+  }, 20_000);
+
+  it('binds the preserved session into a different view after a handoff', async () => {
+    const uid = 'popout-destination'; const source = mkIndexStyleView(uid); const target = mkIndexStyleView(uid);
+    const depsFor = (v: EditorView) => ({getView:()=>v,getOwnerUid:()=>uid,getViewForUid:(id:string)=>id===uid?v:null,
+      refreshPlugins:()=>v.updateState(v.state.reconfigure({plugins:buildMiniPlugins(uid)})),newSessionDoc:()=>true});
+    const api = window.electronAPI as Record<string, unknown>; const previous = api['openPathRelease']; api['openPathRelease'] = async () => {};
+    try {
+      await startSession(depsFor(source));
+      source.dispatch(source.state.tr.insertText(' moved',source.state.doc.content.size-1));
+      const move = await suspendCollabForWindowMove(uid);
+      expect(move).not.toBeNull();
+      const ok = await collabUi.resumeSessionFlow(depsFor(target),move!.roomId,{existingDoc:true});
+      await settle();
+      expect(ok).toBe(true);
+      expect(await collabUi.waitForWindowMoveConnection(uid,move!.roomId,5000)).toBe(true);
+      expect(target.state.doc.textContent).toContain('moved');
+      expect(collabPluginSourceFor(uid)).not.toBeNull();
+    } finally { api['openPathRelease']=previous; await collabEndOrLeaveSession(uid); source.destroy(); target.destroy(); }
+  }, 20_000);
+
+  it('suspends a live session for moving and restores it after a failed destination', async () => {
+    const uid = 'popout-rollback'; const view = mkIndexStyleView(uid);
+    const deps = {getView:()=>view,getOwnerUid:()=>uid,getViewForUid:(id:string)=>id===uid?view:null,
+      refreshPlugins:()=>view.updateState(view.state.reconfigure({plugins:buildMiniPlugins(uid)})),newSessionDoc:()=>true};
+    const api = window.electronAPI as Record<string, unknown>; const previous = api['openPathRelease'];
+    api['openPathRelease'] = async () => {};
+    try {
+      await startSession(deps);
+      const room = collabUi.activeSession()!.roomId;
+      view.dispatch(view.state.tr.insertText(' unsent',view.state.doc.content.size-1));
+      const moved = await suspendCollabForWindowMove(uid);
+      expect(moved?.roomId).toBe(room);
+      expect(collabPluginSourceFor(uid)).toBeNull();
+      expect(await loadSessionRecord(room)).not.toBeNull();
+      expect(await moved!.restore()).toBe(true);
+      expect(collabPluginSourceFor(uid)).not.toBeNull();
+      expect(view.state.doc.textContent).toContain('unsent');
+    } finally { api['openPathRelease']=previous; await collabEndOrLeaveSession(uid); view.destroy(); }
+  }, 20_000);
+
+  it('stops an aborted destination before restoring the original session', async () => {
+    const uid = 'popout-aborted'; const source = mkIndexStyleView(uid); const target = mkIndexStyleView(uid);
+    const depsFor = (v: EditorView) => ({getView:()=>v,getOwnerUid:()=>uid,getViewForUid:(id:string)=>id===uid?v:null,
+      refreshPlugins:()=>v.updateState(v.state.reconfigure({plugins:buildMiniPlugins(uid)})),newSessionDoc:()=>true});
+    const api = window.electronAPI as Record<string, unknown>; const previous = api['openPathRelease']; api['openPathRelease'] = async () => {};
+    try {
+      await startSession(depsFor(source));
+      source.dispatch(source.state.tr.insertText(' preserved',source.state.doc.content.size-1));
+      const move = await suspendCollabForWindowMove(uid);
+      expect(move).not.toBeNull();
+      expect(await collabUi.resumeSessionFlow(depsFor(target),move!.roomId,{existingDoc:true})).toBe(true);
+      await collabUi.abortWindowMove(uid);
+      expect(collabPluginSourceFor(uid)).toBeNull();
+      expect(await loadSessionRecord(move!.roomId)).not.toBeNull();
+      expect(await move!.restore()).toBe(true);
+      expect(source.state.doc.textContent).toContain('preserved');
+    } finally { api['openPathRelease']=previous; await collabEndOrLeaveSession(uid); source.destroy(); target.destroy(); }
   }, 20_000);
 
   it('session flush + keep-resumable close + resume-in-place (existingDoc)', async () => {

@@ -304,6 +304,21 @@ export function collabEndOrLeaveSession(uid: string): Promise<boolean> {
   return closeActions?.endOrLeave(uid) ?? Promise.resolve(true);
 }
 
+/** Suspend exactly one document's collaboration session for a window move.
+ * The returned restore callback reconnects the original on failed handoff. */
+export interface CollabWindowMove {
+  roomId: string;
+  ready: boolean;
+  isolationGuest: boolean;
+  restore(): Promise<boolean>;
+  discard(): Promise<void>;
+}
+let windowMoveProvider: ((uid: string) => Promise<CollabWindowMove | null>) | null = null;
+export function setCollabWindowMoveProvider(provider: typeof windowMoveProvider): void { windowMoveProvider = provider; }
+export function suspendCollabForWindowMove(uid: string): Promise<CollabWindowMove | null> {
+  return windowMoveProvider?.(uid) ?? Promise.resolve(null);
+}
+
 /** Mode-switch flush: the single↔three-pane toggle is a full page reload, so a
  *  live session is torn down by it. Before reloading, FLUSH each live session's
  *  record so unsynced edits persist, and return each one's {uid, roomId}. The

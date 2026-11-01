@@ -407,4 +407,6 @@ export interface SpawnWindowPayload {
    *  new window. Used so resuming while a real doc is open doesn't overwrite
    *  it. The doc fields above are placeholders in this case. */
   resumeRoomId?: string;
+  popoutCollabRoomId?: string;
+  popoutIsolationGuest?: boolean;
 }

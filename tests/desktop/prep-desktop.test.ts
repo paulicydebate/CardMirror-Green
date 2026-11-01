@@ -44,6 +44,22 @@ async function prepDoc() {
 }
 
 describe('desktop Prep controller boundary', () => {
+  it('allows only collaboration-room ownership checks during Round', async () => {
+    await prepDoc();
+    inventory(1, ['prep'], 'prep');
+    await invoke('prep:action', 'round');
+    desktop.prepHandle('host:open-path-check', (_event: unknown, value: string) => value);
+    await expect(invoke('host:open-path-check', `cardmirror-collab-room://${'a'.repeat(32)}`)).resolves.toContain('cardmirror-collab-room://');
+    await expect(invoke('host:open-path-check', '/private/document.docx')).rejects.toThrow('Round Mode');
+    await expect(invoke('host:open-path-check', 'cardmirror-collab-room://../../file')).rejects.toThrow('Round Mode');
+  });
+  it('only recognizes the source window’s own protected documents for a handoff', async () => {
+    await prepDoc();
+    desktop.trackPrepWindow(win(2)); inventory(2, ['other'], 'other');
+    expect(desktop.prepWindowOwns(1, 'prep')).toBe(true);
+    expect(desktop.prepWindowOwns(2, 'prep')).toBe(false);
+    expect(desktop.prepWindowOwns(1, 'other')).toBe(false);
+  });
   it('restricts clipboard operations by focused document and checks explicit transfer destinations', async () => {
     await prepDoc();
     desktop.prepHandle('host:clipboard-read-text', () => 'clipboard');

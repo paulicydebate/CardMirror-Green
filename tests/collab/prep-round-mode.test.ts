@@ -9,10 +9,11 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { EditorState } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { collabPluginsFor, collabPluginSourceFor, tagCollabTransaction } from '../../src/editor/collab/collab-hooks.js';
+import { collabPluginsFor, collabPluginSourceFor, tagCollabTransaction, suspendCollabForWindowMove } from '../../src/editor/collab/collab-hooks.js';
 import { settings } from '../../src/editor/settings.js';
 import { CollabSession } from '../../src/editor/collab/collab-session.js';
 import * as collabUi from '../../src/editor/collab/collab-ui.js';
+import { loadSessionRecord } from '../../src/editor/collab/collab-store.js';
 import { RoomsClient } from '../../src/editor/collab/room-client.js';
 import { prepIsolationCopyBlocked, prepRuntime } from '../../src/editor/prep-runtime.js';
 import { startRoomsMock, type RoomsMock } from './_rooms-mock.js';
@@ -23,7 +24,7 @@ let client: RoomsClient;
 
 beforeAll(async () => {
   mock = await startRoomsMock();
-  (window as unknown as { electronAPI?: unknown }).electronAPI = {};
+  (window as unknown as { electronAPI?: unknown }).electronAPI = {deleteHistory: async () => {}};
   localStorage.setItem('pmd-collab', '1');
   settings.set('pairingRelayUrl', mock.url);
   settings.set('pairingRelayToken', mock.token);
@@ -62,6 +63,63 @@ async function joinAsPartner(uid: string, shareCode: string) {
 }
 
 describe('Round Mode for shared prep docs', () => {
+  it.each(['isolation','coflow'] as const)('keeps %s protections during a window handoff', async mode => {
+    const uid = `move-${mode}`; setMode('prep',[uid]);
+    const {session:host,shareCode} = await CollabSession.host({pmDoc:simpleDoc('Protected'),client,prep:true,roundMode:mode});
+    const {view} = await joinAsPartner(uid,shareCode);
+    if (mode === 'coflow') setMode('round',[uid]);
+    const api = window.electronAPI as Record<string,unknown>; const old = api['openPathRelease']; api['openPathRelease'] = async () => {};
+    try {
+      const moving = await suspendCollabForWindowMove(uid);
+      expect(moving?.ready).toBe(true);
+      expect(moving?.isolationGuest).toBe(mode === 'isolation');
+      if (mode === 'isolation') expect(prepIsolationCopyBlocked(uid)).toBe(true);
+      expect(await moving!.restore()).toBe(true);
+      expect(collabPluginSourceFor(uid)).not.toBeNull();
+      expect(collabUi.isIsolationGuestCopyUid(uid)).toBe(mode === 'isolation');
+      if (mode === 'coflow') expect(collabUi.hasLiveCoflowSession()).toBe(true);
+    } finally {
+      api['openPathRelease'] = old;
+      await collabUi.disconnectForPrep('end'); await host.stop(); view.destroy();
+    }
+  },20_000);
+
+  it.each(['isolation','coflow'] as const)('moves a %s prep session into another view', async mode => {
+    const uid = `move-target-${mode}`; setMode('prep',[uid]);
+    const {session:host,shareCode} = await CollabSession.host({pmDoc:simpleDoc('Protected text'),client,prep:true,roundMode:mode});
+    const {view:source} = await joinAsPartner(uid,shareCode);
+    if (mode === 'coflow') setMode('round',[uid]);
+    const targetEl = document.body.appendChild(document.createElement('div'));
+    const target = new EditorView(targetEl,{state:EditorState.create({doc:simpleDoc(''),plugins:collabPluginsFor(uid)}),
+      dispatchTransaction(tx) {tagCollabTransaction(tx); target.updateState(target.state.apply(tx));}});
+    const deps = {getView:()=>target,getOwnerUid:()=>uid,refreshPlugins:()=>target.updateState(target.state.reconfigure({plugins:collabPluginsFor(uid)})),newSessionDoc:()=>true,discardDoc:vi.fn(async()=>{})};
+    const api = window.electronAPI as Record<string,unknown>; const old = api['openPathRelease']; api['openPathRelease'] = async () => {};
+    try {
+      const move = await suspendCollabForWindowMove(uid); expect(move?.ready).toBe(true);
+      expect(await collabUi.resumeSessionFlow(deps,move!.roomId,{existingDoc:true})).toBe(true);
+      expect(await collabUi.waitForWindowMoveConnection(uid,move!.roomId,5000)).toBe(true);
+      expect(target.state.doc.textContent).toContain('Protected text');
+      expect(prepIsolationCopyBlocked(uid)).toBe(mode === 'isolation');
+    } finally { api['openPathRelease'] = old; await collabUi.disconnectForPrep('end'); await host.stop(); source.destroy(); target.destroy(); }
+  },20_000);
+
+  it('removes a temporary Isolation handoff record when Round starts before restore', async () => {
+    const uid = 'move-isolation-ended'; setMode('prep',[uid]);
+    const {session:host,shareCode} = await CollabSession.host({pmDoc:simpleDoc('Protected'),client,prep:true,roundMode:'isolation'});
+    const {view} = await joinAsPartner(uid,shareCode);
+    const api = window.electronAPI as Record<string,unknown>; const old = api['openPathRelease']; api['openPathRelease'] = async () => {};
+    try {
+      const moving = await suspendCollabForWindowMove(uid);
+      expect(moving?.isolationGuest).toBe(true);
+      expect(await loadSessionRecord(host.roomId)).not.toBeNull();
+      setMode('round',[uid]);
+      expect(await moving!.restore()).toBe(false);
+      await moving!.discard();
+      expect(await loadSessionRecord(host.roomId)).toBeNull();
+      expect(prepIsolationCopyBlocked(uid)).toBe(true);
+    } finally { api['openPathRelease'] = old; prepRuntime.isolationCopies.delete(uid); await host.stop(); view.destroy(); }
+  },20_000);
+
   it('Isolation: the partner copy cannot be saved, and Round closes it without saving', async () => {
     const uid = 'isolation-partner';
     setMode('prep', [uid]);

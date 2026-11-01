@@ -459,6 +459,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     joinShareCode?: string;
     resumeRoomId?: string;
   } | null) => ipcRenderer.invoke('host:spawn-window', payload),
+  spawnCollabPopout: (payload: unknown) => ipcRenderer.invoke('host:spawn-collab-popout', payload) as Promise<boolean>,
+  collabPopoutReady: (ready: boolean) => ipcRenderer.invoke('host:collab-popout-ready', ready) as Promise<boolean>,
+  collabPopoutAborted: () => ipcRenderer.invoke('host:collab-popout-aborted') as Promise<boolean>,
 
   /** Called once at renderer boot to retrieve any initial-doc
    *  payload the spawning window stashed for us. Null when the

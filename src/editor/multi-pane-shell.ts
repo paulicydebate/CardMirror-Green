@@ -1,4 +1,4 @@
-import { prepCreated, prepOpened, prepClosed, prepInventoryChanged, prepOpenAllowed, prepRestoreIdentity } from './prep-controller.js';
+import { prepCreated, prepOpened, prepClosed, prepInventoryChanged, prepOpenAllowed, prepRestoreIdentity, prepFlush } from './prep-controller.js';
 import { prepDoc, prepRuntime } from './prep-runtime.js';
 /**
  * Multi-pane workspace shell.
@@ -116,6 +116,7 @@ import { transclusionDivergenceKey } from './transclusion-divergence-plugin.js';
 import {
   promptForText,
   alertDialog,
+  confirmDialog,
   installModalKeys,
   armDialogFocus,
   captureFocusForDialog,
@@ -167,6 +168,7 @@ import {
   tagCollabTransaction,
   collabCopresenceFor,
   onCollabCopresenceChange,
+  suspendCollabForWindowMove,
 } from './collab/collab-hooks.js';
 import { icon, setIcon } from './icons';
 import { formatSpeechFilename } from './speech-filename.js';
@@ -638,6 +640,9 @@ class DocSwitcherOverlay {
   }
 }
 
+/** Prevent local document transactions while a live session is transferred. */
+const collabWindowMoves = new Set<string>();
+
 class Slot {
   readonly id: SlotId;
   /** Top-level pane element (chip + editor + footer). Hidden when
@@ -1032,6 +1037,7 @@ class Slot {
     const idx = this.visibleIndex;
     if (idx < 0) return null;
     const record = this.stack[idx]!;
+    if (collabWindowMoves.has(record.uid)) return null;
     this.detachVisible();
     this.stack.splice(idx, 1);
     if (this.stack.length === 0) {
@@ -1065,10 +1071,7 @@ class Slot {
       showToast('Pop out needs the desktop app.');
       return;
     }
-    if (collabCopresenceFor(rec.uid) != null) {
-      showToast('This document is in a co-editing session, so it can\u2019t move to another window.');
-      return;
-    }
+    if (collabCopresenceFor(rec.uid) != null) { await this.popOutCollab(rec); return; }
     const state = rec.view.state;
     const bytes = await serializeNativeAsync(state.doc, {
       threads: Array.from(getCommentsState(state).threads.values()),
@@ -1098,10 +1101,116 @@ class Slot {
     if (this.visible === rec) await this.closeVisible({ popOut: true });
   }
 
+  /** Persist + suspend the source, then wait for destination acknowledgement.
+   * Until then the source cannot be edited or closed. */
+  private async popOutCollab(rec: DocRecord): Promise<void> {
+    const electron = getElectronHost();
+    if (!electron || prepRuntime.status.transitioning || prepRuntime.status.error || prepRuntime.status.session && !prepDoc(rec.uid)) {
+      showToast('This document cannot move during the current Prep / Round state.'); return;
+    }
+    if (collabWindowMoves.has(rec.uid)) return;
+    const wasIsolationGuest = prepRuntime.isolationCopies.has(rec.uid);
+    this.shell.focusSlot(this);
+    collabWindowMoves.add(rec.uid);
+    this.paneEl.inert = true;
+    this.paneEl.setAttribute('aria-busy', 'true');
+    showToast('Moving the live session to a new window…');
+    const oldEditable = rec.view.props.editable;
+    rec.view.setProps({editable: () => false});
+    let move: Awaited<ReturnType<typeof suspendCollabForWindowMove>> = null;
+    let safeToUnlock = false;
+    let releasedPath = false;
+    let destinationReady = false;
+    try {
+      move = await suspendCollabForWindowMove(rec.uid);
+      if (!move) {
+        safeToUnlock = collabCopresenceFor(rec.uid) !== null;
+        throw new Error('The session could not be safely saved for the move.');
+      }
+      // No delayed disk/journal write from the old pane may race the new one.
+      if (rec.autosaveTimer !== null) { window.clearTimeout(rec.autosaveTimer); rec.autosaveTimer = null; }
+      if (rec.journalTimer !== null) { window.clearTimeout(rec.journalTimer); rec.journalTimer = null; }
+      await Promise.all([recordAutosaveChains.get(rec), recordJournalChains.get(rec)]);
+      if (!move.ready) throw new Error('The old window could not release the session.');
+      if (prepRuntime.status.session) await prepFlush();
+      const state = rec.view.state;
+      const bytes = await serializeNativeAsync(state.doc, {threads:Array.from(getCommentsState(state).threads.values()), ...(rec.docId ? {docId:rec.docId} : {})});
+      const wasSpeech = getSpeechDocResolver().isSpeechByUid(rec.uid);
+      syncDocPathClaim(rec.handle, null); releasedPath = true;
+      const accepted = await electron.spawnCollabPopout({filename:rec.filename, bytes, handle:typeof rec.handle === 'string' ? rec.handle : null,
+        format:rec.format, uid:rec.uid, markDirty:rec.dirty, ...(wasSpeech ? {markAsSpeech:true} : {}), popout:true, popoutCollabRoomId:move.roomId, ...(move.isolationGuest ? {popoutIsolationGuest:true} : {})});
+      if (!accepted) throw new Error('The new window did not confirm its session.');
+      destinationReady = true;
+      if (this.visible !== rec) this.showRecord(rec);
+      if (this.visible !== rec || !(await this.closeVisible({popOut:true}))) {
+        throw new Error('The new window is connected, but the original pane could not be closed.');
+      }
+      if (move.isolationGuest) prepRuntime.isolationCopies.delete(rec.uid);
+      safeToUnlock = true;
+    } catch (err) {
+      if (!move && collabCopresenceFor(rec.uid) !== null) safeToUnlock = true;
+      if (move && !safeToUnlock && !destinationReady) {
+        if (releasedPath) syncDocPathClaim(null, rec.handle);
+        try { safeToUnlock = await move.restore(); } catch { safeToUnlock = false; }
+        if (!safeToUnlock && move.isolationGuest) {
+          // Isolation copies may not survive a failed/ended session. Do not
+          // offer a recoverable copy; remove the temporary handoff record.
+          try { await move.discard(); }
+          catch {
+            await alertDialog('The temporary Isolation session could not be removed. This pane remains locked; restart CardMirror Green and contact the host.');
+            return;
+          }
+          if (this.visible !== rec) this.showRecord(rec);
+          if (this.visible === rec && await this.closeVisible({popOut:true})) {
+            syncDocPathClaim(rec.handle, null);
+            prepRuntime.isolationCopies.delete(rec.uid);
+            safeToUnlock = true;
+            await alertDialog('The shared Isolation session could not be resumed. Its temporary copy was closed; ask the host for a new invitation.');
+            return;
+          }
+        }
+      }
+      const reason = err instanceof Error ? err.message : String(err);
+      if (safeToUnlock) {
+        await alertDialog(`${reason}\n\nThe original session remains in this pane.`);
+      } else {
+        // If suspension failed before a verified session record existed,
+        // first write a recovery journal. Never offer to close the only copy.
+        const recoverable = destinationReady || !!move || (!wasIsolationGuest && await runJournalForRecord(rec));
+        if (!recoverable) {
+          await alertDialog(`${reason}\n\nA recovery copy could not be verified. This pane remains locked to protect its contents.`);
+        } else {
+          const detail = destinationReady
+            ? 'The live session is in the new window. Close this locked original pane?'
+            : move ? 'The session is saved for recovery. Close this locked pane, then rejoin it from Sessions?'
+              : 'A recovery copy was saved. Close this locked pane and recover the document from the recovery panel?';
+          if (await confirmDialog(`${reason}\n\n${detail}`, {title:'Move could not finish', okLabel:'Close pane'})) {
+            if (this.visible !== rec) this.showRecord(rec);
+            if (this.visible === rec && await this.closeVisible({popOut:true})) {
+              if (!destinationReady) { if (move) await clearJournalForRecord(rec); syncDocPathClaim(rec.handle, null); }
+              safeToUnlock = true;
+            }
+          }
+        }
+      }
+    } finally {
+      if (safeToUnlock) {
+        collabWindowMoves.delete(rec.uid);
+        this.paneEl.inert = false;
+        this.paneEl.removeAttribute('aria-busy');
+        if (!rec.view.isDestroyed) {
+          rec.view.setProps({editable:oldEditable});
+          if (rec.dirty) { scheduleAutosaveForRecord(rec); scheduleJournalForRecord(rec); }
+        }
+      }
+    }
+  }
+
   /** Close the currently-visible doc. Reveals the next stack member
    *  (or empties the slot). Prompts for save / discard / cancel if
    *  the doc has unsaved changes; clean docs close immediately. */
   async closeVisible(opts?: { modeSwitch?: boolean; popOut?: boolean }): Promise<boolean> {
+    if (!opts?.popOut && this.visible && collabWindowMoves.has(this.visible.uid)) return false;
     try {
       return await this.closeVisibleInner(opts);
     } catch (err) {
@@ -1172,7 +1281,7 @@ class Slot {
     // matches Verbatim's `AutoClose` which clears
     // `Globals.ActiveSpeechDoc` when the speech doc is closed.
     const speechResolver = getSpeechDocResolver();
-    if (speechResolver.isSpeechByUid(closing.uid)) {
+    if (!opts?.popOut && speechResolver.isSpeechByUid(closing.uid)) {
       speechResolver.setSpeechByUid(null);
     }
     speechResolver.unregisterView(closing.uid);
@@ -1472,6 +1581,7 @@ class Slot {
   /** Close a specific record (not necessarily the visible one).
    *  Prompts if the record has unsaved changes. */
   async closeRecord(rec: DocRecord): Promise<void> {
+    if (collabWindowMoves.has(rec.uid)) return;
     const idx = this.stack.indexOf(rec);
     if (idx < 0) return;
     if (idx === this.visibleIndex) {
@@ -4011,6 +4121,7 @@ function buildDocRecord(
       // Stamp collab metas (sync-origin on the Loro binding's remote
       // transactions) BEFORE apply, mirroring the single-doc dispatch.
       tagCollabTransaction(tx, view.state);
+      if (collabWindowMoves.has(record.uid) && tx.docChanged && !isSyncOrigin(tx)) return;
       // Reject a user edit inside a region an AI op has leased; flash the
       // locked region. AI writes carry a bypass tag and pass through.
       if (coordinatorBlocks(view.state, tx)) {
