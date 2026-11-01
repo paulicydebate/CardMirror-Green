@@ -17526,3 +17526,8 @@ body.pmd-collaboration-open .pmd-pill-tray-right { right: calc(var(--pmd-collabo
   .pmd-collaboration-panel button, .pmd-collaboration-panel summary, .pmd-collaboration-panel select { min-height: 44px; }
   .pmd-collaboration-panel input { font-size: 16px; }
 }
+
+/* Named Prep choices stay legible within the sticky header. */
+.pmd-flow-prep-head { white-space: nowrap; }
+.pmd-flow-prep-select { max-width: 12rem; min-width: 4.5rem; font: inherit; color: inherit; background: var(--flow-bg); border: 1px solid var(--flow-line); border-radius: 4px; }
+.pmd-flow-prep-add { margin-left: .25rem; }

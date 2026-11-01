@@ -52,6 +52,7 @@ import type { EditorView } from 'prosemirror-view';
 import { schema, newHeadingId } from '../schema/index.js';
 import { prepareSelectionForReplace } from './type-over-boundary.js';
 import { settings } from './settings.js';
+import { preserveGoogleListLabels } from './google-list-paste.js';
 import { freshHeadingIds } from './drag-controller.js';
 import { takePendingCutForPlainPaste } from './cut-in-place.js';
 import { condenseBranchC, condenseMerge } from './condense.js';
@@ -470,6 +471,7 @@ export function buildPastePlugin(ctx: PastePluginCtx): Plugin<PluginState> {
       },
     },
     props: {
+      transformPastedHTML: preserveGoogleListLabels,
       // Stamp every pasted heading with a fresh unique id. The clipboard
       // parser drops `data-id` (our `parseDOM.getAttrs` reads only
       // `indent`), so headings arrive with `id: null`; the nav pane keys

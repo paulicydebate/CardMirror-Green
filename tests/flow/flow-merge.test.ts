@@ -1,8 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { EditHistory, maxFlowClock, mergeIncoming, stampFlowEdit } from '../../src/flow/flow-merge.js';
-import { newWorkbook, parseFlow, serializeFlow, setCell, setPrep, moveSheet } from '../../src/flow/flow-model.js';
+import { newWorkbook, parseFlow, serializeFlow, setCell, setPrep, moveSheet, addPrepOption, setNamedPrep } from '../../src/flow/flow-model.js';
 
 describe('versioned flow cell merges', () => {
+  it('preserves concurrent named Prep additions and edits on both sides', () => {
+    const base = newWorkbook(), sheet = base.sheets[0]!.id;
+    const aa = addPrepOption(base, sheet, 'A2 T');
+    const bb = addPrepOption(base, sheet, 'A2 K');
+    const a = stampFlowEdit(base, setNamedPrep(aa.book, sheet, 0, aa.id, {text:'Theory'}), 'a', 1);
+    const b = stampFlowEdit(base, setNamedPrep(bb.book, sheet, 0, bb.id, {text:'Kritik'}), 'b', 1);
+    const ab = mergeIncoming(a, b, new EditHistory(), 0).book;
+    const ba = mergeIncoming(b, a, new EditHistory(), 0).book;
+    expect(serializeFlow(ab)).toBe(serializeFlow(ba));
+    const restored = parseFlow(serializeFlow(ab)).sheets[0]!;
+    expect(restored.prepOptions?.map(o => o.name).sort()).toEqual(['A2 K','A2 T']);
+    expect(restored.rows[0]!.namedPrep?.[aa.id]?.text).toBe('Theory');
+    expect(restored.rows[0]!.namedPrep?.[bb.id]?.text).toBe('Kritik');
+  });
   it('converges on different-sheet edits regardless of receive order or delay', () => {
     const base = newWorkbook();
     const a = stampFlowEdit(base, setCell(base, base.sheets[0]!.id, 0, 0, {text: 'Gov'}), 'a', 1);

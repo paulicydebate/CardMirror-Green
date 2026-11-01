@@ -431,7 +431,7 @@ describe('flow NodeView', () => {
     key(loc, 'P', { ctrlKey: true, metaKey: true, shiftKey: true });
     await frame();
     const heads = Array.from(v.dom.querySelectorAll('.pmd-flow-head')).map((h) => h.textContent);
-    expect(heads).toEqual(['PMC', 'LOC', 'Prep', 'MG', 'MO', 'LOR', 'PMR']);
+    expect(heads).toEqual(['PMC', 'LOC', 'Prep+', 'MG', 'MO', 'LOR', 'PMR']);
     const prep = v.dom.querySelector<HTMLTextAreaElement>('textarea.pmd-flow-cell[data-row="1"][data-col="prep"]')!;
     expect(document.activeElement).toBe(prep);
     type(prep, 'Thumper: China tensions');
@@ -446,6 +446,29 @@ describe('flow NodeView', () => {
     expect(v.dom.querySelector('.pmd-flow-prep-head')).toBeNull();
     // The prep text is saved even while the column is hidden.
     expect(book(v).sheets[0]!.rows[1]!.prep?.text).toBe('Thumper: China tensions');
+  });
+
+  it('creates named Prep columns, switches notes, and saves each one', async () => {
+    const v = mount();
+    const first = cell(v, 0, 0); first.focus();
+    key(first, 'P', {ctrlKey: true, metaKey: true, shiftKey: true});
+    await frame();
+    const prep = () => v.dom.querySelector<HTMLTextAreaElement>('textarea[data-row="0"][data-col="prep"]')!;
+    type(prep(), 'Original notes');
+    vi.mocked(promptForText).mockResolvedValueOnce('A2 T');
+    v.dom.querySelector<HTMLButtonElement>('[aria-label="Create Prep column"]')!.click();
+    await frame(); type(prep(), 'Theory answer');
+    vi.mocked(promptForText).mockResolvedValueOnce('A2 K');
+    v.dom.querySelector<HTMLButtonElement>('[aria-label="Create Prep column"]')!.click();
+    await frame(); type(prep(), 'K answer');
+    const choose = (name: string) => { const select = v.dom.querySelector<HTMLSelectElement>('[aria-label="Choose Prep column"]')!; select.selectedIndex = Array.from(select.options).findIndex(option => option.textContent === name); select.dispatchEvent(new Event('change')); };
+    choose('Prep'); expect(prep().value).toBe('Original notes');
+    choose('A2 T'); expect(prep().value).toBe('Theory answer');
+    choose('A2 K'); expect(prep().value).toBe('K answer');
+    const saved = parseFlow(String(parseNative(serializeNative(v.state.doc)).doc.firstChild!.attrs['data']));
+    expect(saved.sheets[0]!.prepOptions?.map(o => o.name).sort()).toEqual(['A2 K', 'A2 T']);
+    expect(saved.sheets[0]!.rows[0]!.prep?.text).toBe('Original notes');
+    expect(Object.values(saved.sheets[0]!.rows[0]!.namedPrep ?? {}).map(c => c.text).sort()).toEqual(['K answer', 'Theory answer']);
   });
 
   it('undo after typing is not mistaken for a partner’s stale copy', () => {

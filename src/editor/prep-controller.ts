@@ -60,7 +60,7 @@ export function isBlankPrepCandidate(doc: PMNode): boolean {
     if (node.type.name === 'flow_workbook') {
       try {
         const book = parseFlow(String(node.attrs['data']), 0);
-        if (book.sheets.some(s => s.rows.some(r => r.cells.some(c => c.text.trim()) || r.prep?.text.trim()))) blank = false;
+        if (book.sheets.some(s => s.rows.some(r => r.cells.some(c => c.text.trim()) || r.prep?.text.trim() || Object.values(r.namedPrep ?? {}).some(c => c.text.trim())))) blank = false;
       } catch { blank = false; }
       return false;
     }

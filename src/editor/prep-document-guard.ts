@@ -65,10 +65,12 @@ function flowText(node: PMNode): Map<string, string> {
     const key = JSON.stringify(sheet.id);
     fields.set(key + ':name', sheet.name);
     sheet.columns.forEach((name, col) => fields.set(key + ':column:' + col, name));
+    for (const option of sheet.prepOptions ?? []) fields.set(key + ':named-prep-name:' + JSON.stringify(option.id), option.name);
     for (const row of sheet.rows) {
       const rowKey = key + ':' + JSON.stringify(row.id);
       row.cells.forEach((cell, col) => fields.set(rowKey + ':' + col, cell.text));
       fields.set(rowKey + ':prep', row.prep?.text ?? '');
+      for (const [id, cell] of Object.entries(row.namedPrep ?? {})) fields.set(rowKey + ':named-prep:' + JSON.stringify(id), cell.text);
     }
   }
   flowFieldCache.set(node, fields);

@@ -1,7 +1,9 @@
-CardMirror Green 1.16.21 — Alternating neutral Flow columns
+CardMirror Green 1.16.22 — Google Docs numbering and named Flow Prep
 
-Soft and Soft dark now alternate between two neutral column shades, including the speech headers. Text keeps the chosen side colors, independently of column shading. This makes adjacent speeches easier to distinguish, including consecutive speeches from the same side.
+- Numbered and nested Google Docs lists are preserved when opening a .docx or pasting supported Google Docs clipboard lists. Imported list labels become ordinary text; they do not automatically renumber after editing.
+- In a Flow, open Prep and use the dropdown and + button to create and choose named row-aligned Prep columns for each sheet. Existing Prep notes stay under Prep. The Flow saves and shares these notes.
+- Everyone co-editing a Flow with named Prep columns must update to 1.16.22 or later; older builds do not understand the new data.
 
-Choose Soft or Soft dark under Flow > Appearance. All 17 text colorways, the full highlight-shortcut field, wrapping background options and earlier Flow improvements remain available. Other backgrounds and document contents are unchanged.
+Moving a live co-editing document out of a multi-pane window remains unavailable while a safe session handoff is under development.
 
-On Windows or an Apple Silicon Mac, use Help > Check for Updates, save your work, then Restart to install.
+Use Help > Check for Updates, download 1.16.22, then choose Restart to install.

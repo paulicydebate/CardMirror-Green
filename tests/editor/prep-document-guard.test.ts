@@ -149,6 +149,13 @@ describe('per-document Prep protection', () => {
     expect(parseFlow(String(view.state.doc.firstChild!.attrs['data'])).sheets[0]!.rows[0]!.prep).toBeUndefined();
     setCell('typed');
     expect(parseFlow(String(view.state.doc.firstChild!.attrs['data'])).sheets[0]!.rows[0]!.cells[0]!.text).toBe('typed');
+    const book = parseFlow(String(view.state.doc.firstChild!.attrs['data']));
+    book.sheets[0]!.prepOptions = [{id:'test-prep', name:'Named'}];
+    view.dispatch(view.state.tr.setNodeMarkup(0, undefined, {data:serializeFlow(book)}));
+    const changed = parseFlow(String(view.state.doc.firstChild!.attrs['data']));
+    changed.sheets[0]!.rows[0]!.namedPrep = {'test-prep':{text:'z'.repeat(41)}};
+    view.dispatch(view.state.tr.setNodeMarkup(0, undefined, {data:serializeFlow(changed)}));
+    expect(parseFlow(String(view.state.doc.firstChild!.attrs['data'])).sheets[0]!.rows[0]!.namedPrep).toBeUndefined();
   });
   it('uses dynamic policy and removes capture handlers when destroyed', () => {
     const p = policy();

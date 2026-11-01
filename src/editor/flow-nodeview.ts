@@ -24,6 +24,7 @@ import type { EditorView, NodeView } from 'prosemirror-view';
 import { closeHistory } from 'prosemirror-history';
 import {
   addSheet,
+  addPrepOption,
   placeColumnSections,
   cellAt,
   columnSide,
@@ -41,6 +42,7 @@ import {
   serializeFlow,
   setCell,
   setPrep,
+  setNamedPrep,
   shiftRanges,
   sideName,
   toggleRange,
@@ -136,6 +138,14 @@ export class FlowWorkbookView implements NodeView {
   private lastSel: { start: number; end: number } = { start: 0, end: 0 };
   /** The Prep (thumpers) column is shown right after this speech column; null = hidden. */
   private prepAfter: number | null = null;
+  private readonly activePrepBySheet = new Map<string, string>();
+  private get activePrep(): string {
+    const id = this.activePrepBySheet.get(this.sheetId);
+    return id && this.sheet.prepOptions?.some(option => option.id === id) ? id : '';
+  }
+  private patchPrep(book: FlowWorkbook, row: number, patch: Partial<FlowCell>): FlowWorkbook {
+    return this.activePrep ? setNamedPrep(book, this.sheetId, row, this.activePrep, patch) : setPrep(book, this.sheetId, row, patch);
+  }
   /** My recent previous cell values, to spot a partner's stale copy of them. */
   private readonly history = new EditHistory();
   private readonly actor = newFlowId();
@@ -314,7 +324,7 @@ export class FlowWorkbookView implements NodeView {
     }
     const x = a.sheets.find((s) => s.id === this.sheetId);
     const y = b.sheets.find((s) => s.id === this.sheetId);
-    if (!x || !y || x.columns.join('\u0000') !== y.columns.join('\u0000') || x.rows.length !== y.rows.length) return false;
+    if (!x || !y || x.columns.join('\u0000') !== y.columns.join('\u0000') || x.rows.length !== y.rows.length || JSON.stringify(x.prepOptions ?? []) !== JSON.stringify(y.prepOptions ?? [])) return false;
     return x.rows.every((r, i) => r.id === y.rows[i]!.id);
   }
 
@@ -374,12 +384,12 @@ export class FlowWorkbookView implements NodeView {
   }
 
   private cellOf(row: number, col: ColKey): FlowCell {
-    if (col === 'prep') return this.sheet.rows[row]?.prep ?? { text: '' };
+    if (col === 'prep') return (this.activePrep ? this.sheet.rows[row]?.namedPrep?.[this.activePrep] : this.sheet.rows[row]?.prep) ?? { text: '' };
     return cellAt(this.sheet, row, col);
   }
 
   private withCell(row: number, col: ColKey, patch: Partial<FlowCell>): FlowWorkbook {
-    return col === 'prep' ? setPrep(this.book, this.sheetId, row, patch) : setCell(this.book, this.sheetId, row, col, patch);
+    return col === 'prep' ? this.patchPrep(this.book, row, patch) : setCell(this.book, this.sheetId, row, col, patch);
   }
 
   // ─── Rendering ────────────────────────────────────────────────────
@@ -669,8 +679,25 @@ export class FlowWorkbookView implements NodeView {
       head.appendChild(th);
       if (col === prepAfter) {
         const pth = el('th', 'pmd-flow-head pmd-flow-prep-head');
-        const chip = el('span', 'pmd-flow-chip', 'Prep');
-        pth.appendChild(chip);
+        const chooser = el('select', 'pmd-flow-prep-select');
+        chooser.setAttribute('aria-label', 'Choose Prep column');
+        const defaultOption = el('option', undefined, 'Prep'); defaultOption.value = ''; chooser.appendChild(defaultOption);
+        for (const option of [...(sheet.prepOptions ?? [])].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))) { const item = el('option', undefined, option.name); item.value = option.id; chooser.appendChild(item); }
+        chooser.value = this.activePrep;
+        chooser.addEventListener('change', () => {
+          const row = Math.min(this.lastCell?.row ?? 0, this.sheet.rows.length - 1);
+          const scroll = this.dom.querySelector<HTMLElement>('.pmd-flow-gridwrap');
+          const top = scroll?.scrollTop ?? 0, left = scroll?.scrollLeft ?? 0;
+          this.activePrepBySheet.set(this.sheetId, chooser.value);
+          this.resetCellSelection();
+          this.render({row, col: 'prep', caret: 'end'});
+          const nextScroll = this.dom.querySelector<HTMLElement>('.pmd-flow-gridwrap');
+          if (nextScroll) { nextScroll.scrollTop = top; nextScroll.scrollLeft = left; }
+        });
+        const add = el('button', 'pmd-flow-tool pmd-flow-prep-add', '+');
+        add.type = 'button'; add.title = 'Create a named Prep column'; add.setAttribute('aria-label', 'Create Prep column');
+        add.addEventListener('click', () => { void this.createPrepOption(); });
+        pth.append(chooser, add);
         pth.title = `Thumpers and prepped answers, lined up with each row. ${isMac ? 'Cmd' : 'Ctrl'}+Shift+P closes it.`;
         head.appendChild(pth);
       }
@@ -697,7 +724,7 @@ export class FlowWorkbookView implements NodeView {
         const ptd = el('td', 'pmd-flow-td pmd-flow-prep');
         ptd.setAttribute('role', 'gridcell');
         ptd.setAttribute('aria-selected', 'false');
-        ptd.appendChild(this.renderCell(row.prep ?? { text: '' }, r, 'prep'));
+        ptd.appendChild(this.renderCell(this.cellOf(r, 'prep'), r, 'prep'));
         tr.appendChild(ptd);
       }
     });
@@ -778,7 +805,7 @@ export class FlowWorkbookView implements NodeView {
       for (const spot of targets) {
         const cell = this.cellOf(spot.row, spot.col);
         const patch = {hl: allOn || !cell.text.length ? [] : [[0, cell.text.length]] as Array<[number, number]>};
-        book = spot.col === 'prep' ? setPrep(book, this.sheetId, spot.row, patch) : setCell(book, this.sheetId, spot.row, spot.col, patch);
+        book = spot.col === 'prep' ? this.patchPrep(book, spot.row, patch) : setCell(book, this.sheetId, spot.row, spot.col, patch);
       }
       const focus = this.currentFocus() ?? this.lastCell;
       this.commit(book); this.render(focus ?? undefined); return;
@@ -1107,7 +1134,7 @@ export class FlowWorkbookView implements NodeView {
     let book = this.book;
     for (const {row, col} of targets) {
       const patch = {text: '', hl: []};
-      book = col === 'prep' ? setPrep(book, this.sheetId, row, patch) : setCell(book, this.sheetId, row, col, patch);
+      book = col === 'prep' ? this.patchPrep(book, row, patch) : setCell(book, this.sheetId, row, col, patch);
     }
     this.view.dispatch(closeHistory(this.view.state.tr));
     this.commit(book);
@@ -1275,6 +1302,19 @@ export class FlowWorkbookView implements NodeView {
     this.render({ row: 0, col: 0, caret: 'end' });
   }
 
+  private async createPrepOption(): Promise<void> {
+    const sheetId = this.sheetId;
+    const name = await promptForText({message: 'Name the new Prep column', initial: ''});
+    if (name === null || !name.trim() || this.sheetId !== sheetId) return;
+    const result = addPrepOption(this.book, sheetId, name);
+    if (!result.id) return;
+    this.commit(result.book);
+    if (!this.sheet.prepOptions?.some(option => option.id === result.id)) return;
+    this.activePrepBySheet.set(sheetId, result.id);
+    this.resetCellSelection();
+    this.render({row: 0, col: 'prep', caret: 'end'});
+  }
+
   private async rename(sheet: FlowSheet): Promise<void> {
     const name = await promptForText({ message: 'Rename sheet', initial: sheet.name });
     if (name === null) return;
@@ -1285,7 +1325,7 @@ export class FlowWorkbookView implements NodeView {
   private async removeSheet(): Promise<void> {
     if (this.book.sheets.length < 2) return;
     const sheet = this.sheet;
-    const hasText = sheet.rows.some((r) => r.cells.some((c) => c.text.trim()) || !!r.prep?.text.trim());
+    const hasText = sheet.rows.some((r) => r.cells.some((c) => c.text.trim()) || !!r.prep?.text.trim() || Object.values(r.namedPrep ?? {}).some(c => !!c.text.trim()));
     if (hasText && !(await confirmDialog(`Delete the sheet “${sheet.name}”? Undo (Ctrl+Z / Cmd+Z) brings it back.`))) return;
     const index = this.book.sheets.findIndex((s) => s.id === sheet.id);
     const next = deleteSheet(this.book, sheet.id);

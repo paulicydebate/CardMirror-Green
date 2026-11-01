@@ -55,6 +55,7 @@ export async function fromDocx(
   if (!documentXml) throw new Error('docx is missing word/document.xml');
   const relsXml = await docx.readText('word/_rels/document.xml.rels');
   const stylesXml = await docx.readText('word/styles.xml');
+  const numberingXml = await docx.readText('word/numbering.xml');
 
   const mediaParts: MediaPartsMap = new Map();
   for (const path of docx.paths()) {
@@ -86,6 +87,7 @@ export async function fromDocx(
         mediaParts,
         stylesXml,
         {
+          numberingXml,
           footnotes: importNotes(footnotesXml, footnotesRelsXml, 'w:footnotes', 'w:footnote'),
           endnotes: importNotes(endnotesXml, endnotesRelsXml, 'w:endnotes', 'w:endnote'),
         },
@@ -127,6 +129,7 @@ export async function fromDocxFull(
   if (!documentXml) throw new Error('docx is missing word/document.xml');
   const relsXml = await docx.readText('word/_rels/document.xml.rels');
   const stylesXml = await docx.readText('word/styles.xml');
+  const numberingXml = await docx.readText('word/numbering.xml');
 
   const mediaParts: MediaPartsMap = new Map();
   for (const path of docx.paths()) {
@@ -149,6 +152,7 @@ export async function fromDocxFull(
   const doc = normalizeReadingMarkers(dedupeHeadingIds(checkImportedDoc(
     repairDoc(
       importDoc(documentXml, relsXml, mediaParts, stylesXml, {
+        numberingXml,
         footnotes: importNotes(footnotesXml, footnotesRelsXml, 'w:footnotes', 'w:footnote'),
         endnotes: importNotes(endnotesXml, endnotesRelsXml, 'w:endnotes', 'w:endnote'),
       }),

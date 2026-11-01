@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 // Two people co-editing one spreadsheet flow over the real Loro binding.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+vi.mock('../../src/editor/text-prompt.js', () => ({promptForText: vi.fn(), confirmDialog: vi.fn(async () => true), alertDialog: vi.fn()}));
+import { promptForText } from '../../src/editor/text-prompt.js';
 import { schema } from '../../src/schema/index.js';
 import { flowNodeViews } from '../../src/editor/flow-nodeview.js';
 import { cellAt, newWorkbook, parseFlow, serializeFlow } from '../../src/flow/flow-model.js';
@@ -22,6 +24,31 @@ function typeInto(area: HTMLTextAreaElement, text: string): void {
 }
 
 describe('flow co-editing', () => {
+  it('converges when both people create and type in named Prep columns', async () => {
+    const peers = await createLoroPeers(seed(), 2, undefined, flowNodeViews);
+    try {
+      for (const p of peers) {
+        const first = cellEl(p, 0, 0); first.focus();
+        first.dispatchEvent(new KeyboardEvent('keydown', {key:'P',ctrlKey:true,metaKey:true,shiftKey:true,bubbles:true,cancelable:true}));
+      }
+      await settle();
+      vi.mocked(promptForText).mockResolvedValueOnce('A2 T').mockResolvedValueOnce('A2 K');
+      for (const p of peers) {
+        p.view.dom.querySelector<HTMLButtonElement>('[aria-label="Create Prep column"]')!.click();
+        await settle();
+      }
+      typeInto(peers[0]!.view.dom.querySelector<HTMLTextAreaElement>('textarea[data-row="0"][data-col="prep"]')!, 'Theory');
+      typeInto(peers[1]!.view.dom.querySelector<HTMLTextAreaElement>('textarea[data-row="0"][data-col="prep"]')!, 'Kritik');
+      await syncAll(peers); await settle(6); await syncAll(peers); await settle(6); await syncAll(peers); await settle(6);
+      for (const p of peers) {
+        const sheet = flowOf(p).sheets[0]!;
+        expect(sheet.prepOptions?.map(o => o.name).sort()).toEqual(['A2 K', 'A2 T']);
+        for (const option of sheet.prepOptions!) expect(sheet.rows[0]!.namedPrep?.[option.id]?.text).toBe(option.name === 'A2 T' ? 'Theory' : 'Kritik');
+      }
+      expect(String(peers[0]!.doc().firstChild!.attrs['data'])).toBe(String(peers[1]!.doc().firstChild!.attrs['data']));
+    } finally { peers.forEach(p => p.destroy()); }
+  });
+
   it('keeps both people’s concurrent typing in different cells', async () => {
     const [a, b] = await createLoroPeers(seed(), 2, undefined, flowNodeViews);
     await settle();

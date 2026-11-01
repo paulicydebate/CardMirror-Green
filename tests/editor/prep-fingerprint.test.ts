@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { schema } from '../../src/schema/index.js';
 import { parseNative, prepSealFor, serializeNative, serializeNativeAsync, setPrepSeal } from '../../src/native/index.js';
 import { prepCanonicalText, prepFingerprint } from '../../src/editor/prep-fingerprint.js';
-import { newWorkbook, serializeFlow, setCell } from '../../src/flow/flow-model.js';
+import { newWorkbook, serializeFlow, setCell, addPrepOption, setNamedPrep } from '../../src/flow/flow-model.js';
 
 function doc(text: string, opts: { comment?: boolean; highlight?: string; cell?: string } = {}) {
   const marks = [
@@ -24,6 +24,15 @@ describe('prep document fingerprint', () => {
     expect(await prepFingerprint(reopened)).toBe(await prepFingerprint(original));
     const withComment = doc('Plan: the USFG should', { highlight: 'green', comment: true, cell: 'Adv 1' });
     expect(prepCanonicalText(withComment)).toBe(prepCanonicalText(original));
+  });
+
+  it('seals named Prep notes and survives save and reopen', async () => {
+    const base = newWorkbook(), sheet = base.sheets[0]!.id;
+    const option = addPrepOption(base, sheet, 'A2 T');
+    const build = (text: string) => schema.nodes.doc!.create(null, [schema.nodes.flow_workbook!.create({data: serializeFlow(setNamedPrep(option.book, sheet, 0, option.id, {text}))})]);
+    const before = build('First');
+    expect(await prepFingerprint(parseNative(serializeNative(before)).doc)).toBe(await prepFingerprint(before));
+    expect(await prepFingerprint(build('Changed'))).not.toBe(await prepFingerprint(before));
   });
 
   it('changes when text, formatting or a flow cell changes', async () => {

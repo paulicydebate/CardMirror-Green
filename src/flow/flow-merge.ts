@@ -57,6 +57,11 @@ export class EditHistory {
 function eachCell(row: FlowRow, columns: number, fn: (col: number | string, cell: FlowCell | undefined) => void): void {
   for (let c = 0; c < columns; c++) fn(c, row.cells[c]);
   fn(PREP_KEY, row.prep);
+  for (const [id, cell] of Object.entries(row.namedPrep ?? {})) fn(`named:${id}`, cell);
+}
+
+function rowCell(row: FlowRow, col: number | string): FlowCell | undefined {
+  return col === PREP_KEY ? row.prep : typeof col === 'number' ? row.cells[col] : row.namedPrep?.[col.slice(6)];
 }
 
 /** Record, for every cell that differs between `before` and `after`, the
@@ -70,7 +75,7 @@ export function recordLocalEdit(history: EditHistory, before: FlowWorkbook, afte
       const prev = oldRows.get(row.id);
       if (!prev) continue;
       eachCell(row, sheet.columns.length, (col, cell) => {
-        const prevCell = col === PREP_KEY ? prev.prep : prev.cells[col as number];
+        const prevCell = rowCell(prev, col);
         const a = cellJson(prevCell);
         if (a !== cellJson(cell)) history.record(keyOf(sheet.id, row.id, col), a, now);
       });
@@ -92,6 +97,10 @@ export function mergeIncoming(
   const sheets = incoming.sheets.map((sheet) => {
     const ms = mine.sheets.find((s) => s.id === sheet.id);
     if (!ms || ms.columns.length !== sheet.columns.length) return sheet;
+    const incomingOptions = sheet.prepOptions ?? [];
+    const options = new Map(incomingOptions.map(option => [option.id, option]));
+    for (const option of ms.prepOptions ?? []) if (!options.has(option.id)) { options.set(option.id, option); keptMine = true; }
+    const prepOptions = [...options.values()].sort((a,b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     const myRows = new Map(ms.rows.map((r) => [r.id, r]));
     const rows = sheet.rows.map((row) => {
       const mr = myRows.get(row.id);
@@ -99,25 +108,31 @@ export function mergeIncoming(
       let changed = false;
       const cells = row.cells.slice();
       let prep = row.prep;
-      eachCell(row, sheet.columns.length, (col, cell) => {
-        const mineCell = col === PREP_KEY ? mr.prep : mr.cells[col as number];
+      const namedPrep = {...row.namedPrep};
+      const cols = new Set<number | string>();
+      eachCell(row, sheet.columns.length, col => cols.add(col));
+      eachCell(mr, sheet.columns.length, col => cols.add(col));
+      for (const col of cols) {
+        const cell = rowCell(row, col);
+        const mineCell = rowCell(mr, col);
         const inc = cellJson(cell);
-        if (inc === cellJson(mineCell) && compareCellRevisions(mineCell, cell) === 0) return;
+        if (inc === cellJson(mineCell) && compareCellRevisions(mineCell, cell) === 0) continue;
         if (mineCell?.revision || cell?.revision) {
           // Each cell is its own deterministic register. A stale workbook
           // snapshot cannot overwrite a newer edit on another sheet.
-          if (compareCellRevisions(mineCell, cell) <= 0) return;
-        } else if (!history.isStale(keyOf(sheet.id, row.id, col), inc, now)) return;
+          if (compareCellRevisions(mineCell, cell) <= 0) continue;
+        } else if (!history.isStale(keyOf(sheet.id, row.id, col), inc, now)) continue;
         changed = true;
         if (col === PREP_KEY) prep = mineCell;
-        else cells[col as number] = mineCell ?? { text: '' };
-      });
+        else if (typeof col === 'number') cells[col] = mineCell ?? { text: '' };
+        else if (mineCell) namedPrep[col.slice(6)] = mineCell;
+      }
       if (!changed) return row;
       keptMine = true;
       const { prep: _drop, ...rest } = row;
-      return prep ? { ...rest, cells, prep } : { ...rest, cells };
+      return { ...rest, cells, ...(prep ? {prep} : {}), ...(Object.keys(namedPrep).length ? {namedPrep} : {}) };
     });
-    return { ...sheet, rows };
+    return { ...sheet, rows, ...(prepOptions.length ? {prepOptions} : {}) };
   });
   let ordered = sheets;
   let orderRevision = incoming.orderRevision;
@@ -162,7 +177,10 @@ export function stampFlowEdit(before: FlowWorkbook, after: FlowWorkbook, actor: 
   return { ...after, ...(orderChanged ? {orderRevision: revision} : {}), sheets: after.sheets.map(sheet => {
     const old = before.sheets.find(s => s.id === sheet.id);
     const rows = new Map(old?.rows.map(r => [r.id, r]) ?? []);
-    return { ...sheet, rows: sheet.rows.map(row => {
+    const options = new Map((sheet.prepOptions ?? []).map(option => [option.id, option]));
+    if (preservePartners) for (const option of old?.prepOptions ?? []) if (!options.has(option.id)) options.set(option.id, option);
+    const prepOptions = [...options.values()].sort((a,b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    return { ...sheet, ...(prepOptions.length ? {prepOptions} : {}), rows: sheet.rows.map(row => {
       const previous = rows.get(row.id);
       const stamp = (cell: FlowCell | undefined, prev: FlowCell | undefined): FlowCell | undefined => {
         if (preservePartners && prev?.revision && prev.revision.actor !== actor) return prev;
@@ -170,8 +188,11 @@ export function stampFlowEdit(before: FlowWorkbook, after: FlowWorkbook, actor: 
       };
       const cells = row.cells.map((cell, col) => stamp(cell, previous?.cells[col])!);
       const prep = stamp(row.prep, previous?.prep);
-      const { prep: _oldPrep, ...rest } = row;
-      return prep ? { ...rest, cells, prep } : { ...rest, cells };
+      const namedPrep: Record<string, FlowCell> = {};
+      const ids = new Set([...Object.keys(row.namedPrep ?? {}), ...Object.keys(previous?.namedPrep ?? {})]);
+      for (const id of ids) { const cell = stamp(row.namedPrep?.[id], previous?.namedPrep?.[id]); if (cell) namedPrep[id] = cell; }
+      const { prep: _oldPrep, namedPrep: _oldNamed, ...rest } = row;
+      return { ...rest, cells, ...(prep ? {prep} : {}), ...(Object.keys(namedPrep).length ? {namedPrep} : {}) };
     }) };
   }) };
 }

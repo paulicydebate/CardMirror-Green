@@ -38,6 +38,8 @@ export interface FlowRow {
   /** The row's Prep cell: thumpers / prepped answers lined up with this row
    *  (shown in the collapsible Prep column). */
   prep?: FlowCell;
+  /** Additional named Prep cells keyed by their stable Prep id. */
+  namedPrep?: Record<string, FlowCell>;
 }
 
 export interface FlowSheet {
@@ -46,6 +48,8 @@ export interface FlowSheet {
   /** Which team's position this sheet tracks (colors, starting column). */
   side: FlowSide;
   columns: string[];
+  /** User-created, row-aligned Prep columns (the original Prep stays the default). */
+  prepOptions?: Array<{id: string; name: string}>;
   rows: FlowRow[];
 }
 
@@ -199,6 +203,25 @@ export function setPrep(book: FlowWorkbook, sheetId: string, row: number, patch:
     const { prep: _old, ...rest } = rows[row]!;
     rows[row] = isEmptyCell(next) ? rest : { ...rest, prep: next };
     return { ...s, rows };
+  });
+}
+
+/** Add a named Prep column on one sheet. IDs make notes independent of names. */
+export function addPrepOption(book: FlowWorkbook, sheetId: string, name: string): { book: FlowWorkbook; id: string } {
+  const id = newFlowId();
+  const clean = name.replace(/\s+/g, ' ').trim().slice(0, 100);
+  if (!clean) return {book, id: ''};
+  return { book: replaceSheet(book, sheetId, sheet => ({...sheet, prepOptions: [...(sheet.prepOptions ?? []), {id, name: clean}]})), id };
+}
+
+export function setNamedPrep(book: FlowWorkbook, sheetId: string, row: number, prepId: string, patch: Partial<FlowCell>): FlowWorkbook {
+  return replaceSheet(book, sheetId, sheet => {
+    if (row < 0 || row >= sheet.rows.length || !sheet.prepOptions?.some(p => p.id === prepId)) return sheet;
+    const rows = [...sheet.rows];
+    const current = rows[row]!;
+    const namedPrep = {...current.namedPrep, [prepId]: cleanCell({...current.namedPrep?.[prepId], text: current.namedPrep?.[prepId]?.text ?? '', ...patch})};
+    rows[row] = {...current, namedPrep};
+    return {...sheet, rows};
   });
 }
 
@@ -412,11 +435,14 @@ export function serializeFlow(book: FlowWorkbook): string {
       name: s.name,
       side: s.side,
       columns: s.columns,
+      ...(s.prepOptions?.length ? { prepOptions: s.prepOptions } : {}),
       // Every row is stored with its id (empty ones too): co-editing matches
       // rows by id, so both computers must agree on every row's identity.
-      rows: s.rows.map((r) => (isEmptyCell(r.prep) && !r.prep?.revision
-        ? { id: r.id, cells: r.cells.map(cleanCell) }
-        : { id: r.id, cells: r.cells.map(cleanCell), prep: cleanCell(r.prep!) })),
+      rows: s.rows.map((r) => ({
+        id: r.id, cells: r.cells.map(cleanCell),
+        ...(!isEmptyCell(r.prep) || r.prep?.revision ? { prep: cleanCell(r.prep!) } : {}),
+        ...(r.namedPrep && Object.keys(r.namedPrep).length ? { namedPrep: Object.fromEntries(Object.entries(r.namedPrep).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, cell]) => [id, cleanCell(cell)])) } : {}),
+      })),
     })),
   });
 }
@@ -436,6 +462,11 @@ export function parseFlow(text: string, minRows = DEFAULT_FLOW_ROWS): FlowWorkbo
     const s = (raw ?? {}) as Record<string, unknown>;
     const columns = Array.isArray(s['columns']) ? s['columns'].slice(0, MAX_COLUMNS).map((c) => String(c).slice(0, 40)) : [];
     if (columns.length === 0) throw new FlowParseError(`Sheet ${i + 1} has no columns.`);
+    const prepOptions = Array.isArray(s['prepOptions']) ? s['prepOptions'].flatMap((raw: unknown) => {
+      if (!raw || typeof raw !== 'object') return [];
+      const o = raw as Record<string, unknown>;
+      return typeof o['id'] === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(o['id']) && !['__proto__', 'constructor', 'prototype'].includes(o['id']) && typeof o['name'] === 'string' && o['name'].trim() ? [{id: o['id'], name: o['name'].trim().slice(0, 100)}] : [];
+    }).filter((o, i, all) => all.findIndex(x => x.id === o.id) === i) : [];
     const sheetId = typeof s['id'] === 'string' && s['id'] ? s['id'] : `sheet-${i + 1}`;
     const rows: FlowRow[] = (Array.isArray(s['rows']) ? s['rows'] : []).slice(0, MAX_ROWS).map((rr: unknown, ri: number) => {
       const r = (rr ?? {}) as Record<string, unknown>;
@@ -443,7 +474,13 @@ export function parseFlow(text: string, minRows = DEFAULT_FLOW_ROWS): FlowWorkbo
       while (cells.length < columns.length) cells.push({ text: '' });
       const id = typeof r['id'] === 'string' && r['id'] ? r['id'] : `${sheetId}~${ri}`;
       const prep = r['prep'] && typeof r['prep'] === 'object' ? cleanCell(r['prep'] as FlowCell) : null;
-      return prep && (!isEmptyCell(prep) || prep.revision) ? { id, cells, prep } : { id, cells };
+      const rawNamed = r['namedPrep'] && typeof r['namedPrep'] === 'object' ? r['namedPrep'] as Record<string, unknown> : {};
+      const namedPrep: Record<string, FlowCell> = {};
+      for (const option of prepOptions) {
+        const raw = rawNamed[option.id];
+        if (raw && typeof raw === 'object') { const cell = cleanCell(raw as FlowCell); if (!isEmptyCell(cell) || cell.revision) namedPrep[option.id] = cell; }
+      }
+      return {id, cells, ...(prep && (!isEmptyCell(prep) || prep.revision) ? {prep} : {}), ...(Object.keys(namedPrep).length ? {namedPrep} : {})};
     });
     // Padding rows get ids derived from the sheet, so every computer that
     // opens the same file pads with identical rows.
@@ -453,6 +490,7 @@ export function parseFlow(text: string, minRows = DEFAULT_FLOW_ROWS): FlowWorkbo
       name: typeof s['name'] === 'string' && s['name'].trim() ? s['name'].slice(0, 100) : `Sheet ${i + 1}`,
       side: s['side'] === 'neg' ? 'neg' : 'aff',
       columns,
+      ...(prepOptions.length ? {prepOptions} : {}),
       rows,
     };
   });

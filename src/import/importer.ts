@@ -42,6 +42,7 @@ import {
   type StyleInfo,
   type StyleMap,
 } from '../ooxml/styles.js';
+import { docxListLabels } from './list-labels.js';
 import { buildLegacyHeadingMap, isUnambiguousLegacy, legacyRole } from '../ooxml/legacy-styles.js';
 
 /**
@@ -160,6 +161,7 @@ export function importDoc(
   notes: {
     footnotes?: Map<string, FootnoteContent>;
     endnotes?: Map<string, FootnoteContent>;
+    numberingXml?: string | null;
   } | null = null,
   /** When provided, is filled with `headingId → srcPara` (0-based source
    *  paragraph index) for every heading — the provenance the source-anchor
@@ -225,6 +227,17 @@ export function importDoc(
     }
   };
   collectBlocks(bodyChildren);
+  if (notes?.numberingXml) {
+    const label = docxListLabels(notes.numberingXml);
+    for (const para of paragraphs) {
+      if (!para.numId) continue;
+      const prefix = label(para.numId, para.ilvl ?? 0);
+      // Card and analytic tags already use CardMirror's own live numbering.
+      if (prefix && para.nodeType !== 'tag' && para.nodeType !== 'analytic') {
+        para.inlines = [schema.text(`${prefix} `), ...para.inlines];
+      }
+    }
+  }
 
   return normalizeUnderlineMarks(assembleDoc(paragraphs, provenanceOut));
 }

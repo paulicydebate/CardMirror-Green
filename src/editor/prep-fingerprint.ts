@@ -28,9 +28,12 @@ function flowData(raw: unknown): unknown {
   try {
     const book = parseFlow(String(raw ?? ''), 0);
     return [book.event, book.sheets.map((sheet) => {
-      const rows = sheet.rows.map((row) => [row.cells, row.prep ?? null]);
-      while (rows.length && (rows.at(-1)![0] as Array<{ text: string }>).every((c) => !c.text) && !(rows.at(-1)![1] as { text?: string } | null)?.text) rows.pop();
-      return [sheet.name, sheet.side, sheet.columns, rows];
+      const options = sheet.prepOptions ?? [];
+      const rows = sheet.rows.map((row) => options.length
+        ? [row.cells, row.prep ?? null, options.map(option => row.namedPrep?.[option.id] ?? null)]
+        : [row.cells, row.prep ?? null]);
+      while (rows.length && (rows.at(-1)![0] as Array<{ text: string }>).every((c) => !c.text) && !(rows.at(-1)![1] as { text?: string } | null)?.text && (!options.length || !(rows.at(-1)![2] as Array<{text?: string} | null>).some(c => c?.text))) rows.pop();
+      return options.length ? [sheet.name, sheet.side, sheet.columns, rows, options.map(o => o.name)] : [sheet.name, sheet.side, sheet.columns, rows];
     })];
   } catch { return String(raw ?? ''); }
 }

@@ -81,3 +81,8 @@ Select several cells by holding the mouse button in the first cell and dragging 
 In Flow Appearance, pick a highlight color and focus the highlight-shortcut field to press a function key or modifier chord. The default is Cmd/Ctrl+Shift+H. Ordinary typing and common clipboard/file shortcuts are reserved. Highlight selected text, the whole cell when no text is selected, or all selected cells. These appearance preferences apply to this computer, not the shared file.
 
 Clicking or selecting the surrounding document can no longer accidentally delete the Flow object. Cell clearing remains available, and a nonempty sheet deletion uses its existing confirmation. The last sheet cannot be removed. Closing a document and normal file operations are unaffected.
+
+
+### Named Prep columns
+
+Open Prep next to a speech and use its dropdown to choose a saved Prep column. Select + to create and name a new one on that sheet. Each named choice holds its own notes for each row; original notes remain under Prep. Choices and notes save in the Flow and are shared with collaborators. Everyone editing the Flow must use CardMirror Green 1.16.22 or later before using this feature; older versions can remove the named data when saving.
