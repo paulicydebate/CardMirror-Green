@@ -24,6 +24,78 @@ function typeInto(area: HTMLTextAreaElement, text: string): void {
 }
 
 describe('flow co-editing', () => {
+  it('keeps a partner’s new argument when typing in expanded column view', async () => {
+    const peers = await createLoroPeers(seed(), 2, undefined, flowNodeViews);
+    try {
+      const [a,b] = peers;
+      typeInto(cellEl(a!,0,0),'Mine');
+      await syncAll(peers); await settle(5);
+      a!.view.dom.querySelectorAll('.pmd-flow-head')[0]!.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+      await new Promise(resolve => setTimeout(resolve,40));
+      const area = a!.view.dom.querySelector<HTMLTextAreaElement>('textarea.pmd-flow-docsec')!; area.focus();
+      typeInto(cellEl(b!,1,0),'Partner');
+      await syncAll(peers); await settle(5); area.focus();
+      typeInto(area,'Mine edited');
+      area.setSelectionRange(area.value.length, area.value.length);
+      area.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+      await syncAll(peers); await settle(5); await syncAll(peers); await settle(5);
+      for (const peer of peers) {
+        expect(flowOf(peer).sheets[0]!.rows[0]!.cells[0]!.text).toBe('Mine edited');
+        expect(flowOf(peer).sheets[0]!.rows.some(row => row.cells[0]!.text === 'Partner')).toBe(true);
+      }
+    } finally { peers.forEach(p => p.destroy()); }
+  });
+
+  it('keeps focus on the same row when the partner inserts above it', async () => {
+    const peers = await createLoroPeers(seed(), 2, undefined, flowNodeViews);
+    try {
+      const [a,b] = peers; const editing = cellEl(a!,3,0); editing.focus(); typeInto(editing,'Keep typing');
+      const beforeId = flowOf(a!).sheets[0]!.rows[3]!.id;
+      const other = cellEl(b!,0,0); other.focus();
+      other.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,metaKey:true,bubbles:true,cancelable:true}));
+      await new Promise(resolve => setTimeout(resolve, 40)); editing.focus();
+      await syncAll(peers); await settle(8); await syncAll(peers); await settle(8);
+      const sheet = flowOf(a!).sheets[0]!; const index = sheet.rows.findIndex(row => row.id === beforeId);
+      expect(index).toBeGreaterThan(3);
+      expect(sheet.rows[index]!.cells[0]!.text).toBe('Keep typing');
+      expect(document.activeElement).toBe(cellEl(a!,index,0));
+    } finally { peers.forEach(p => p.destroy()); }
+  });
+
+  it('keeps both participants’ new rows after they press Enter simultaneously', async () => {
+    const peers = await createLoroPeers(seed(), 2, undefined, flowNodeViews);
+    try {
+      for (const [i, peer] of peers.entries()) {
+        const last = cellEl(peer,49,i); last.focus();
+        last.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+        typeInto(cellEl(peer,50,i), i === 0 ? 'Argument A' : 'Argument B');
+      }
+      for (let i=0;i<4;i++) { await syncAll(peers); await settle(5); }
+      for (const peer of peers) {
+        const sheet = flowOf(peer).sheets[0]!;
+        expect(sheet.rows.some(r => r.cells[0]!.text === 'Argument A')).toBe(true);
+        expect(sheet.rows.some(r => r.cells[1]!.text === 'Argument B')).toBe(true);
+      }
+      expect(String(peers[0]!.doc().firstChild!.attrs['data'])).toBe(String(peers[1]!.doc().firstChild!.attrs['data']));
+    } finally { peers.forEach(p => p.destroy()); }
+  });
+
+  it('keeps a newly appended row and its text when a partner edits concurrently', async () => {
+    const peers = await createLoroPeers(seed(), 2, undefined, flowNodeViews);
+    const [a,b] = peers;
+    try {
+      const last = cellEl(a!,49,0); last.focus();
+      last.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+      typeInto(cellEl(a!,50,0), 'New row argument');
+      typeInto(cellEl(b!,0,1), 'Concurrent partner text');
+      await syncAll(peers); await settle(6); await syncAll(peers); await settle(6); await syncAll(peers); await settle(6);
+      for (const peer of peers) {
+        expect(flowOf(peer).sheets[0]!.rows.some(row => row.cells[0]!.text === 'New row argument')).toBe(true);
+        expect(flowOf(peer).sheets[0]!.rows[0]!.cells[1]!.text).toBe('Concurrent partner text');
+      }
+    } finally { peers.forEach(p => p.destroy()); }
+  });
+
   it('converges when both people create and type in named Prep columns', async () => {
     const peers = await createLoroPeers(seed(), 2, undefined, flowNodeViews);
     try {

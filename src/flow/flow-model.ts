@@ -33,6 +33,8 @@ export interface FlowCell {
 
 export interface FlowRow {
   id: string;
+  /** Stable insertion origin, used to retain concurrently added rows. */
+  created?: {after: string | null; revision: {clock: number; actor: string}};
   /** One entry per column; missing entries read as empty cells. */
   cells: FlowCell[];
   /** The row's Prep cell: thumpers / prepped answers lined up with this row
@@ -50,6 +52,8 @@ export interface FlowSheet {
   columns: string[];
   /** User-created, row-aligned Prep columns (the original Prep stays the default). */
   prepOptions?: Array<{id: string; name: string}>;
+  /** Explicit deletions and the content they observed, without storing removed text. */
+  rowTombstones?: Record<string, {revision: {clock: number; actor: string}; seen: string; after?: string | null; seenCells?: Record<string, {fingerprint: string; revision?: {clock: number; actor: string}}>}>;
   rows: FlowRow[];
 }
 
@@ -313,13 +317,13 @@ export function applyColumnSections(sheet: FlowSheet, col: number, sections: Col
 }
 
 /** `applyColumnSections`, plus the row id each section ended up in. */
-export function placeColumnSections(sheet: FlowSheet, col: number, sections: ColumnSection[]): { sheet: FlowSheet; rowIds: Array<string | null> } {
+export function placeColumnSections(sheet: FlowSheet, col: number, sections: ColumnSection[], managedRows?: ReadonlySet<string>): { sheet: FlowSheet; rowIds: Array<string | null> } {
   if (col < 0 || col >= sheet.columns.length) return { sheet, rowIds: sections.map((s) => s.rowId) };
   const rows = sheet.rows.map((r) => ({ ...r, cells: Array.from({ length: Math.max(sheet.columns.length, r.cells.length) }, (_, i) => r.cells[i] ?? { text: '' }) }));
   const known = new Set(rows.map((r) => r.id));
   const kept = new Set(sections.map((s) => s.rowId).filter((id): id is string => id !== null && known.has(id)));
   for (const r of rows) {
-    if (!kept.has(r.id) && r.cells[col]!.text) r.cells[col] = { text: '' };
+    if ((!managedRows || managedRows.has(r.id)) && !kept.has(r.id) && r.cells[col]!.text) r.cells[col] = { text: '' };
   }
   const rowIds: Array<string | null> = [];
   let cursor = -1; // index of the row the previous section landed in
@@ -436,10 +440,12 @@ export function serializeFlow(book: FlowWorkbook): string {
       side: s.side,
       columns: s.columns,
       ...(s.prepOptions?.length ? { prepOptions: s.prepOptions } : {}),
+      ...(s.rowTombstones && Object.keys(s.rowTombstones).length ? {rowTombstones: Object.fromEntries(Object.entries(s.rowTombstones).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0))} : {}),
       // Every row is stored with its id (empty ones too): co-editing matches
       // rows by id, so both computers must agree on every row's identity.
       rows: s.rows.map((r) => ({
         id: r.id, cells: r.cells.map(cleanCell),
+        ...(r.created ? {created: r.created} : {}),
         ...(!isEmptyCell(r.prep) || r.prep?.revision ? { prep: cleanCell(r.prep!) } : {}),
         ...(r.namedPrep && Object.keys(r.namedPrep).length ? { namedPrep: Object.fromEntries(Object.entries(r.namedPrep).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([id, cell]) => [id, cleanCell(cell)])) } : {}),
       })),
@@ -468,6 +474,24 @@ export function parseFlow(text: string, minRows = DEFAULT_FLOW_ROWS): FlowWorkbo
       return typeof o['id'] === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(o['id']) && !['__proto__', 'constructor', 'prototype'].includes(o['id']) && typeof o['name'] === 'string' && o['name'].trim() ? [{id: o['id'], name: o['name'].trim().slice(0, 100)}] : [];
     }).filter((o, i, all) => all.findIndex(x => x.id === o.id) === i) : [];
     const sheetId = typeof s['id'] === 'string' && s['id'] ? s['id'] : `sheet-${i + 1}`;
+    const revision = (raw: unknown): {clock: number; actor: string} | undefined => {
+      const r = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+      return typeof r['clock'] === 'number' && Number.isSafeInteger(r['clock']) && r['clock'] > 0 && typeof r['actor'] === 'string' && r['actor'].length > 0 && r['actor'].length <= 128 ? {clock: r['clock'], actor: r['actor']} : undefined;
+    };
+    const tombstones: NonNullable<FlowSheet['rowTombstones']> = Object.create(null);
+    if (s['rowTombstones'] && typeof s['rowTombstones'] === 'object') for (const [id, raw] of Object.entries(s['rowTombstones'] as Record<string, unknown>).slice(0, MAX_ROWS * 2)) {
+      const value = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+      const rev = revision(value['revision']);
+      if (id.length <= 200 && rev && typeof value['seen'] === 'string' && /^[0-9a-f:]{1,50}$/.test(value['seen'])) {
+        const seenCells: NonNullable<NonNullable<FlowSheet['rowTombstones']>[string]['seenCells']> = Object.create(null);
+        if (value['seenCells'] && typeof value['seenCells'] === 'object') for (const [key, rawCell] of Object.entries(value['seenCells'] as Record<string, unknown>).slice(0, 10000)) {
+          const cell = rawCell && typeof rawCell === 'object' ? rawCell as Record<string, unknown> : {};
+          const cellRevision = revision(cell['revision']);
+          if (key.length <= 200 && typeof cell['fingerprint'] === 'string' && /^[0-9a-f:]{1,50}$/.test(cell['fingerprint'])) seenCells[key] = {fingerprint: cell['fingerprint'], ...(cellRevision ? {revision:cellRevision} : {})};
+        }
+        tombstones[id] = {revision: rev, seen: value['seen'], ...((value['after'] === null || typeof value['after'] === 'string' && value['after'].length <= 200) ? {after: value['after']} : {}), ...(Object.keys(seenCells).length ? {seenCells} : {})};
+      }
+    }
     const rows: FlowRow[] = (Array.isArray(s['rows']) ? s['rows'] : []).slice(0, MAX_ROWS).map((rr: unknown, ri: number) => {
       const r = (rr ?? {}) as Record<string, unknown>;
       const cells = (Array.isArray(r['cells']) ? r['cells'] : []).slice(0, columns.length).map((cc: unknown) => cleanCell((cc ?? {}) as FlowCell));
@@ -480,7 +504,11 @@ export function parseFlow(text: string, minRows = DEFAULT_FLOW_ROWS): FlowWorkbo
         const raw = rawNamed[option.id];
         if (raw && typeof raw === 'object') { const cell = cleanCell(raw as FlowCell); if (!isEmptyCell(cell) || cell.revision) namedPrep[option.id] = cell; }
       }
-      return {id, cells, ...(prep && (!isEmptyCell(prep) || prep.revision) ? {prep} : {}), ...(Object.keys(namedPrep).length ? {namedPrep} : {})};
+      const rawCreated = r['created'] && typeof r['created'] === 'object' ? r['created'] as Record<string, unknown> : {};
+      const creationRevision = revision(rawCreated['revision']);
+      const after = rawCreated['after'];
+      const created = creationRevision && (after === null || typeof after === 'string' && after.length <= 200) ? {after, revision: creationRevision} : undefined;
+      return {id, cells, ...(created ? {created} : {}), ...(prep && (!isEmptyCell(prep) || prep.revision) ? {prep} : {}), ...(Object.keys(namedPrep).length ? {namedPrep} : {})};
     });
     // Padding rows get ids derived from the sheet, so every computer that
     // opens the same file pads with identical rows.
@@ -491,6 +519,7 @@ export function parseFlow(text: string, minRows = DEFAULT_FLOW_ROWS): FlowWorkbo
       side: s['side'] === 'neg' ? 'neg' : 'aff',
       columns,
       ...(prepOptions.length ? {prepOptions} : {}),
+      ...(Object.keys(tombstones).length ? {rowTombstones: tombstones} : {}),
       rows,
     };
   });

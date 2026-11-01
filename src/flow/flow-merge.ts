@@ -64,6 +64,69 @@ function rowCell(row: FlowRow, col: number | string): FlowCell | undefined {
   return col === PREP_KEY ? row.prep : typeof col === 'number' ? row.cells[col] : row.namedPrep?.[col.slice(6)];
 }
 
+/** A compact fingerprint of the row state seen when it was deleted. This
+ * detects a concurrent edit without retaining the deleted text in the file. */
+function compactFingerprint(input: string): string {
+  let a = 0x811c9dc5, b = 0x9e3779b9;
+  for (let i = 0; i < input.length; i++) { a = Math.imul(a ^ input.charCodeAt(i), 0x01000193); b = Math.imul(b ^ input.charCodeAt(i), 0x85ebca6b); }
+  return `${input.length.toString(16)}:${(a >>> 0).toString(16)}:${(b >>> 0).toString(16)}`;
+}
+function rowSeenCells(row: FlowRow): NonNullable<NonNullable<FlowWorkbook['sheets'][number]['rowTombstones']>[string]['seenCells']> {
+  const cells: NonNullable<NonNullable<FlowWorkbook['sheets'][number]['rowTombstones']>[string]['seenCells']> = Object.create(null);
+  eachCell(row, row.cells.length, (col, cell) => { cells[String(col)] = {fingerprint:compactFingerprint(cellJson(cell)), ...(cell?.revision ? {revision:cell.revision} : {})}; });
+  return cells;
+}
+function rowSignature(row: FlowRow): string {
+  return compactFingerprint(JSON.stringify(Object.entries(rowSeenCells(row)).sort(([a],[b]) => a < b ? -1 : a > b ? 1 : 0)));
+}
+function rowChangedSinceDelete(row: FlowRow, tomb: NonNullable<FlowWorkbook['sheets'][number]['rowTombstones']>[string]): boolean {
+  if (rowSignature(row) === tomb.seen) return false;
+  if (!tomb.seenCells) return true;
+  for (const [key, cell] of Object.entries(rowSeenCells(row))) {
+    const seen = tomb.seenCells[key];
+    if (seen?.fingerprint === cell.fingerprint) continue;
+    // A delayed older version of the same actor's cell is not a new edit.
+    if (cell.revision && seen?.revision && cell.revision.actor === seen.revision.actor && cell.revision.clock <= seen.revision.clock) continue;
+    return true; // concurrent/unknown edit: retain rather than discard it
+  }
+  return false;
+}
+
+/** Insertions are anchored to a preceding row and ordered deterministically,
+ * so two partners adding a row at the same point both retain their text. */
+function orderRows(rows: FlowRow[], tombstones: NonNullable<FlowWorkbook['sheets'][number]['rowTombstones']>): FlowRow[] {
+  const ids = new Set(rows.map(r => r.id));
+  const children = new Map<string | null, FlowRow[]>();
+  for (const row of rows) if (row.created) {
+    let anchor = row.created.after;
+    const visited = new Set<string>();
+    while (anchor && !ids.has(anchor) && !visited.has(anchor)) { visited.add(anchor); const tomb = tombstones[anchor]; if (!tomb || tomb.after === undefined) break; anchor = tomb.after; }
+    // If the anchor is unknown, leave this row for the final fallback rather
+    // than accidentally jumping it to the top of the sheet.
+    if (anchor && !ids.has(anchor)) continue;
+    const group = children.get(anchor) ?? []; group.push(row); children.set(anchor, group);
+  }
+  for (const group of children.values()) group.sort((a,b) => {
+    const ar = a.created!.revision, br = b.created!.revision;
+    return ar.clock - br.clock || (ar.actor < br.actor ? -1 : ar.actor > br.actor ? 1 : 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  });
+  const ordered: FlowRow[] = [], seen = new Set<string>();
+  const append = (row: FlowRow): void => {
+    const pending = [row];
+    while (pending.length) {
+      const next = pending.pop()!;
+      if (seen.has(next.id)) continue;
+      seen.add(next.id); ordered.push(next);
+      const nested = children.get(next.id) ?? [];
+      for (let i = nested.length - 1; i >= 0; i--) pending.push(nested[i]!);
+    }
+  };
+  for (const row of children.get(null) ?? []) append(row);
+  for (const row of rows) if (!row.created) append(row);
+  for (const row of rows) append(row); // malformed or cyclic anchors: retain data
+  return ordered;
+}
+
 /** Record, for every cell that differs between `before` and `after`, the
  *  value it had before this local edit. */
 export function recordLocalEdit(history: EditHistory, before: FlowWorkbook, after: FlowWorkbook, now: number): void {
@@ -101,8 +164,16 @@ export function mergeIncoming(
     const options = new Map(incomingOptions.map(option => [option.id, option]));
     for (const option of ms.prepOptions ?? []) if (!options.has(option.id)) { options.set(option.id, option); keptMine = true; }
     const prepOptions = [...options.values()].sort((a,b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    const tombstones = {...sheet.rowTombstones};
+    for (const [id, tomb] of Object.entries(ms.rowTombstones ?? {})) {
+      const existing = tombstones[id];
+      if (!existing || compareCellRevisions({text:'',revision:tomb.revision}, {text:'',revision:existing.revision}) > 0) { tombstones[id] = tomb; keptMine = true; }
+    }
     const myRows = new Map(ms.rows.map((r) => [r.id, r]));
-    const rows = sheet.rows.map((row) => {
+    const incomingIds = new Set(sheet.rows.map(row => row.id));
+    const allRows = [...sheet.rows];
+    for (const row of ms.rows) if (!incomingIds.has(row.id) && (row.created || tombstones[row.id])) { allRows.push(row); keptMine = true; }
+    const rows = allRows.map((row) => {
       const mr = myRows.get(row.id);
       if (!mr) return row;
       let changed = false;
@@ -132,7 +203,16 @@ export function mergeIncoming(
       const { prep: _drop, ...rest } = row;
       return { ...rest, cells, ...(prep ? {prep} : {}), ...(Object.keys(namedPrep).length ? {namedPrep} : {}) };
     });
-    return { ...sheet, rows, ...(prepOptions.length ? {prepOptions} : {}) };
+    const retained = rows.filter(row => {
+      const tomb = tombstones[row.id];
+      if (!tomb) return true;
+      if (row.created && compareCellRevisions({text:'',revision:row.created.revision}, {text:'',revision:tomb.revision}) > 0) return true;
+      return rowChangedSinceDelete(row, tomb);
+    });
+    const recovered = retained.map(row => { const tomb = tombstones[row.id]; return tomb && !row.created && rowChangedSinceDelete(row, tomb) ? {...row, created: {after:tomb.after ?? null, revision:tomb.revision}} : row; });
+    const orderedRows = orderRows(recovered, tombstones);
+    if (orderedRows.length !== sheet.rows.length || orderedRows.some((row, i) => row.id !== sheet.rows[i]?.id)) keptMine = true;
+    return { ...sheet, rows: orderedRows, ...(prepOptions.length ? {prepOptions} : {}), ...(Object.keys(tombstones).length ? {rowTombstones:tombstones} : {}) };
   });
   let ordered = sheets;
   let orderRevision = incoming.orderRevision;
@@ -157,9 +237,13 @@ export function compareCellRevisions(a: FlowCell | undefined, b: FlowCell | unde
 
 export function maxFlowClock(book: FlowWorkbook): number {
   let clock = book.orderRevision?.clock ?? 0;
-  for (const sheet of book.sheets) for (const row of sheet.rows) eachCell(row, sheet.columns.length, (_col, cell) => {
-    clock = Math.max(clock, cell?.revision?.clock ?? 0);
-  });
+  for (const sheet of book.sheets) {
+    for (const tomb of Object.values(sheet.rowTombstones ?? {})) clock = Math.max(clock, tomb.revision.clock);
+    for (const row of sheet.rows) {
+      clock = Math.max(clock, row.created?.revision.clock ?? 0);
+      eachCell(row, sheet.columns.length, (_col, cell) => { clock = Math.max(clock, cell?.revision?.clock ?? 0); });
+    }
+  }
   return clock;
 }
 
@@ -177,10 +261,13 @@ export function stampFlowEdit(before: FlowWorkbook, after: FlowWorkbook, actor: 
   return { ...after, ...(orderChanged ? {orderRevision: revision} : {}), sheets: after.sheets.map(sheet => {
     const old = before.sheets.find(s => s.id === sheet.id);
     const rows = new Map(old?.rows.map(r => [r.id, r]) ?? []);
+    const rowTombstones = {...old?.rowTombstones, ...sheet.rowTombstones};
+    const nextIds = new Set(sheet.rows.map(row => row.id));
+    for (const [index, oldRow] of (old?.rows ?? []).entries()) if (!nextIds.has(oldRow.id)) rowTombstones[oldRow.id] = {revision, seen:rowSignature(oldRow), seenCells:rowSeenCells(oldRow), after:index > 0 ? old!.rows[index - 1]!.id : null};
     const options = new Map((sheet.prepOptions ?? []).map(option => [option.id, option]));
     if (preservePartners) for (const option of old?.prepOptions ?? []) if (!options.has(option.id)) options.set(option.id, option);
     const prepOptions = [...options.values()].sort((a,b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-    return { ...sheet, ...(prepOptions.length ? {prepOptions} : {}), rows: sheet.rows.map(row => {
+    return { ...sheet, ...(prepOptions.length ? {prepOptions} : {}), ...(Object.keys(rowTombstones).length ? {rowTombstones} : {}), rows: sheet.rows.map((row, index) => {
       const previous = rows.get(row.id);
       const stamp = (cell: FlowCell | undefined, prev: FlowCell | undefined): FlowCell | undefined => {
         if (preservePartners && prev?.revision && prev.revision.actor !== actor) return prev;
@@ -192,7 +279,8 @@ export function stampFlowEdit(before: FlowWorkbook, after: FlowWorkbook, actor: 
       const ids = new Set([...Object.keys(row.namedPrep ?? {}), ...Object.keys(previous?.namedPrep ?? {})]);
       for (const id of ids) { const cell = stamp(row.namedPrep?.[id], previous?.namedPrep?.[id]); if (cell) namedPrep[id] = cell; }
       const { prep: _oldPrep, namedPrep: _oldNamed, ...rest } = row;
-      return { ...rest, cells, ...(prep ? {prep} : {}), ...(Object.keys(namedPrep).length ? {namedPrep} : {}) };
+      const created = !previous ? {after: index > 0 ? sheet.rows[index - 1]!.id : null, revision} : row.created ?? previous.created;
+      return { ...rest, ...(created ? {created} : {}), cells, ...(prep ? {prep} : {}), ...(Object.keys(namedPrep).length ? {namedPrep} : {}) };
     }) };
   }) };
 }

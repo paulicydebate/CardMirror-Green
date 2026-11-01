@@ -132,6 +132,8 @@ export class FlowWorkbookView implements NodeView {
   private expandedCol: number | null = null;
   /** Sections of the expanded column, kept locally so empty new sections survive edits. */
   private sections: ColumnSection[] = [];
+  /** Rows this document view has actually shown; unseen partner arguments must never be cleared. */
+  private columnManagedRows = new Set<string>();
   /** Last cell that had focus, for the toolbar. */
   private lastCell: FocusSpot | null = null;
   /** Its last text selection, for the toolbar's Highlight button. */
@@ -285,7 +287,15 @@ export class FlowWorkbookView implements NodeView {
    *  is typing: same layout → patch cells in place; otherwise re-render and
    *  restore focus and caret. */
   private refreshFrom(before: FlowWorkbook): void {
-    const focus = this.currentFocus();
+    let focus = this.currentFocus();
+    // Structural edits can insert rows above the cursor. Keep the user in
+    // the same row by identity, not its old numerical position.
+    if (focus) {
+      const oldSheet = before.sheets.find(sheet => sheet.id === this.sheetId);
+      const rowId = oldSheet?.rows[focus.row]?.id;
+      const row = rowId ? this.sheet.rows.findIndex(item => item.id === rowId) : -1;
+      if (row >= 0) focus = {...focus, row};
+    }
     if (this.expandedCol !== null) {
       this.refreshColumnDoc();
       return;
@@ -374,7 +384,10 @@ export class FlowWorkbookView implements NodeView {
       this.lastData = acceptedData;
       this.book = this.parse(acceptedData);
       if (!this.book.sheets.some(s => s.id === this.sheetId)) this.sheetId = this.book.sheets[0]!.id;
-      if (this.expandedCol !== null) this.sections = columnToSections(this.sheet, this.expandedCol);
+      if (this.expandedCol !== null) {
+        this.sections = columnToSections(this.sheet, this.expandedCol);
+        this.columnManagedRows = new Set(this.sections.flatMap(section => section.rowId ? [section.rowId] : []));
+      }
       this.render(this.currentFocus() ?? undefined);
       return;
     }
@@ -911,6 +924,7 @@ export class FlowWorkbookView implements NodeView {
     const typing = active instanceof HTMLTextAreaElement && active.classList.contains('pmd-flow-docsec') && this.dom.contains(active);
     if (!typing || this.sections.some((sec) => sec.rowId && !rows.has(sec.rowId))) {
       this.sections = columnToSections(this.sheet, col);
+      this.columnManagedRows = new Set(this.sections.flatMap(section => section.rowId ? [section.rowId] : []));
       this.render();
       return;
     }
@@ -930,6 +944,7 @@ export class FlowWorkbookView implements NodeView {
   private expand(col: number): void {
     this.expandedCol = col;
     this.sections = columnToSections(this.sheet, col);
+    this.columnManagedRows = new Set(this.sections.flatMap(section => section.rowId ? [section.rowId] : []));
     this.render();
     requestAnimationFrame(() => this.dom.querySelector<HTMLTextAreaElement>('.pmd-flow-docsec')?.focus());
   }
@@ -938,6 +953,7 @@ export class FlowWorkbookView implements NodeView {
     const col = this.expandedCol ?? 0;
     this.expandedCol = null;
     this.sections = [];
+    this.columnManagedRows.clear();
     this.render({ row: 0, col, caret: 'end' });
   }
 
@@ -1010,8 +1026,9 @@ export class FlowWorkbookView implements NodeView {
   private commitSections(): void {
     const col = this.expandedCol;
     if (col === null) return;
-    const { sheet: next, rowIds } = placeColumnSections(this.sheet, col, this.sections);
+    const { sheet: next, rowIds } = placeColumnSections(this.sheet, col, this.sections, this.columnManagedRows);
     this.sections = this.sections.map((s, i) => ({ ...s, rowId: rowIds[i] ?? s.rowId }));
+    this.columnManagedRows = new Set(this.sections.flatMap(section => section.rowId ? [section.rowId] : []));
     this.commit({ ...this.book, sheets: this.book.sheets.map((s) => (s.id === next.id ? next : s)) });
   }
 

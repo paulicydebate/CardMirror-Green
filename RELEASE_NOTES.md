@@ -1,9 +1,9 @@
-CardMirror Green 1.16.22 — Google Docs numbering and named Flow Prep
+CardMirror Green 1.16.23 — Flow co-editing data-loss repair
 
-- Numbered and nested Google Docs lists are preserved when opening a .docx or pasting supported Google Docs clipboard lists. Imported list labels become ordinary text; they do not automatically renumber after editing.
-- In a Flow, open Prep and use the dropdown and + button to create and choose named row-aligned Prep columns for each sheet. Existing Prep notes stay under Prep. The Flow saves and shares these notes.
-- Everyone co-editing a Flow with named Prep columns must update to 1.16.22 or later; older builds do not understand the new data.
+- Preserve newly inserted Flow rows and their contents when a partner concurrently sends an older sheet state; simultaneous additions are kept in a consistent order. Intentional deletions remain tracked, and concurrent edits to a deleted row are preserved.
+- In expanded column view, typing or pressing Enter no longer clears a partner’s new, not-yet-displayed argument. Reopen the expanded column to refresh its list.
+- Keep the cursor on the same row when a partner inserts a row above it.
 
-Moving a live co-editing document out of a multi-pane window remains unavailable while a safe session handoff is under development.
+All collaborators must update to 1.16.23 or later before using this repair; older versions do not understand the row metadata. The precise circumstances of the student report are still unconfirmed, and simultaneous edits to the same cell remain whole-cell conflicts. Keep backups of important work.
 
-Use Help > Check for Updates, download 1.16.22, then choose Restart to install.
+Co-edit document pop-out remains under separate development. Use Help > Check for Updates, then Restart to install.

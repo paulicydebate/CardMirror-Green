@@ -1,8 +1,51 @@
 import { describe, expect, it } from 'vitest';
 import { EditHistory, maxFlowClock, mergeIncoming, stampFlowEdit } from '../../src/flow/flow-merge.js';
-import { newWorkbook, parseFlow, serializeFlow, setCell, setPrep, moveSheet, addPrepOption, setNamedPrep } from '../../src/flow/flow-model.js';
+import { newWorkbook, parseFlow, serializeFlow, setCell, setPrep, moveSheet, addPrepOption, setNamedPrep, insertRows, deleteRows } from '../../src/flow/flow-model.js';
 
 describe('versioned flow cell merges', () => {
+  it('keeps a newly appended row when receiving a stale snapshot', () => {
+    const base = newWorkbook(), id = base.sheets[0]!.id;
+    const appended = insertRows(base, id, 50);
+    const mine = stampFlowEdit(base, setCell(appended, id, 50, 0, {text:'New argument'}), 'a', 1);
+    const theirs = stampFlowEdit(base, setCell(base, id, 0, 1, {text:'Partner'}), 'b', 1);
+    const merged = mergeIncoming(theirs, mine, new EditHistory(), 0).book;
+    expect(merged.sheets[0]!.rows.some(row => row.cells[0]!.text === 'New argument')).toBe(true);
+  });
+  it('converges when both sides add rows at the same position', () => {
+    const base = newWorkbook(), id = base.sheets[0]!.id;
+    const a = stampFlowEdit(base, setCell(insertRows(base,id,50),id,50,0,{text:'A'}),'a',1);
+    const b = stampFlowEdit(base, setCell(insertRows(base,id,50),id,50,1,{text:'B'}),'b',1);
+    const ab = mergeIncoming(a,b,new EditHistory(),0).book;
+    const ba = mergeIncoming(b,a,new EditHistory(),0).book;
+    expect(serializeFlow(ab)).toBe(serializeFlow(ba));
+    expect(ab.sheets[0]!.rows.slice(50).map(row => [row.cells[0]!.text,row.cells[1]!.text])).toEqual([['A',''],['','B']]);
+    expect(parseFlow(serializeFlow(ab)).sheets[0]!.rows.length).toBe(52);
+  });
+  it('does not resurrect a deliberately deleted row from an old snapshot', () => {
+    const base = newWorkbook(), id = base.sheets[0]!.id;
+    const written = stampFlowEdit(base,setCell(base,id,2,0,{text:'Old'}),'a',1);
+    const deleted = stampFlowEdit(written,deleteRows(written,id,2),'b',2);
+    const restored = parseFlow(serializeFlow(deleted), 0);
+    const merged = mergeIncoming(written,restored,new EditHistory(),0).book;
+    expect(merged.sheets[0]!.rows.some(row => row.id === written.sheets[0]!.rows[2]!.id)).toBe(false);
+  });
+  it('does not restore an older version of a row edited before deletion', () => {
+    const base = newWorkbook(), id = base.sheets[0]!.id;
+    const old = stampFlowEdit(base,setCell(base,id,2,0,{text:'Old'}),'a',1);
+    const newer = stampFlowEdit(old,setCell(old,id,2,0,{text:'New'}),'a',2);
+    const deleted = stampFlowEdit(newer,deleteRows(newer,id,2),'b',3);
+    const merged = mergeIncoming(old,parseFlow(serializeFlow(deleted),0),new EditHistory(),0).book;
+    expect(merged.sheets[0]!.rows.some(row => row.id === old.sheets[0]!.rows[2]!.id)).toBe(false);
+  });
+  it('keeps a concurrent edit to a row another person deleted', () => {
+    const base = newWorkbook(), id = base.sheets[0]!.id;
+    const deleted = stampFlowEdit(base,deleteRows(base,id,2),'a',1);
+    const typed = stampFlowEdit(base,setCell(base,id,2,0,{text:'Concurrent'}),'b',1);
+    const ab = mergeIncoming(deleted,typed,new EditHistory(),0).book;
+    const ba = mergeIncoming(typed,deleted,new EditHistory(),0).book;
+    expect(ab.sheets[0]!.rows.some(row => row.cells[0]!.text === 'Concurrent')).toBe(true);
+    expect(serializeFlow(ab)).toBe(serializeFlow(ba));
+  });
   it('preserves concurrent named Prep additions and edits on both sides', () => {
     const base = newWorkbook(), sheet = base.sheets[0]!.id;
     const aa = addPrepOption(base, sheet, 'A2 T');
