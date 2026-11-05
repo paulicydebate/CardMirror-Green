@@ -430,3 +430,8 @@ Redone in the cloud session: the previous assistant's local edits for these were
   - 72px of space below the last row when scrolled to the bottom.
 
   The flow tests (77) pass, including a new test for clicking below a short cell. No desktop app was launched.
+
+
+### Live selection word count (1.16.27, 2026-11-04)
+
+A bottom-left status readout reports the actual words selected in document text or text fields such as Flow cells. It tracks native selection changes and hides when selection collapses, independent of the existing read-aloud count and its settings. The count includes ordinary unhighlighted text.

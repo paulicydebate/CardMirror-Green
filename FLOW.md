@@ -72,7 +72,7 @@ Rename the selected sheet by double-clicking either its sidebar tab or its name 
 
 ## Workspace controls (1.16.8)
 
-A standalone Flow fills its window or editor pane, with no ordinary paper or cursor paragraph around it. Text zoom changes cell text size without pushing the Flow outside its pane. Speech headers stay opaque while scrolling. New sheets have 50 rows; short older sheets display at least 50.
+A standalone Flow fills its window or editor pane, with no ordinary paper or cursor paragraph around it. Text zoom changes cell text size without pushing the Flow outside its pane. Speech headers stay opaque while scrolling. New sheets have 100 rows; short older sheets display at least 100.
 
 Drag a sheet tab in the left sidebar onto another tab to change its position. With a tab focused, Alt+Up/Down also reorders it. Rename by double-clicking its sidebar tab or top-row name. Both collaborators should update to 1.16.8 so saved order revisions survive concurrent cell edits.
 

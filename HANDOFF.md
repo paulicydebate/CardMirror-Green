@@ -359,3 +359,13 @@ A live co-edited document can move from a pane to a separate desktop window, inc
 ### Find in Flow (1.16.25, 2026-11-01)
 
 Cmd+F / Ctrl+F and the Flow Find button search speech cells and all default and named Prep columns across the workbook, including hidden sheets. Enter / Shift+Enter and arrow buttons navigate, reveal the target sheet and Prep, and mark the matched text. Escape closes the bar and selects the match for editing. Search is read-only and leaves collaboration data unchanged. Normal document Find remains separate. Automated NodeView, co-edit, and document-search tests cover the behavior; no live desktop UI test was run.
+
+
+### Flow cell targeting, initial rows and pill clearance (1.16.26, 2026-11-01)
+
+A click or drag can start anywhere inside a Flow grid cell, including the space below its shorter textarea when another cell makes the row taller; direct text clicks retain native caret and selection behavior. New sheets start with 100 rows; existing sheets retain their previous contents and are padded to 100 rows. The grid scroller gets an extra bottom runway when the Send/Receive pill tray overlaps it, scoped to the anchored pane. A headless Chrome test using synthetic data confirmed the whitespace click, 100 rows, and 72px end clearance.
+
+
+### Live selection word count (1.16.27, 2026-11-04)
+
+A bottom-left status readout reports the actual words selected in document text or text fields such as Flow cells. It tracks native selection changes and hides when selection collapses, independent of the existing read-aloud count and its settings. The count includes ordinary unhighlighted text.

@@ -372,6 +372,7 @@ import {
   type ReadAloudCounts,
 } from './word-count.js';
 import { liveContainerSegment, orderWordCountSegments, primaryReadSegment, remainingReadSegment } from './live-read-time.js';
+import { installSelectionWordCount } from './selection-word-count.js';
 import { getHost, getElectronHost, isWindowsHost, isSameOpenHandle, type OpenedFile, type JournalEntry } from './host/index.js';
 import {
   installGlobalErrorSurface,
@@ -961,6 +962,8 @@ const manageFlashcardsBtn = document.getElementById('manage-flashcards-btn') as 
 const askAiBtn = document.getElementById('ask-ai-btn') as HTMLButtonElement | null;
 const commentsColumnEl = document.getElementById('comments-column') as HTMLElement | null;
 const wordCountText = document.getElementById('word-count-text')!;
+const selectionWordCount = document.getElementById('selection-word-count');
+if (selectionWordCount) installSelectionWordCount(document, selectionWordCount);
 const cursorColorDisplay = document.getElementById('cursor-color-display') as HTMLElement;
 const cursorColorText = document.getElementById('cursor-color-text')!;
 const plainPasteToggleBtn = document.getElementById('plain-paste-toggle-btn') as HTMLButtonElement | null;
